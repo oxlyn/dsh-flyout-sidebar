@@ -19,11 +19,12 @@ dsh plugin --profile web add github:oxlyn/dsh-popout-sidebar
 ```sh
 git clone https://github.com/oxlyn/dsh-popout-sidebar.git
 cd dsh-popout-sidebar
-npm run build          # node scripts/build.js → src/host.js + src/client.js
+npm install
+npm run build          # tsdown → dist/index.js + dist/client.js
 
 # 在插件的父目录执行（dsh plugin add 的相对路径锚定调用目录）：
 cd ..
-dsh plugin --profile web add ./dsh-popout-sidebar   # 符号链接安装，改 src/ 后重启即可生效
+dsh plugin --profile web add ./dsh-popout-sidebar   # 符号链接安装；改 src/ 后 npm run build 并重启 dsh web 即可生效
 dsh web
 ```
 
@@ -68,23 +69,29 @@ DSH 设置面板（左下角 ⚙️）新增「**Popout Sidebar**」选项卡：
 
 ## 实现方式 / How it works
 
-插件分为 host 侧与 client 侧两部分，由 `scripts/build.js` 把 `src/{shared,host,client}` 拼装成两个单文件 bundle：
+插件分为 host 侧与 client 侧两部分，使用 TypeScript + JSX 编写，由 **tsdown** 打包成两个单文件 bundle：
 
 ```
-┌─ host 侧 src/index.js → src/host.js（Node 进程）────────────────┐
-│  - runGit：execFile 执行 git（懒加载 child_process）             │
-│      git status --porcelain=v1 -z   变更列表（按工作区分桶缓存） │
-│      git diff HEAD -M -- <path>     着色 unified diff 文本       │
-│  - ctx.webServer.register：                                      │
-│      GET /popout-sidebar/gitstatus  变更列表 JSON                │
-│      GET /popout-sidebar/gitdiff    单文件 diff JSON             │
-│      GET /popout-sidebar/listdir    文件树目录列表               │
-│      GET /popout-sidebar/content    文本内容（代码预览）         │
-│      GET /popout-sidebar/media      图片 / PDF 二进制            │
+┌─ host 侧 src/index.ts → dist/index.js（Node 进程，ESM）─────────┐
+│  - host/artifacts.ts   产物跟踪（write/edit + shell 快照 diff） │
+│  - host/git.ts         git status/diff（按工作区分桶缓存）      │
+│      git status --porcelain=v1 -z   变更列表                    │
+│      git diff HEAD -M -- <path>     着色 unified diff 文本      │
+│  - host/workspace.ts   会话 → 工作区 cwd 解析（含缓存）         │
+│  - host/files.ts       文件树列目录 / 文本读取                  │
+│  - host/page.ts        独立弹出页 HTML（内联 shared 源码）       │
+│  - host/routes.ts      ctx.webServer.register：                 │
+│      GET /popout-sidebar/gitstatus  变更列表 JSON               │
+│      GET /popout-sidebar/gitdiff    单文件 diff JSON            │
+│      GET /popout-sidebar/listdir    文件树目录列表              │
+│      GET /popout-sidebar/content    文本内容（代码预览）        │
+│      GET /popout-sidebar/media      图片 / PDF 二进制           │
 │  - tools/result 事件 → 700ms 去抖刷新对应工作区的状态缓存        │
 └──────────────────────────────────────────────────────────────────┘
                           │ fetch
-┌─ client 侧 src/client.js（浏览器端 bundle）──────────────────────┐
+┌─ client 侧 src/client/index.tsx → dist/client.js（浏览器 IIFE）──┐
+│  - React 组件（classic JSX 经 h 工厂编译；React 由 DSH 的        │
+│    __ModuleLoader__ factory(require) 运行时提供，bundle 不内嵌） │
 │  - shell.overlay：右上角常驻图标按钮 + 侧边栏面板                │
 │  - 文件树 ⇄ Git 变更视图切换；多标签预览覆盖层（左侧全区域）     │
 │  - settings.section：Popout Sidebar 设置项                       │
@@ -92,17 +99,20 @@ DSH 设置面板（左下角 ⚙️）新增「**Popout Sidebar**」选项卡：
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-技术要点：纯可移植 JS 无构建转译（占位符字符串拼装）；共享模块 `shared/ext.js`（预览类型）、`shared/highlight.js`（零依赖语法高亮）、`shared/markdown.js`（Markdown 渲染）两端复用；host 依赖通过 `inject: ['webServer', 'sessionQuery', 'timer']` 声明。
+技术要点：`tsdown.config.ts` 一个配置打包两端（host ESM / client IIFE），自定义 `?raw` 插件在构建期把 shared 源码内联进独立弹出页的经典 `<script>`、把 vendored pdf.js 内嵌进 host bundle（离线可用）；shared 模块 `shared/ext.js`（预览类型）、`shared/highlight.js`（零依赖语法高亮）、`shared/markdown.js`（Markdown 渲染）以「可移植 JS + JSDoc 类型」书写，两端复用并随弹出页内联；host 依赖通过 `inject: ['webServer', 'sessionQuery', 'timer']` 声明。
 
 ## 环境要求 / Requirements
 
 - Node `>=20`（DSH 宿主要求）
 - `git` 在 PATH 中，且工作区为 git 仓库（否则 Git 变更视图显示错误提示，文件树不受影响）
+- 本地构建需要 devDependencies（`tsdown`、`typescript` 等；运行时零依赖）
 
 ## 开发 / Development
 
 ```sh
-npm run build         # 重新生成 src/host.js 与 src/client.js
+npm run build         # tsdown 重新生成 dist/index.js 与 dist/client.js
+npm run check         # tsc --noEmit 类型检查（strict）
+npm test              # node:test smoke：host 路由/事件 + client 组件渲染 + 弹出页脚本
 ```
 
 > 建议安装提交前守护（一次即可）：`ln -sf ../../scripts/precommit.sh .git/hooks/pre-commit`。每次 `git commit` 自动重建 bundle，产物与源码不同步会直接拦截提交。
@@ -111,13 +121,14 @@ npm run build         # 重新生成 src/host.js 与 src/client.js
 
 ```
 dsh-popout-sidebar/
-├── src/index.js          # 静态 Host 入口（ESM）
-├── src/host.js           # ⚙️ 生成产物：Host 单文件（勿手改）
-├── src/client.js         # ⚙️ 生成产物：Client 单文件 bundle（勿手改）
-├── src/shared/           # 两端共享纯函数：ext / markdown / highlight
-├── src/host/             # host 半模块：body（骨架）/ core（git+文件操作）/ page（弹出页 HTML）/ routes（HTTP 路由）
-├── src/client/           # client 半模块：body（骨架）/ core / styles / icons / preview / components
-├── scripts/build.js      # bundle 拼装脚本
+├── tsdown.config.ts      # tsdown 构建：host/client 双 bundle + ?raw 内联插件
+├── src/index.ts          # Host 入口（导出 name/inject/apply，ESM）
+├── dist/                 # ⚙️ 构建产物：index.js（host）/ client.js（浏览器），勿手改
+├── src/shared/           # 两端共享可移植模块（JSDoc 类型，随弹出页内联）：ext / markdown / highlight
+├── src/host/             # host 模块：types / artifacts / workspace / files / git / page（弹出页 HTML）/ routes（HTTP）
+├── src/client/           # client 模块（TSX）：jsx（React 桥）/ runtime / store / styles / icons / preview / components
+├── src/vendor/pdfjs/     # vendored pdf.js（构建期内嵌，离线可用）
+├── test/                 # node:test smoke 测试（对 dist 产物做黑盒验证）
 └── cordis.patch.yml      # bundle 挂载补丁
 ```
 

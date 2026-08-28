@@ -1,7 +1,10 @@
-/* Layout push: reserve space for the popout panel so the conversation column
-   yields instead of being covered (same technique as better-sidebar's right
-   panel). --dsh-popout-sidebar-width is set live by the panel component;
-   --dsh-sidebar-width is better-sidebar's right panel. */
+/**
+ * Client 侧：注入的样式表。
+ *
+ * 一次性插入 <style id="dsh-popout-sidebar-styles">；CSS 变量遵循 DSH 的
+ * --dsw-alias-* 设计令牌，深浅主题自动跟随。
+ */
+export const styleCss = `
 html #root {
   margin-right: calc(var(--dsh-sidebar-width, 0px) + var(--dsh-popout-sidebar-width, 0px));
   transition: margin-right var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease);
@@ -9,9 +12,6 @@ html #root {
 body[data-dsh-popout-dragging] #root {
   transition: none;
 }
-/* Reserve right-side clearance in the conversation header so the corner
-   trigger never overlaps its right-aligned utilities (e.g. "Session log").
-   The clearance only applies while the popout panel is closed. */
 header:has([data-slot="conversation.session.header.utilities"]) {
   padding-right: max(28px, calc(60px - var(--dsh-popout-sidebar-width, 0px)));
   transition: padding-right var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease);
@@ -20,9 +20,6 @@ header:has([data-slot="conversation.session.header.utilities"]) {
   html #root { transition: none; }
   header:has([data-slot="conversation.session.header.utilities"]) { transition: none; }
 }
-/* Full-area preview overlay: covers everything to the LEFT of the sidebar
-   panel (the app's main column) while a file is being previewed. Sits just
-   below the panel's z-index so the panel stays on top. */
 .artifacts-preview-overlay {
   position: fixed; top: 0; bottom: 0; left: 0;
   right: calc(var(--dsh-sidebar-width, 0px) + var(--dsh-popout-sidebar-width, 0px));
@@ -66,8 +63,6 @@ body[data-dsh-popout-dragging] .artifacts-preview-overlay { transition: none; }
   border: none; background: transparent; color: inherit; cursor: pointer; border-radius: 4px;
 }
 .artifacts-ptab-close:hover { background: var(--dsw-alias-interactive-bg-hover-accent, rgba(0, 0, 0, 0.08)); }
-/* ⇥ collapse button pinned at the right end of the tab strip: hides the
-   preview content while keeping the tabs; flipped (⇤) while hidden. */
 .artifacts-preview-hide {
   flex: none; width: 32px; display: inline-flex; align-items: center; justify-content: center;
   border: none; border-left: 1px solid var(--dsw-alias-border-l1); background: transparent;
@@ -76,7 +71,6 @@ body[data-dsh-popout-dragging] .artifacts-preview-overlay { transition: none; }
 .artifacts-preview-hide:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
 .artifacts-preview-overlay .artifacts-preview-body { flex: 1; min-height: 0; }
 .artifacts-preview-overlay .artifacts-img { max-height: none; }
-
 .artifacts-panel {
   position: fixed; top: 0; right: var(--dsh-sidebar-width, 0px); bottom: 0; width: 30vw; max-width: calc(100vw - 24px); min-width: 0;
   display: flex; flex-direction: column;
@@ -89,7 +83,9 @@ body[data-dsh-popout-dragging] .artifacts-preview-overlay { transition: none; }
   font-size: 13px; line-height: 1.5;
   --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
   --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+  transition: right var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease);
 }
+.artifacts-panel.artifacts-resizing { transition: none; user-select: none; }
 .artifacts-head {
   position: relative; display: flex; align-items: center; gap: 4px; padding: 0 6px; flex: none; height: 28px;
   border-bottom: 1px solid var(--dsw-alias-border-l2);
@@ -115,28 +111,19 @@ body[data-dsh-popout-dragging] .artifacts-preview-overlay { transition: none; }
 .artifacts-body { flex: 0 0 auto; min-height: 0; overflow-y: auto; }
 .artifacts-empty { padding: 28px 16px; color: var(--dsw-alias-label-tertiary); text-align: center; }
 .artifacts-item {
-  display: block; width: 100%; text-align: left; padding: 9px 12px;
-  border: none; border-bottom: 1px solid var(--dsw-alias-border-l2);
-  background: transparent; color: inherit; cursor: pointer; font: inherit;
+  display: flex; align-items: stretch; width: 100%; padding: 0;
+  border-bottom: 1px solid var(--dsw-alias-border-l2);
+  background: transparent; color: inherit; cursor: default;
 }
 .artifacts-item:hover { background: var(--dsw-alias-interactive-bg-hover); }
-.artifacts-item.is-active { background: var(--dsw-alias-interactive-bg-hover); }
+.artifacts-item.is-active { background: var(--dsw-alias-interactive-bg-hover); box-shadow: inset 3px 0 0 var(--dsw-alias-state-business-primary); }
 .artifacts-item-row { display: flex; align-items: center; gap: 8px; }
-.artifacts-badge { font-size: 10px; padding: 1px 6px; border-radius: 4px; flex: none; }
-.artifacts-badge-create { background: var(--dsw-alias-state-success-tertiary); color: var(--dsw-alias-state-success-primary); }
-.artifacts-badge-edit { background: var(--dsw-alias-state-warn-tertiary); color: var(--dsw-alias-state-warn-label); }
-.artifacts-item-base { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.artifacts-item-full {
-  color: var(--dsw-alias-label-tertiary); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  margin-top: 2px; font-family: var(--dsh-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
-}
-.artifacts-preview { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
-.artifacts-pre {
-  flex: 1; margin: 0; overflow: auto; padding: 12px;
-  font-family: var(--dsh-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
-  font-size: 12px; line-height: 1.55; white-space: pre;
-  color: var(--dsw-alias-label-secondary);
-}
+.artifacts-item-main { flex: 1; min-width: 0; text-align: left; padding: 9px 12px; border: none; background: transparent; color: inherit; cursor: pointer; font: inherit; }
+.artifacts-item-actions { display: flex; align-items: center; gap: 2px; padding-right: 6px; opacity: 0; }
+.artifacts-item:hover .artifacts-item-actions { opacity: 1; }
+.artifacts-minibtn { border: none; background: transparent; color: var(--dsw-alias-label-tertiary); cursor: pointer; font-size: 12px; padding: 2px 6px; border-radius: 4px; }
+.artifacts-minibtn:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
+.artifacts-notice { color: var(--dsw-alias-state-business-primary); font-size: 12px; }
 .artifacts-hint { padding: 24px 16px; color: var(--dsw-alias-label-tertiary); text-align: center; }
 .artifacts-error { padding: 16px; color: var(--dsw-alias-state-error-primary); font-family: var(--dsh-font-mono, monospace); word-break: break-all; }
 .artifacts-corner-btn {
@@ -147,27 +134,10 @@ body[data-dsh-popout-dragging] .artifacts-preview-overlay { transition: none; }
   transition: right var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease), color .15s;
 }
 .artifacts-corner-btn:hover { color: var(--dsw-alias-label-primary); }
-.artifacts-item { display: flex; align-items: stretch; padding: 0; cursor: default; border-bottom: 1px solid var(--dsw-alias-border-l2); }
-.artifacts-item:hover { background: var(--dsw-alias-interactive-bg-hover); }
-/* Selected artifact: a left accent bar (list-item language) keeps it visually
-   distinct from the file tree's rounded full-fill selection, so a lone selected
-   artifact never reads as a file-tree row. */
-.artifacts-item.is-active { background: var(--dsw-alias-interactive-bg-hover); box-shadow: inset 3px 0 0 var(--dsw-alias-state-business-primary); }
-.artifacts-item-main { flex: 1; min-width: 0; text-align: left; padding: 9px 12px; border: none; background: transparent; color: inherit; cursor: pointer; font: inherit; }
-.artifacts-item-actions { display: flex; align-items: center; gap: 2px; padding-right: 6px; opacity: 0; }
-.artifacts-item:hover .artifacts-item-actions { opacity: 1; }
-.artifacts-minibtn { border: none; background: transparent; color: var(--dsw-alias-label-tertiary); cursor: pointer; font-size: 12px; padding: 2px 6px; border-radius: 4px; }
-.artifacts-minibtn:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
-.artifacts-notice { color: var(--dsw-alias-state-business-primary); font-size: 12px; }
 .artifacts-preview-body { flex: 1; min-height: 0; overflow-y: auto; position: relative; }
 .artifacts-img { display: block; max-width: 100%; max-height: 70vh; object-fit: contain; margin: 12px; }
-/* iframe/embed are REPLACED elements: inset-0 without an explicit
-   width/height keeps their intrinsic (small) size, so use width/height 100%
-   instead. position:relative above is for the pdf.js renderer's absolute
-   canvas container (a non-replaced div, which DOES stretch with inset-0). */
 .artifacts-iframe { width: 100%; height: 100%; min-height: 360px; border: 0; background: #fff; }
 .artifacts-pdf { width: 100%; height: 100%; min-height: 360px; border: 0; background: #fff; display: block; }
-/* pdf.js renderer (sidebar): fills the preview area, no native toolbar. */
 .artifacts-pdfview { position: absolute; top: 0; right: 0; bottom: 0; left: 0; display: flex; flex-direction: column; background: #525659; }
 .artifacts-pdfview-bar { flex: none; display: flex; align-items: center; gap: 6px; height: 34px; padding: 0 8px; background: var(--dsw-alias-bg-layer-1); border-bottom: 1px solid var(--dsw-alias-border-l2); }
 .artifacts-pdfview-btn { min-width: 24px; height: 22px; border: 1px solid var(--dsw-alias-border-l2); background: transparent; color: var(--dsw-alias-label-secondary); border-radius: 5px; cursor: pointer; font: inherit; font-size: 13px; line-height: 1; padding: 0 6px; }
@@ -197,21 +167,12 @@ body[data-dsh-popout-dragging] .artifacts-preview-overlay { transition: none; }
 .artifacts-diff-pre { margin: 0; padding: 8px 12px; font: 12px/1.5 var(--dsh-font-mono, ui-monospace, monospace); white-space: pre-wrap; word-break: break-word; color: var(--dsw-alias-label-secondary); }
 .artifacts-diff-del .artifacts-diff-pre { background: rgba(236,19,19,0.05); }
 .artifacts-diff-add .artifacts-diff-pre { background: rgba(34,197,94,0.06); }
-.artifacts-panel { transition: right var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease); }
-.artifacts-panel.artifacts-resizing { transition: none; user-select: none; }
-
-/* Resize handle on the panel's left edge */
 .artifacts-resize { position: absolute; left: -4px; top: 0; bottom: 0; width: 8px; cursor: col-resize; z-index: 3; touch-action: none; }
 .artifacts-resize::after { content: ''; position: absolute; left: 3px; top: 0; bottom: 0; width: 2px; background: transparent; transition: background .15s; }
 .artifacts-resize:hover::after, .artifacts-resize:active::after { background: var(--dsw-alias-interactive-bg-hover-accent); }
-
-
-/* Header icon toggle between the file tree and the changed-files list */
 .artifacts-viewbtn { display: inline-flex; align-items: center; justify-content: center; height: 26px; width: 26px; padding: 0; border: none; background: transparent; color: var(--dsw-alias-label-secondary); cursor: pointer; border-radius: 6px; }
 .artifacts-viewbtn:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
 .artifacts-viewbtn.is-active { color: var(--dsw-alias-state-business-primary); }
-
-/* Git changed-files list (git 变更) */
 .artifacts-git-badge { font-size: 10px; font-weight: 700; width: 16px; height: 16px; flex: none; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; font-family: var(--dsh-font-mono, ui-monospace, monospace); }
 .artifacts-git-badge-M { background: var(--dsw-alias-state-warn-tertiary); color: var(--dsw-alias-state-warn-label); }
 .artifacts-git-badge-A { background: var(--dsw-alias-state-success-tertiary); color: var(--dsw-alias-state-success-primary); }
@@ -220,8 +181,6 @@ body[data-dsh-popout-dragging] .artifacts-preview-overlay { transition: none; }
 .artifacts-git-badge-U { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-tertiary); }
 .artifacts-git-orig { font-size: 11px; color: var(--dsw-alias-label-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .artifacts-git-error { padding: 14px 12px; word-break: break-all; }
-
-/* Unified git diff view (left-side overlay) */
 .artifacts-gitdiff { font-family: var(--dsh-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); font-size: 12px; line-height: 1.6; }
 .gd-line { white-space: pre-wrap; word-break: break-all; padding: 0 12px; }
 .gd-meta { color: var(--dsw-alias-label-tertiary); background: var(--dsw-alias-bg-layer-1); padding: 2px 12px; }
@@ -230,8 +189,6 @@ body[data-dsh-popout-dragging] .artifacts-preview-overlay { transition: none; }
 .gd-del { color: #cf222e; background: rgba(236,19,19,0.07); }
 body[data-ds-dark-theme] .gd-add { color: #69db7c; }
 body[data-ds-dark-theme] .gd-del { color: #faa2c1; }
-
-/* File tree (文件树) — styled like better-sidebar's explorer */
 .artifacts-tree { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .artifacts-tree-body { flex: 1; min-height: 0; overflow-y: auto; padding: 2px 6px 8px; }
 .artifacts-tree-row { box-sizing: border-box; width: 100%; height: 34px; font: var(--dsw-font-s-14); color: var(--dsw-alias-label-primary); text-align: left; cursor: pointer; white-space: nowrap; background: transparent; border: none; border-radius: 8px; align-items: center; gap: 6px; padding: 0 8px; display: flex; animation: artifacts-row-in .15s var(--ds-ease-in-out, ease); }
@@ -247,8 +204,6 @@ body[data-ds-dark-theme] .gd-del { color: #faa2c1; }
 .artifacts-tree-loading { cursor: default; color: var(--dsw-alias-label-tertiary); font-size: 12px; }
 .artifacts-tree-error { cursor: default; color: var(--dsw-alias-state-error-primary); font-size: 12px; }
 @keyframes artifacts-row-in { 0% { opacity: 0 } }
-
-/* Settings section */
 .artifacts-settings { display: flex; flex-direction: column; gap: 14px; width: 100%; height: 100%; min-height: 0; overflow-y: auto; padding-bottom: 24px; }
 .artifacts-setintro { color: var(--dsw-alias-label-tertiary); margin: 0; padding: 0 2px; font-size: 13px; line-height: 20px; }
 .artifacts-setgroup { border: 1px solid var(--dsw-alias-border-l2); background: var(--dsw-alias-bg-layer-3); border-radius: 16px; padding: 6px 20px; display: flex; flex-direction: column; flex: none; }
@@ -268,26 +223,12 @@ body[data-ds-dark-theme] .gd-del { color: #faa2c1; }
 .artifacts-setcontrol { flex: none; align-items: center; gap: 6px; display: flex; }
 .artifacts-widthinput { width: 76px; border: 1px solid var(--dsw-alias-border-l2); background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); font: inherit; border-radius: 6px; padding: 4px 8px; }
 .artifacts-suffix { color: var(--dsw-alias-label-secondary); font-size: 14px; line-height: 22px; }
-
-/* Delete mode */
-.artifacts-delete-hint { padding: 6px 12px; font-size: 12px; color: var(--dsw-alias-state-error-primary); background: rgba(236,19,19,0.08); border-bottom: 1px solid var(--dsw-alias-border-l2); flex: none; }
-.artifacts-iconbtn.artifacts-delete-on { color: var(--dsw-alias-state-error-primary); border-color: var(--dsw-alias-state-error-primary); background: rgba(236,19,19,0.08); }
-.artifacts-item.is-delete-marked { outline: 2px solid var(--dsw-alias-state-error-primary); outline-offset: -2px; background: rgba(236,19,19,0.06); }
-.artifacts-item.is-delete-marked .artifacts-item-actions { opacity: 1; }
-.artifacts-delete-x { color: var(--dsw-alias-state-error-primary); font-size: 16px; font-weight: 700; line-height: 1; }
-.artifacts-delete-x:hover { background: rgba(236,19,19,0.12); color: var(--dsw-alias-state-error-primary); }
-
-/* Code preview (syntax-highlighted via DSH's Shiki — token colors come from
-   the app's global --shiki-token-* palette, matching the rest of DSH) */
 .artifacts-code { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .artifacts-code-scroll { flex: 1; min-height: 0; overflow: auto; display: flex; align-items: flex-start; background: var(--shiki-background, var(--dsw-alias-markdown-code-block, var(--dsw-alias-bg-layer-1))); }
 .artifacts-code-gutter { flex: none; min-width: 2.2em; margin: 0; padding: 12px 6px 12px 8px; text-align: right; color: var(--dsw-alias-label-tertiary); border-right: 1px solid var(--dsw-alias-border-l1); position: sticky; left: 0; user-select: none; background: var(--shiki-background, var(--dsw-alias-markdown-code-block, var(--dsw-alias-bg-layer-1))); font: 12px/1.6 var(--dsh-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); white-space: pre; }
 .artifacts-code-pre { flex: 1; margin: 0; padding: 12px; background: var(--shiki-background, var(--dsw-alias-markdown-code-block, var(--dsw-alias-bg-layer-1))); color: var(--shiki-foreground, var(--dsw-alias-label-primary)); font: 12px/1.6 var(--dsh-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); white-space: pre; }
 .artifacts-code-pre code { font: inherit; color: inherit; }
 .artifacts-code-line { display: block; }
-
-/* Token colors for the shared self-contained highlighter (markdown fenced
-   code blocks). Palette matches the standalone page + DSH's --shiki-* hues. */
 .tok-comment { color: #868e96; }
 .tok-string { color: #2f9e44; }
 .tok-number, .tok-bool, .tok-variable, .tok-hex, .tok-attr { color: #e8590c; }
@@ -302,3 +243,15 @@ body[data-ds-dark-theme] .tok-keyword, body[data-ds-dark-theme] .tok-important, 
 body[data-ds-dark-theme] .tok-function, body[data-ds-dark-theme] .tok-decorator { color: #b197fc; }
 body[data-ds-dark-theme] .tok-class, body[data-ds-dark-theme] .tok-builtin, body[data-ds-dark-theme] .tok-tag, body[data-ds-dark-theme] .tok-key { color: #74c0fc; }
 body[data-ds-dark-theme] .tok-property { color: #ced4da; }
+`
+
+/** 注入样式（幂等：已存在则跳过） */
+export function insertStyles(): void {
+  if (typeof document === 'undefined') return
+  const id = 'dsh-popout-sidebar-styles'
+  if (document.getElementById(id)) return
+  const el = document.createElement('style')
+  el.id = id
+  el.textContent = styleCss
+  document.head.appendChild(el)
+}

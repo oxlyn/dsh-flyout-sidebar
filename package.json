@@ -12,21 +12,24 @@
     "artifacts",
     "plugin"
   ],
-  "main": "src/index.js",
+  "main": "dist/index.js",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/e2mcc/dsh-popout-sidebar.git"
   },
   "scripts": {
-    "build": "node scripts/build.js"
+    "build": "tsdown",
+    "check": "tsc --noEmit",
+    "test": "node --test \"test/*.test.mjs\"",
+    "precommit": "npm run -s build && npm run -s check && npm run -s test"
   },
   "exports": {
-    ".": "./src/index.js",
-    "./client": "./src/client.js",
+    ".": "./dist/index.js",
+    "./client": "./dist/client.js",
     "./package.json": "./package.json"
   },
   "files": [
-    "src",
+    "dist",
     "cordis.patch.yml",
     "README.md",
     "README_EN.md",
@@ -34,6 +37,15 @@
   ],
   "engines": {
     "node": ">=20"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.0",
+    "@types/react": "^19.2.18",
+    "happy-dom": "^20.11.10",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "tsdown": "^0.22.14",
+    "typescript": "^7.0.2"
   },
   "dsh": {
     "bundle": {

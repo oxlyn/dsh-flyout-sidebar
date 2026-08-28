@@ -1,0 +1,739 @@
+/**
+ * Client 侧：UI 组件 —— 文件树、多标签预览侧边面板、角落触发按钮、设置区。
+ */
+import { Fragment, h, React } from './jsx'
+import { extType } from '../shared/ext.js'
+import type { ReactElement, ReactNode } from 'react'
+
+import { ctx, host, type GitStatusEntry, type ListEntry } from './runtime'
+import {
+  basename,
+  currentSessionId,
+  fallbackCopy,
+  quoteToComposer,
+  store,
+  settingsStore,
+  useOpen,
+  useSessionId,
+  useSettings,
+  type Settings,
+} from './store'
+import { renderPreview, type PreviewTab } from './preview'
+import {
+  FileCodeIcon,
+  FolderClosedIcon,
+  FolderOpenIcon,
+  GitBranchIcon,
+  PanelCollapseIcon,
+  PanelIcon,
+  PopoutIcon,
+  RefreshIcon,
+} from './icons'
+
+// 文件树（文件树视图）：better-sidebar 风格的资源管理器 —— 圆角行、目录/
+// 文件图标、悬停 `@引用` 圆片。
+interface FileTreeProps {
+  onOpen?: (path: string) => void
+  selectedPath?: string | null
+  refreshToken: number
+}
+
+interface TreeNodeState {
+  loading?: boolean
+  error?: string
+  entries?: ListEntry[]
+}
+
+export function FileTree({ onOpen, selectedPath, refreshToken }: FileTreeProps): ReactElement {
+  const [root, setRoot] = React.useState<{ path: string; entries: ListEntry[] } | null>(null)
+  const [children, setChildren] = React.useState<Record<string, TreeNodeState>>({})
+  const [expanded, setExpanded] = React.useState<Record<string, boolean>>({})
+  const [copiedPath, setCopiedPath] = React.useState<string | null>(null)
+  const [copiedLabel, setCopiedLabel] = React.useState('')
+  const copyTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const rootTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // 跟随活动会话：工作区变化时自动重新定位根目录（无需手动刷新）。
+  const sessionId = useSessionId()
+
+  const loadRoot = (): void => {
+    setChildren({})
+    setExpanded({})
+    setRoot(null)
+    if (rootTimer.current) clearTimeout(rootTimer.current)
+    // 刚切换的工作区短时间内可能还无法在 host 侧解析（会话仍在加载/持久化
+    // 中）。短暂重试让文件树自我纠正，而不是停在陈旧或空状态上。
+    const attempt = (tries: number): void => {
+      host
+        .listDir('', currentSessionId())
+        .then((res) => {
+          if (res && res.ok) {
+            setRoot({ path: res.path || '', entries: res.entries || [] })
+          } else if (tries > 0) {
+            rootTimer.current = setTimeout(() => attempt(tries - 1), 400)
+          }
+        })
+        .catch(() => {
+          if (tries > 0) rootTimer.current = setTimeout(() => attempt(tries - 1), 400)
+        })
+    }
+    attempt(3)
+  }
+
+  // 工作区切换与显式刷新（头部刷新按钮递增 refreshToken）时重新取根。
+  React.useEffect(() => {
+    loadRoot()
+  }, [sessionId, refreshToken])
+  React.useEffect(() => () => {
+    if (rootTimer.current) clearTimeout(rootTimer.current)
+  }, [])
+
+  const toggle = (path: string): void => {
+    const nextExpanded = { ...expanded, [path]: !expanded[path] }
+    setExpanded(nextExpanded)
+    if (nextExpanded[path] && !children[path]) {
+      setChildren({ ...children, [path]: { loading: true } })
+      host
+        .listDir(path, currentSessionId())
+        .then((res) => {
+          setChildren((prev) => ({
+            ...prev,
+            [path]: res && res.ok ? { entries: res.entries || [] } : { error: (res && res.error) || '读取失败' },
+          }))
+        })
+        .catch(() => {
+          setChildren((prev) => ({ ...prev, [path]: { error: '读取失败' } }))
+        })
+    }
+  }
+
+  const copyRef = (path: string): void => {
+    const text = '@' + path
+    let label = '已复制'
+    const done = (): void => {
+      setCopiedPath(path)
+      setCopiedLabel(label)
+      if (copyTimer.current) clearTimeout(copyTimer.current)
+      copyTimer.current = setTimeout(() => {
+        setCopiedPath(null)
+        setCopiedLabel('')
+      }, 1600)
+    }
+    // 优先写入输入框；失败回退剪贴板复制。
+    if (quoteToComposer(path)) {
+      label = '已插入输入框'
+      done()
+      return
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, () => {
+        fallbackCopy(text)
+        done()
+      })
+    } else {
+      fallbackCopy(text)
+      done()
+    }
+  }
+
+  const rowActions = (entry: ListEntry): ReactNode =>
+    copiedPath === entry.path ? (
+      <span className="artifacts-tree-copied">{copiedLabel || '已复制'}</span>
+    ) : (
+      <button
+        type="button"
+        className="artifacts-tree-ref"
+        title="引用到输入框（失败则复制 @path）"
+        onClick={(e) => {
+          e.stopPropagation()
+          copyRef(entry.path)
+        }}
+      >
+        @引用
+      </button>
+    )
+
+  const renderNode = (entry: ListEntry, depth: number): ReactElement => {
+    const pad = { paddingLeft: 6 + depth * 20 }
+    const isSelected = selectedPath === entry.path
+    const rowClass =
+      'artifacts-tree-row' + (entry.hidden ? ' artifacts-tree-hidden' : '') + (isSelected ? ' is-selected' : '')
+    if (entry.isDir) {
+      const isExpanded = !!expanded[entry.path]
+      const node = children[entry.path]
+      return (
+        <div key={entry.path}>
+          <div
+            role="button"
+            tabIndex={0}
+            className={rowClass + ' artifacts-tree-dir'}
+            style={pad}
+            onClick={() => toggle(entry.path)}
+            onKeyDown={(ev) => {
+              if (ev.key === 'Enter' || ev.key === ' ') {
+                ev.preventDefault()
+                toggle(entry.path)
+              }
+            }}
+            title={entry.path}
+          >
+            {isExpanded ? <FolderOpenIcon size={14} /> : <FolderClosedIcon size={14} />}
+            <span className="artifacts-tree-name">{entry.name}</span>
+            {rowActions(entry)}
+          </div>
+          {isExpanded ? (
+            node && node.loading ? (
+              <div
+                className="artifacts-tree-row artifacts-tree-loading"
+                style={{ paddingLeft: 6 + (depth + 1) * 20 + 20 }}
+              >
+                加载中…
+              </div>
+            ) : node && node.error ? (
+              <div
+                className="artifacts-tree-row artifacts-tree-error"
+                style={{ paddingLeft: 6 + (depth + 1) * 20 + 20 }}
+              >
+                {node.error}
+              </div>
+            ) : node && node.entries ? (
+              node.entries.map((c) => renderNode(c, depth + 1))
+            ) : null
+          ) : null}
+        </div>
+      )
+    }
+    return (
+      <div
+        role="button"
+        tabIndex={0}
+        className={rowClass}
+        style={pad}
+        onClick={() => {
+          if (onOpen) onOpen(entry.path)
+        }}
+        onKeyDown={(ev) => {
+          if (ev.key === 'Enter' || ev.key === ' ') {
+            ev.preventDefault()
+            if (onOpen) onOpen(entry.path)
+          }
+        }}
+        title={entry.path}
+      >
+        <FileCodeIcon size={14} />
+        <span className="artifacts-tree-name">{entry.name}</span>
+        {rowActions(entry)}
+      </div>
+    )
+  }
+
+  return (
+    <div className="artifacts-tree">
+      <div className="artifacts-tree-body">
+        {!root ? (
+          <div className="artifacts-hint">加载文件树…</div>
+        ) : !root.entries || !root.entries.length ? (
+          <div className="artifacts-hint">（空目录）</div>
+        ) : (
+          root.entries.map((e) => renderNode(e, 0))
+        )}
+      </div>
+    </div>
+  )
+}
+
+export function ArtifactsPanel(): ReactElement | null {
+  const open = useOpen()
+  const settings = useSettings()
+  const [tabs, setTabs] = React.useState<PreviewTab[]>([])
+  const [activeKey, setActiveKey] = React.useState<string | null>(null)
+  // ⇥ 隐藏整个预览覆盖层但保留标签页；从文件树/git 列表打开任何文件都会全部
+  // 恢复。
+  const [previewHidden, setPreviewHidden] = React.useState(false)
+
+  // 跟随活动会话：预览标签页属于某个项目的文件，工作区切换时全部关闭
+  //（否则陈旧标签会把旧项目内容显示在新工作区旁边）。
+  const sessionId = useSessionId()
+  const firstSession = React.useRef(true)
+  React.useEffect(() => {
+    if (firstSession.current) {
+      firstSession.current = false
+      return
+    }
+    setTabs([])
+    setActiveKey(null)
+    setPreviewHidden(false)
+  }, [sessionId])
+  const [notice, setNotice] = React.useState('')
+  const [gitFiles, setGitFiles] = React.useState<GitStatusEntry[] | null>(null) // null = 加载中
+  const [gitError, setGitError] = React.useState<string | null>(null)
+  const [panelWidth, setPanelWidth] = React.useState<number | null>(null) // null = 用最小宽度
+  const [resizing, setResizing] = React.useState(false)
+  const [activeView, setActiveView] = React.useState<'tree' | 'git'>(() => (settings.showFileTree ? 'tree' : 'git'))
+  const [treeRefresh, setTreeRefresh] = React.useState(0) // 头部刷新按钮递增
+  const [gitRefresh, setGitRefresh] = React.useState(0)
+  const noticeTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // git 视图可见时轮询「已变更未提交」文件。
+  React.useEffect(() => {
+    if (!open || activeView !== 'git') return
+    let alive = true
+    const load = (): void => {
+      host
+        .gitStatus(currentSessionId())
+        .then((res) => {
+          if (!alive) return
+          if (res && res.ok) {
+            setGitFiles(Array.isArray(res.entries) ? res.entries : [])
+            setGitError(null)
+          } else {
+            setGitFiles([])
+            setGitError((res && res.error) || 'git status 失败')
+          }
+        })
+        .catch((e: unknown) => {
+          if (alive) setGitError(e instanceof Error && e.message ? String(e.message) : String(e))
+        })
+    }
+    load()
+    let dispose: (() => void) | undefined
+    if (settings.autoRefresh) dispose = ctx.interval(load, 2000)
+    return () => {
+      alive = false
+      if (dispose) dispose()
+    }
+  }, [open, activeView, settings.autoRefresh, gitRefresh, sessionId])
+
+  // 把当前会话 id 发布到 localStorage：独立弹出标签页没有客户端会话库，
+  // 靠它把文件树根植到活动工作区并实时跟随切换。
+  React.useEffect(() => {
+    const KEY = 'dsh-popout-sidebar:session'
+    const write = (): void => {
+      try {
+        const sid = currentSessionId()
+        if (localStorage.getItem(KEY) !== sid) localStorage.setItem(KEY, sid || '')
+      } catch {
+        // localStorage 不可用时跳过
+      }
+    }
+    write()
+    let list
+    try {
+      list = (ctx.get('sessions') as { list?: { subscribe?: (fn: () => void) => () => void } } | undefined)?.list
+    } catch {
+      list = undefined
+    }
+    if (!list || typeof list.subscribe !== 'function') return
+    return list.subscribe(write)
+  }, [])
+
+  // 把 DSH 的浅/深主题发布到 localStorage，独立弹出页随之匹配并跟随实时
+  // 切换。DSH 在 <body> 上设置 dark 属性（见 styles 中 body[data-ds-dark-theme]
+  // 规则），因此同时观察 documentElement 和 body。
+  React.useEffect(() => {
+    const KEY = 'dsh-popout-sidebar:theme'
+    const isDark = (): boolean => {
+      if (document.documentElement.hasAttribute('data-ds-dark-theme')) return true
+      if (document.body && document.body.hasAttribute('data-ds-dark-theme')) return true
+      return false
+    }
+    const write = (): void => {
+      try {
+        const v = isDark() ? 'dark' : 'light'
+        if (localStorage.getItem(KEY) !== v) localStorage.setItem(KEY, v)
+      } catch {
+        // localStorage 不可用时跳过
+      }
+    }
+    write()
+    if (typeof MutationObserver !== 'function') return
+    const obs = new MutationObserver(write)
+    const opts: MutationObserverInit = { attributes: true, attributeFilter: ['data-ds-dark-theme'] }
+    obs.observe(document.documentElement, opts)
+    if (document.body) obs.observe(document.body, opts)
+    return () => obs.disconnect()
+  }, [])
+
+  // 面板宽度（px）：至少 minPanelWidth% 窗口宽，拖左边缘可更宽。panelWidth
+  // 保存拖拽结果（px）；null → 用配置的最小值。
+  const minWidthPx = Math.max(80, Math.round((window.innerWidth * (settings.minPanelWidth || 0)) / 100))
+  const widthPx = panelWidth != null ? Math.max(panelWidth, minWidthPx) : minWidthPx
+
+  // 打开时为面板预留布局空间：把 app 框架收缩面板实时宽度，会话列让位
+  //（见 styles 中 html #root 规则）。
+  React.useEffect(() => {
+    const root = document.documentElement
+    root.style.setProperty('--dsh-popout-sidebar-width', open ? widthPx + 'px' : '0px')
+    return () => {
+      root.style.setProperty('--dsh-popout-sidebar-width', '0px')
+    }
+  }, [open, widthPx])
+
+  // 拖拽时禁用布局过渡，框架才能跟住指针（对应 body[data-dsh-popout-dragging]）。
+  React.useEffect(() => {
+    if (resizing) document.body.setAttribute('data-dsh-popout-dragging', '')
+    else document.body.removeAttribute('data-dsh-popout-dragging')
+    return () => {
+      document.body.removeAttribute('data-dsh-popout-dragging')
+    }
+  }, [resizing])
+
+  if (!open) return null
+
+  const popoutHref = '/popout-sidebar' + (sessionId ? '?sessionId=' + encodeURIComponent(sessionId) : '')
+
+  const startResize = (e: React.MouseEvent): void => {
+    e.preventDefault()
+    setResizing(true)
+    const rightOffset = (() => {
+      const v = document.documentElement.style.getPropertyValue('--dsh-sidebar-width')
+      const n = parseFloat(v)
+      return Number.isFinite(n) ? n : 0
+    })()
+    const onMove = (ev: MouseEvent): void => {
+      const w = window.innerWidth - ev.clientX - rightOffset
+      setPanelWidth(Math.max(minWidthPx, Math.min(w, window.innerWidth - rightOffset - 24)))
+    }
+    const onUp = (): void => {
+      setResizing(false)
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+    }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+  }
+
+  const flash = (msg: string): void => {
+    setNotice(msg)
+    if (noticeTimer.current) clearTimeout(noticeTimer.current)
+    noticeTimer.current = setTimeout(() => setNotice(''), 1600)
+  }
+  const copyText = (text: string, msg: string): void => {
+    const done = (): void => flash(msg)
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, () => {
+        fallbackCopy(text)
+        done()
+      })
+    } else {
+      fallbackCopy(text)
+      done()
+    }
+  }
+  const quotePath = (path: string): void => {
+    if (quoteToComposer(path)) {
+      flash('已插入输入框')
+      return
+    }
+    copyText('@' + path, '已复制 @引用（未能写入输入框）')
+  }
+
+  // 多标签预览状态：每个打开的文件（或 git diff）一个标签，按路径作键
+  //（'g:' 前缀区分 diff 标签）。
+  const patchTab = (key: string, patch: Partial<PreviewTab>): void =>
+    setTabs((prev) => prev.map((t) => (t.key === key ? { ...t, ...patch } : t)))
+
+  const openTab = (key: string, path: string, git: boolean, initial: Partial<PreviewTab>): void => {
+    setPreviewHidden(false)
+    setTabs((prev) => {
+      const i = prev.findIndex((t) => t.key === key)
+      if (i >= 0) {
+        // 重复打开 = 重新加载并聚焦该标签。
+        const next = prev.slice()
+        const cur = next[i]
+        if (cur) next[i] = { ...cur, ...initial }
+        return next
+      }
+      return prev.concat([{ key, path, git, ...initial }])
+    })
+    setActiveKey(key)
+  }
+
+  const closeTab = (key: string): void => {
+    const idx = tabs.findIndex((t) => t.key === key)
+    const next = tabs.filter((t) => t.key !== key)
+    setTabs(next)
+    if (activeKey === key) setActiveKey(next.length ? (next[Math.min(idx, next.length - 1)]?.key ?? null) : null)
+  }
+
+  const activeTab = tabs.find((t) => t.key === activeKey) || null
+
+  const openFile = (path: string): void => {
+    const key = 'p:' + path
+    const type = extType(path)
+    // 图片和 PDF 以二进制媒体伺服 —— 无需读文本。
+    const initial: Partial<PreviewTab> = { loading: false, type, diff: null }
+    if (type !== 'image' && type !== 'pdf') initial.loading = true
+    openTab(key, path, false, initial)
+    if (type === 'image' || type === 'pdf') return
+    host
+      .readArtifact(path)
+      .then((res) => {
+        patchTab(key, { loading: false, ...res })
+      })
+      .catch((e: unknown) => {
+        patchTab(key, { loading: false, ok: false, error: String(e instanceof Error && e.message ? e.message : e) })
+      })
+  }
+
+  // 打开一个变更文件相对 HEAD 的未提交 diff。
+  const openGitDiff = (path: string): void => {
+    const key = 'g:' + path
+    openTab(key, path, true, { loading: true })
+    host
+      .gitDiff(path, currentSessionId())
+      .then((res) => {
+        patchTab(key, { loading: false, ...res })
+      })
+      .catch((e: unknown) => {
+        patchTab(key, { loading: false, ok: false, error: String(e instanceof Error && e.message ? e.message : e) })
+      })
+  }
+
+  // 状态字母 → 变更行显示标签。
+  const gitLabel = (e: GitStatusEntry): string => {
+    if (e.x === '?' || e.y === '?') return 'U'
+    return (e.y !== ' ' ? e.y : e.x) || 'M'
+  }
+  const gitTitle = (e: GitStatusEntry): string => {
+    const label = gitLabel(e)
+    const map: Record<string, string> = { U: '未跟踪', A: '新增', M: '修改', D: '删除', R: '重命名', C: '复制' }
+    const staged = e.x !== ' ' && e.x !== '?'
+    return (map[label] || label) + (staged ? '（已暂存）' : '（未暂存）')
+  }
+
+  const gitListRows: ReactNode[] = []
+  if (gitError) {
+    gitListRows.push(
+      <div key="err" className="artifacts-tree-error artifacts-git-error">
+        {gitError}
+      </div>,
+    )
+  } else if (gitFiles == null) {
+    gitListRows.push(<div key="load" className="artifacts-empty">加载变更列表…</div>)
+  } else if (!gitFiles.length) {
+    gitListRows.push(<div key="empty" className="artifacts-empty">没有未提交的变更</div>)
+  }
+  ;(gitFiles || []).forEach((e) => {
+    const label = gitLabel(e)
+    const isActive = !!(activeTab && activeTab.git && activeTab.path === e.path)
+    gitListRows.push(
+      <div key={e.path} className={'artifacts-item' + (isActive ? ' is-active' : '')}>
+        <button type="button" className="artifacts-item-main" title={gitTitle(e)} onClick={() => openGitDiff(e.path)}>
+          <div className="artifacts-item-row">
+            <span className={'artifacts-git-badge artifacts-git-badge-' + label}>{label}</span>
+            <span className="artifacts-item-base">{basename(e.path)}</span>
+            {e.origPath ? <span className="artifacts-git-orig">← {basename(e.origPath)}</span> : null}
+          </div>
+          <div className="artifacts-item-full">{e.path}</div>
+        </button>
+        <div className="artifacts-item-actions">
+          <button type="button" className="artifacts-minibtn" title="复制路径" onClick={() => copyText(e.path, '已复制路径')}>
+            ⧉
+          </button>
+          <button type="button" className="artifacts-minibtn" title="@引用到输入框" onClick={() => quotePath(e.path)}>
+            @
+          </button>
+        </div>
+      </div>,
+    )
+  })
+
+  // 多标签预览覆盖层：每个打开的文件一个标签；活动标签内容盖住侧边栏面板
+  // 左侧的整个区域。⇥ 按钮隐藏整个覆盖层 —— 标签保留，经左缘胶囊或打开任
+  // 何文件恢复。
+  const previewOverlay =
+    tabs.length && !previewHidden ? (
+      <div className="artifacts-preview-overlay" role="region" aria-label="文件预览">
+        <div className="artifacts-preview-overlay-tabs">
+          <div className="artifacts-ptabs-scroll">
+            {tabs.map((t) => (
+              <div
+                key={t.key}
+                className={'artifacts-ptab' + (t.key === activeKey ? ' is-active' : '')}
+                title={(t.git ? '[diff] ' : '') + (t.path || '')}
+                onClick={() => setActiveKey(t.key)}
+              >
+                <span className="artifacts-ptab-name">{basename(t.path || '')}</span>
+                <button
+                  type="button"
+                  className="artifacts-ptab-close"
+                  title="关闭标签页"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    closeTab(t.key)
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+          <button type="button" className="artifacts-preview-hide" title="隐藏预览（标签页保留）" onClick={() => setPreviewHidden(true)}>
+            <PanelCollapseIcon size={16} />
+          </button>
+        </div>
+        {activeTab ? renderPreview(activeTab) : null}
+      </div>
+    ) : null
+
+  return (
+    <Fragment>
+      {previewOverlay}
+      <div
+        className={'artifacts-panel' + (resizing ? ' artifacts-resizing' : '')}
+        style={{ width: widthPx }}
+        role="dialog"
+        aria-label="Artifacts"
+      >
+        <div className="artifacts-resize" title="拖动调整宽度" onMouseDown={startResize} />
+        <div className="artifacts-head">
+          <div className="artifacts-head-left">
+            <button type="button" className="artifacts-toggle" title="收起侧边栏" onClick={() => store.setOpen(false)}>
+              <PanelIcon size={16} />
+            </button>
+            <a
+              className="artifacts-link"
+              href={popoutHref}
+              target="_blank"
+              rel="noreferrer noopener"
+              title="弹出式侧边栏 — 在新标签页打开（可拖到另一块显示器）"
+            >
+              <PopoutIcon size={16} />
+            </a>
+          </div>
+          <span className="artifacts-spacer" />
+          {notice ? <span className="artifacts-notice">{notice}</span> : null}
+          <button
+            type="button"
+            className="artifacts-toggle"
+            title={activeView === 'tree' ? '刷新文件树' : '刷新变更列表'}
+            onClick={() => {
+              if (activeView === 'tree') setTreeRefresh((n) => n + 1)
+              else setGitRefresh((n) => n + 1)
+            }}
+          >
+            <RefreshIcon size={16} />
+          </button>
+          {settings.showFileTree ? (
+            <button
+              type="button"
+              className={'artifacts-iconbtn artifacts-viewbtn' + (activeView === 'git' ? ' is-active' : '')}
+              title={activeView === 'tree' ? '查看 Git 变更（未提交）' : '返回文件列表'}
+              aria-pressed={activeView === 'git'}
+              onClick={() => setActiveView(activeView === 'tree' ? 'git' : 'tree')}
+            >
+              {activeView === 'tree' ? <GitBranchIcon size={16} /> : <FolderClosedIcon size={16} />}
+            </button>
+          ) : null}
+        </div>
+        <div className="artifacts-main">
+          <div className="artifacts-body" style={{ flex: '1 1 auto' }}>
+            {activeView === 'tree' && settings.showFileTree ? (
+              <FileTree
+                onOpen={openFile}
+                selectedPath={activeTab && !activeTab.git ? activeTab.path : null}
+                refreshToken={treeRefresh}
+              />
+            ) : (
+              gitListRows
+            )}
+          </div>
+        </div>
+      </div>
+    </Fragment>
+  )
+}
+
+// 常驻触发按钮，钉在右上角。注册进根作用域的 shell.overlay 列表，因此无会
+// 话时也可见；固定 CSS 定位在角落，被右侧边栏宽度向左让位。刻意只显示图标。
+export function CornerButton(): ReactElement | null {
+  const open = useOpen()
+  if (open) return null
+  return (
+    <button type="button" className="artifacts-corner-btn" title="弹出式侧边栏" aria-expanded={open} onClick={() => store.toggle()}>
+      <PanelIcon size={18} />
+    </button>
+  )
+}
+
+interface SettingsToggleProps {
+  label: string
+  desc: string
+  value: boolean
+  onToggle: (v: boolean) => void
+}
+
+function SettingsToggle({ label, desc, value, onToggle }: SettingsToggleProps): ReactElement {
+  return (
+    <div className="artifacts-setrow">
+      <div className="artifacts-settext">
+        <div className="artifacts-settitle">{label}</div>
+        <div className="artifacts-setdesc">{desc}</div>
+      </div>
+      <label className="artifacts-switch">
+        <input
+          type="checkbox"
+          checked={value}
+          aria-label={label}
+          onChange={(e) => onToggle(e.currentTarget.checked)}
+        />
+        <span className="artifacts-switch-track" aria-hidden="true">
+          <span className="artifacts-switch-thumb" />
+        </span>
+      </label>
+    </div>
+  )
+}
+
+export function SettingsSection(): ReactElement {
+  const settings = useSettings()
+  const set = (key: keyof Settings, value: boolean | number): void => settingsStore.set(key, value)
+
+  return (
+    <div className="artifacts-settings">
+      <p className="artifacts-setintro">管理「Popout Sidebar」的显示与行为。</p>
+      <div className="artifacts-setgroup">
+        <SettingsToggle
+          label="默认展开"
+          desc="页面加载后侧边栏默认展开；关闭则默认收起，点右上角图标再打开。"
+          value={settings.defaultOpen}
+          onToggle={(v) => set('defaultOpen', v)}
+        />
+        <SettingsToggle
+          label="自动刷新"
+          desc="开启后侧边栏展开时将即时同步并更新产物列表"
+          value={settings.autoRefresh}
+          onToggle={(v) => set('autoRefresh', v)}
+        />
+        <SettingsToggle
+          label="文件树"
+          desc="在侧边栏显示「文件树」标签页，浏览工作区目录。"
+          value={settings.showFileTree}
+          onToggle={(v) => set('showFileTree', v)}
+        />
+        <div className="artifacts-setrow">
+          <div className="artifacts-settext">
+            <div className="artifacts-settitle">最短面板宽度</div>
+            <div className="artifacts-setdesc">面板的最小宽度（占窗口宽度的百分比，20–60）；更宽可通过拖动面板左边缘调整。</div>
+          </div>
+          <div className="artifacts-setcontrol">
+            <input
+              type="number"
+              className="artifacts-widthinput"
+              min={20}
+              max={60}
+              value={settings.minPanelWidth}
+              onChange={(e) => {
+                const n = parseInt(e.currentTarget.value, 10)
+                if (Number.isNaN(n)) return
+                set('minPanelWidth', Math.max(20, Math.min(60, n)))
+              }}
+            />
+            <span className="artifacts-suffix">%</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}

@@ -19,11 +19,12 @@ dsh plugin --profile web add github:oxlyn/dsh-popout-sidebar
 ```sh
 git clone https://github.com/oxlyn/dsh-popout-sidebar.git
 cd dsh-popout-sidebar
-npm run build          # node scripts/build.js → src/host.js + src/client.js
+npm install
+npm run build          # tsdown → dist/index.js + dist/client.js
 
 # run from the parent directory (dsh plugin add resolves relative paths against the cwd):
 cd ..
-dsh plugin --profile web add ./dsh-popout-sidebar   # symlink install; edits to src/ apply after a restart
+dsh plugin --profile web add ./dsh-popout-sidebar   # symlink install; after editing src/ run npm run build and restart dsh web
 dsh web
 ```
 
@@ -68,15 +69,20 @@ Settings are stored in the browser's `localStorage` (key `dsh-popout-sidebar:set
 
 ## How it works
 
-The plugin splits into a host side and a client side, assembled by `scripts/build.js` from `src/{shared,host,client}` into two single-file bundles:
+The plugin splits into a host side and a client side, written in TypeScript + JSX and bundled by **tsdown** into two single-file bundles:
 
 ```
-┌─ host side src/index.js → src/host.js (Node process) ───────────┐
-│  - runGit: execFile git (child_process loaded lazily)           │
-│      git status --porcelain=v1 -z   change list (per-workspace  │
-│                                     bucketed cache)             │
+┌─ host side src/index.ts → dist/index.js (Node process, ESM) ────┐
+│  - host/artifacts.ts   artifact tracking (write/edit + shell    │
+│                        snapshot diff)                           │
+│  - host/git.ts         git status/diff (per-workspace cache)    │
+│      git status --porcelain=v1 -z   change list                 │
 │      git diff HEAD -M -- <path>     colored unified diff text   │
-│  - ctx.webServer.register:                                      │
+│  - host/workspace.ts   session → workspace cwd resolution       │
+│  - host/files.ts       directory listing / text reading         │
+│  - host/page.ts        standalone popout page HTML (inlines the │
+│                        shared modules)                          │
+│  - host/routes.ts      ctx.webServer.register:                  │
 │      GET /popout-sidebar/gitstatus  change list JSON            │
 │      GET /popout-sidebar/gitdiff    per-file diff JSON          │
 │      GET /popout-sidebar/listdir    directory listing           │
@@ -85,7 +91,10 @@ The plugin splits into a host side and a client side, assembled by `scripts/buil
 │  - tools/result event → 700ms debounced cache refresh           │
 └──────────────────────────────────────────────────────────────────┘
                           │ fetch
-┌─ client side src/client.js (browser bundle) ─────────────────────┐
+┌─ client side src/client/index.tsx → dist/client.js (IIFE) ───────┐
+│  - React components (classic JSX via an `h` factory; React is   │
+│    provided at runtime by DSH's __ModuleLoader__ factory, the   │
+│    bundle does not embed it)                                    │
 │  - shell.overlay: persistent top-right icon button + panel      │
 │  - file tree ⇄ Git changes views; multi-tab preview overlay     │
 │  - settings.section: Popout Sidebar settings                    │
@@ -93,17 +102,20 @@ The plugin splits into a host side and a client side, assembled by `scripts/buil
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-Technical notes: portable JS with no transpilation (placeholder string assembly); shared modules `shared/ext.js` (preview types), `shared/highlight.js` (zero-dependency syntax highlighter) and `shared/markdown.js` (Markdown rendering) are reused on both sides; host dependencies are declared via `inject: ['webServer', 'sessionQuery', 'timer']`.
+Technical notes: a single `tsdown.config.ts` bundles both sides (host ESM / client IIFE); a custom `?raw` plugin inlines the shared module sources into the popout page's classic `<script>` and embeds the vendored pdf.js into the host bundle (fully offline); shared modules `shared/ext.js` (preview types), `shared/highlight.js` (zero-dependency syntax highlighter) and `shared/markdown.js` (Markdown rendering) are portable JS with JSDoc types, reused on both sides and inlined into the popout page; host dependencies are declared via `inject: ['webServer', 'sessionQuery', 'timer']`.
 
 ## Requirements
 
 - Node `>=20` (DSH host requirement)
 - `git` on the PATH and a git repository as the workspace (otherwise the Git changes view shows an error; the file tree is unaffected)
+- Local builds need the devDependencies (`tsdown`, `typescript`, ...; zero runtime dependencies)
 
 ## Development
 
 ```sh
-npm run build         # regenerate src/host.js and src/client.js
+npm run build         # tsdown: regenerate dist/index.js and dist/client.js
+npm run check         # tsc --noEmit strict type checking
+npm test              # node:test smoke tests (host routes/events + client rendering + popout page)
 ```
 
 > Recommended one-time setup of the pre-commit guard: `ln -sf ../../scripts/precommit.sh .git/hooks/pre-commit`. Every `git commit` rebuilds the bundles automatically and blocks the commit if they are out of sync with the sources.
@@ -112,13 +124,14 @@ Project structure:
 
 ```
 dsh-popout-sidebar/
-├── src/index.js          # static host entry (ESM)
-├── src/host.js           # ⚙️ generated: host single file (do not edit)
-├── src/client.js         # ⚙️ generated: client single-file bundle (do not edit)
-├── src/shared/           # shared pure functions: ext / markdown / highlight
-├── src/host/             # host half-module: body (skeleton) / core (git + file ops) / page (popout HTML) / routes (HTTP)
-├── src/client/           # client half-module: body (skeleton) / core / styles / icons / preview / components
-├── scripts/build.js      # bundle assembly script
+├── tsdown.config.ts      # tsdown build: host/client bundles + ?raw inline plugin
+├── src/index.ts          # host entry (exports name/inject/apply, ESM)
+├── dist/                 # ⚙️ generated: index.js (host) / client.js (browser), do not edit
+├── src/shared/           # shared portable modules (JSDoc types, inlined into the popout page): ext / markdown / highlight
+├── src/host/             # host modules: types / artifacts / workspace / files / git / page (popout HTML) / routes (HTTP)
+├── src/client/           # client modules (TSX): jsx (React bridge) / runtime / store / styles / icons / preview / components
+├── src/vendor/pdfjs/     # vendored pdf.js (embedded at build time, offline-safe)
+├── test/                 # node:test smoke tests (black-box checks against dist)
 └── cordis.patch.yml      # bundle mount patch
 ```
 
