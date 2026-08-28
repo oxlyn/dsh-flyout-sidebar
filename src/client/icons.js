@@ -5,9 +5,9 @@
       React.createElement('rect', { x: 1.5, y: 1.5, width: 13, height: 13, rx: 2.8, stroke: 'currentColor', strokeWidth: 1.5 }),
       // Divider line at the right third (mirror of the sidebar's left divider).
       React.createElement('line', { x1: 10.2, y1: 2.6, x2: 10.2, y2: 13.4, stroke: 'currentColor', strokeWidth: 1.5 }),
-      // Pop-out arrow (↖) inside the left region.
+      // Pop-out arrow (↗) inside the left region, pointing up-right.
       React.createElement('path', {
-        d: 'M7.5 9.5 L4.5 6.5 M4.5 6.5 L6.2 6.5 M4.5 6.5 L4.5 8.2',
+        d: 'M6.2 9.2 L9.2 6.2 M9.2 6.2 L7.5 6.2 M9.2 6.2 L9.2 7.9',
         stroke: 'currentColor', strokeWidth: 1.4, strokeLinecap: 'round', strokeLinejoin: 'round', fill: 'none',
       }),
     )
@@ -47,6 +47,28 @@
       d: 'M1.6 3.6 L5 7 L8.4 3.6',
       stroke: 'currentColor', strokeWidth: 1.5, strokeLinecap: 'round', strokeLinejoin: 'round', fill: 'none',
     }))
+
+    // Pop-out (↗) arrow for the "open in a new tab" link — an SVG so it sizes
+    // the same as the other header icons (16px) instead of a text glyph.
+    const PopoutIcon = (size) => React.createElement('svg', {
+      width: size, height: size, viewBox: '0 0 16 16', fill: 'none', 'aria-hidden': true,
+    },
+      React.createElement('path', {
+        d: 'M3.5 12.5 L12.5 3.5 M6.2 3.5 H12.5 V9.8',
+        stroke: 'currentColor', strokeWidth: 1.5, strokeLinecap: 'round', strokeLinejoin: 'round', fill: 'none',
+      }),
+    )
+
+    // Git changes (git 变更): the classic git-branch glyph, for the header    // toggle between the file tree and the changed (uncommitted) files list.
+    const GitBranchIcon = (size) => React.createElement('svg', {
+      width: size, height: size, viewBox: '0 0 16 16', fill: 'none', 'aria-hidden': true,
+    },
+      React.createElement('path', { d: 'M4.5 4.6v6.8', stroke: 'currentColor', strokeWidth: 1.4, strokeLinecap: 'round', fill: 'none' }),
+      React.createElement('circle', { cx: 4.5, cy: 3, r: 1.7, stroke: 'currentColor', strokeWidth: 1.4, fill: 'none' }),
+      React.createElement('circle', { cx: 4.5, cy: 13, r: 1.7, stroke: 'currentColor', strokeWidth: 1.4, fill: 'none' }),
+      React.createElement('circle', { cx: 11.5, cy: 3, r: 1.7, stroke: 'currentColor', strokeWidth: 1.4, fill: 'none' }),
+      React.createElement('path', { d: 'M11.5 4.7v1.1c0 1.9-1.6 3.1-3.6 3.1-1.9 0-3.4 1.2-3.4 1.2', stroke: 'currentColor', strokeWidth: 1.4, strokeLinecap: 'round', fill: 'none' }),
+    )
 
     // File tree (文件树): lazy-loaded recursive directory browser styled like
     // better-sidebar's explorer — rounded rows, folder/file icons, a hover

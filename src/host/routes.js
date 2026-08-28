@@ -111,6 +111,46 @@
           res.end(JSON.stringify(out))
         },
       }), 'artifacts: listdir route')
+      ctx.effect(() => webServer.register({
+        kind: 'exact',
+        path: '/popout-sidebar/gitstatus',
+        handler: async (req, res) => {
+          const qs = (req.url || '').split('?')[1] || ''
+          let sessionId = ''
+          const parts = qs.split('&')
+          for (let i = 0; i < parts.length; i += 1) {
+            const pair = parts[i]
+            const eq = pair.indexOf('=')
+            const k = decodeURIComponent(eq < 0 ? pair : pair.slice(0, eq))
+            const v = decodeURIComponent(eq < 0 ? '' : pair.slice(eq + 1))
+            if (k === 'sessionId') sessionId = v
+          }
+          const out = await gitStatus(sessionId || undefined)
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'Connection': 'close' })
+          res.end(JSON.stringify(out))
+        },
+      }), 'git: status route')
+      ctx.effect(() => webServer.register({
+        kind: 'exact',
+        path: '/popout-sidebar/gitdiff',
+        handler: async (req, res) => {
+          const qs = (req.url || '').split('?')[1] || ''
+          let path = ''
+          let sessionId = ''
+          const parts = qs.split('&')
+          for (let i = 0; i < parts.length; i += 1) {
+            const pair = parts[i]
+            const eq = pair.indexOf('=')
+            const k = decodeURIComponent(eq < 0 ? pair : pair.slice(0, eq))
+            const v = decodeURIComponent(eq < 0 ? '' : pair.slice(eq + 1))
+            if (k === 'path') path = v
+            else if (k === 'sessionId') sessionId = v
+          }
+          const out = await gitDiff(path, sessionId || undefined)
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'Connection': 'close' })
+          res.end(JSON.stringify(out))
+        },
+      }), 'git: diff route')
       // pdf.js assets for the sidebar's custom PDF renderer. Served from the
       // embedded (vendored) copies so the plugin works fully offline. Long
       // cache lifetime: the bytes are versioned with the plugin itself.

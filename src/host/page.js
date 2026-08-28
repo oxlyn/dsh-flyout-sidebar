@@ -6,9 +6,16 @@
 <title>弹出式侧边栏</title>
 <script>
   (function () {
-    var m = /[?&]scheme=([^&]+)/.exec(location.search);
-    var scheme = m ? m[1] : 'light';
-    if (scheme === 'dark') document.documentElement.setAttribute('data-ds-dark-theme', '');
+    // Follow DSH's light/dark setting: the main tab publishes the theme to
+    // localStorage (THEME_KEY); the ?scheme= query is the fallback.
+    var THEME_KEY = 'dsh-popout-sidebar:theme';
+    var v = null;
+    try { v = localStorage.getItem(THEME_KEY); } catch (e) {}
+    if (v !== 'dark' && v !== 'light') {
+      var m = /[?&]scheme=([^&]+)/.exec(location.search);
+      if (m) v = m[1];
+    }
+    if (v === 'dark') document.documentElement.setAttribute('data-ds-dark-theme', '');
   })();
 </script>
 <style>
@@ -66,7 +73,15 @@
   header .spacer { flex: 1; }
   header .status { font-size: 12px; color: var(--p-success-fg); }
   main { flex: 1; display: flex; min-height: 0; }
-  .sidebar { width: 340px; flex: none; display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--p-border-l2); }
+  /* Content (preview) on the LEFT, file panel on the RIGHT — mirrors the
+     in-app layout where the preview covers the area left of the sidebar.
+     Panel width is adjustable via the divider (default = minimum). */
+  .sidebar { width: var(--popout-panel-w, 240px); flex: none; display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--p-border-l2); }
+  .divider { flex: none; width: 6px; cursor: col-resize; position: relative; touch-action: none; }
+  .divider::after { content: ''; position: absolute; top: 0; bottom: 0; left: 2px; width: 2px; background: transparent; transition: background .15s; }
+  .divider:hover::after, .divider.dragging::after { background: var(--p-accent); }
+  body.panel-dragging iframe, body.panel-dragging embed { pointer-events: none; }
+  body.panel-dragging { user-select: none; }
   .list { flex: 1; min-height: 0; overflow-y: auto; }
   .list .empty { padding: 32px 20px; color: var(--p-text-tertiary); text-align: center; }
   .item { display: flex; align-items: stretch; border-bottom: 1px solid var(--p-border-l1); }
@@ -86,8 +101,14 @@
   .mini-btn { border: none; background: transparent; color: var(--p-text-tertiary); cursor: pointer; font-size: 12px; padding: 2px 6px; border-radius: 4px; }
   .mini-btn:hover { background: var(--p-hover); color: var(--p-text); }
   .preview { flex: 1; display: flex; flex-direction: column; min-width: 0; }
-  .preview .bar { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-bottom: 1px solid var(--p-border-l2); color: var(--p-text-secondary); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .preview .bar .path { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* Tab strip above the preview area (multi-tab, mirrors the in-app overlay) */
+  .ptabs { flex: none; display: flex; align-items: stretch; height: 28px; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; background: var(--p-bg-layer-1); border-bottom: 1px solid var(--p-border-l2); }
+  .ptab { flex: none; display: flex; align-items: center; gap: 6px; max-width: 220px; padding: 0 6px 0 12px; cursor: pointer; border-right: 1px solid var(--p-border-l1); color: var(--p-text-secondary); font-size: 12px; line-height: 28px; user-select: none; }
+  .ptab:hover { background: var(--p-hover); color: var(--p-text); }
+  .ptab.is-active { background: var(--p-bg); color: var(--p-text); box-shadow: inset 0 -2px 0 var(--p-accent); }
+  .ptab-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ptab-close { flex: none; width: 18px; height: 18px; padding: 0; line-height: 1; font-size: 13px; display: inline-flex; align-items: center; justify-content: center; border: none; background: transparent; color: inherit; cursor: pointer; border-radius: 4px; }
+  .ptab-close:hover { background: rgba(128, 128, 128, 0.18); }
   .preview .area { flex: 1; min-height: 0; overflow: auto; position: relative; }
   .preview pre { margin: 0; padding: 16px; background: var(--p-code-bg); font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre; color: var(--p-code-fg); }
   .preview .hint { padding: 32px; color: var(--p-text-tertiary); text-align: center; }
@@ -118,17 +139,30 @@
   .diff-block.del .diff-pre { background: rgba(236,19,19,0.05); }
   .diff-block.add .diff-pre { background: rgba(34,197,94,0.06); }
   .toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--p-bg-layer-1); border: 1px solid var(--p-border-l2); color: var(--p-text); padding: 6px 14px; border-radius: 8px; font-size: 12px; opacity: 0; transition: opacity .18s; pointer-events: none; box-shadow: var(--p-shadow); z-index: 10; }
-  .tabs { display: flex; align-items: stretch; height: 34px; border-bottom: 2px solid #fff; background: var(--p-bg-layer-1); flex: none; }
-  .tab { flex: 1; border: none; background: var(--p-hover); color: var(--p-text-tertiary); font: inherit; font-size: 12px; cursor: pointer; border-right: 1px solid var(--p-border-l1); }
-  .tab:hover { background: var(--p-hover); }
-  .tab.is-active { color: var(--p-text); background: transparent; }
+  .gtoggle { flex: none; display: flex; align-items: center; gap: 4px; height: 28px; padding: 0 6px; border-bottom: 1px solid var(--p-border-l2); background: var(--p-bg-layer-1); }
+  .gtoggle-btn { width: 26px; height: 24px; flex: none; display: inline-flex; align-items: center; justify-content: center; border: none; background: transparent; color: var(--p-text-secondary); cursor: pointer; border-radius: 6px; padding: 0; }
+  .gtoggle-btn:hover { background: var(--p-hover); color: var(--p-text); }
+  .gtoggle-btn.is-active { color: var(--p-accent); }
+  .gtoggle-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--p-text-secondary); font-size: 13px; }
+  .git-badge { font-size: 10px; font-weight: 700; width: 16px; height: 16px; flex: none; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .git-badge-M { background: var(--p-warn-bg); color: var(--p-warn-fg); }
+  .git-badge-A { background: var(--p-success-bg); color: var(--p-success-fg); }
+  .git-badge-D { background: rgba(236,19,19,0.1); color: var(--p-error); }
+  .git-badge-R { background: rgba(65,118,230,0.1); color: var(--p-accent); }
+  .git-badge-U { background: var(--p-hover); color: var(--p-text-tertiary); }
+  .git-orig { color: var(--p-text-tertiary); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .git-err { padding: 14px 12px; color: var(--p-error); word-break: break-all; }
+  .gd { font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .gd-line { white-space: pre-wrap; word-break: break-all; padding: 0 12px; }
+  .gd-meta { color: var(--p-text-tertiary); background: var(--p-code-bg); padding: 2px 12px; }
+  .gd-hunk { color: var(--p-accent); background: rgba(65,118,230,0.08); padding: 2px 12px; }
+  .gd-add { color: #1a7f37; background: rgba(34,197,94,0.08); }
+  .gd-del { color: #cf222e; background: rgba(236,19,19,0.07); }
+  :root[data-ds-dark-theme] .gd-add { color: #69db7c; }
+  :root[data-ds-dark-theme] .gd-del { color: #faa2c1; }
   .list.is-hidden { display: none; }
   .tree { flex: 1; min-height: 0; display: none; flex-direction: column; }
   .tree.is-active { display: flex; }
-  .tree-head { flex: none; display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 8px 0 12px; border-bottom: 1px solid var(--p-border-l2); }
-  .tree-root { flex: 1; min-width: 0; color: var(--p-text-secondary); font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .tree-refresh { width: 24px; height: 24px; flex: none; display: inline-flex; align-items: center; justify-content: center; color: var(--p-text-secondary); cursor: pointer; background: transparent; border: none; border-radius: 6px; padding: 0; }
-  .tree-refresh:hover { background: var(--p-hover); color: var(--p-text); }
   .tree-body { flex: 1; min-height: 0; overflow-y: auto; padding: 2px 6px 8px; }
   .tree .empty { padding: 32px 20px; color: var(--p-text-tertiary); text-align: center; }
   .tree-row { box-sizing: border-box; display: flex; align-items: center; gap: 6px; width: 100%; height: 34px; padding: 0 8px; cursor: pointer; white-space: nowrap; color: var(--p-text); font-size: 14px; border-radius: 8px; }
@@ -143,13 +177,11 @@
   .tree-copied { font-size: 11px; color: var(--p-text-tertiary); flex: none; }
   .tree-loading { color: var(--p-text-tertiary); cursor: default; font-size: 12px; }
   .tree-error { color: var(--p-error); cursor: default; font-size: 12px; }
-  /* Code preview (syntax-highlighted) */
+  /* Code preview (syntax-highlighted): gutter + code, no banner chrome */
   .codeview { display: flex; flex-direction: column; height: 100%; min-height: 0; }
-  .codeview-head { flex: none; display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-bottom: 1px solid var(--p-border-l2); }
-  .codeview-lang { font-size: 11px; font-weight: 600; color: var(--p-text-secondary); padding: 1px 8px; border-radius: 4px; background: var(--p-hover); }
   .codeview-scroll { flex: 1; min-height: 0; overflow: auto; display: flex; align-items: flex-start; background: var(--p-code-bg); }
-  .codeview-gutter { flex: none; min-width: 3em; margin: 0; padding: 16px 10px 16px 12px; text-align: right; color: var(--p-text-caption); background: var(--p-code-bg); border-right: 1px solid var(--p-border-l1); position: sticky; left: 0; user-select: none; font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre; }
-  .codeview-pre { flex: 1; margin: 0; padding: 16px; background: var(--p-code-bg); font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre; }
+  .codeview-gutter { flex: none; min-width: 2.2em; margin: 0; padding: 12px 6px 12px 8px; text-align: right; color: var(--p-text-caption); background: var(--p-code-bg); border-right: 1px solid var(--p-border-l1); position: sticky; left: 0; user-select: none; font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre; }
+  .codeview-pre { flex: 1; margin: 0; padding: 12px; background: var(--p-code-bg); font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre; }
   .codeview-pre code { font: inherit; }
   .tok-comment { color: #868e96; }
   .tok-string { color: #2f9e44; }
@@ -174,23 +206,21 @@
     <span class="status" id="status">connecting…</span>
   </header>
   <main>
+    <div class="preview">
+      <div class="ptabs" id="ptabs"></div>
+      <div class="area" id="previewArea"></div>
+    </div>
+    <div class="divider" id="divider" title="拖动调整面板宽度（默认最小）"></div>
     <div class="sidebar">
-      <div class="tabs" id="tabs">
-        <button class="tab is-active" data-view="artifacts">产物</button>
-        <button class="tab" data-view="tree">文件树</button>
+      <div class="gtoggle">
+        <button class="gtoggle-btn" id="viewBtn" type="button" title="查看 Git 变更（未提交）"></button>
+        <button class="gtoggle-btn" id="refreshBtn" type="button" title="刷新"></button>
+        <span class="gtoggle-label" id="viewLabel">文件列表</span>
       </div>
-      <div class="list" id="list"></div>
-      <div class="tree" id="tree">
-        <div class="tree-head">
-          <span class="tree-root" id="treeRoot">…</span>
-          <button class="tree-refresh" id="treeRefresh" title="刷新" type="button"></button>
-        </div>
+      <div class="list is-hidden" id="list"></div>
+      <div class="tree is-active" id="tree">
         <div class="tree-body" id="treeBody"></div>
       </div>
-    </div>
-    <div class="preview">
-      <div class="bar" id="bar"><span class="path">Select a file to preview</span></div>
-      <div class="area" id="previewArea"><div class="hint">← 点击左侧文件预览内容</div></div>
     </div>
   </main>
   <div class="toast" id="toast"></div>
@@ -200,6 +230,8 @@
     var CONTENT_URL = '/popout-sidebar/content';
     var MEDIA_URL = '/popout-sidebar/media';
     var LISTDIR_URL = '/popout-sidebar/listdir';
+    var GITSTATUS_URL = '/popout-sidebar/gitstatus';
+    var GITDIFF_URL = '/popout-sidebar/gitdiff';
     var _sm = /[?&]sessionId=([^&]+)/.exec(location.search);
     var _urlSessionId = _sm ? decodeURIComponent(_sm[1]) : '';
     var SESSION_KEY = 'dsh-popout-sidebar:session';
@@ -217,13 +249,12 @@
       if (path) q.push('path=' + encodeURIComponent(path));
       return LISTDIR_URL + (q.length ? '?' + q.join('&') : '');
     }
-    var items = [];
-    var selectedPath = null;
-    var selectedItem = null;
+    var gitFiles = null;
+    var gitError = null;
     var treeRoot = null;
     var treeChildren = {};
     var treeExpanded = {};
-    var currentView = 'artifacts';
+    var currentView = 'tree';
 
 @@ext@@
 
@@ -255,6 +286,35 @@
     function folderOpenIcon() { return svgIcon([{ d: FOLDER_OPEN_D1 }, { d: FOLDER_OPEN_D2, opacity: '0.2' }]); }
     function fileCodeIcon() { return svgIcon([{ d: CODE_D, fillRule: 'evenodd', clipRule: 'evenodd' }]); }
     function refreshIcon() { return svgIcon([{ d: REFRESH_D }]); }
+    // Git-branch glyph drawn with strokes (matches the sidebar's toggle icon).
+    function gitBranchIcon() {
+      var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('width', 16); svg.setAttribute('height', 16);
+      svg.setAttribute('viewBox', '0 0 16 16'); svg.setAttribute('fill', 'none');
+      var spec = [
+        'M4.5 4.6v6.8',
+        'M11.5 4.7v1.1c0 1.9-1.6 3.1-3.6 3.1-1.9 0-3.4 1.2-3.4 1.2',
+      ];
+      spec.forEach(function (d) {
+        var p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        p.setAttribute('d', d);
+        p.setAttribute('stroke', 'currentColor');
+        p.setAttribute('stroke-width', '1.4');
+        p.setAttribute('stroke-linecap', 'round');
+        p.setAttribute('fill', 'none');
+        svg.appendChild(p);
+      });
+      [ [4.5, 3], [4.5, 13], [11.5, 3] ].forEach(function (c) {
+        var o = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        o.setAttribute('cx', String(c[0])); o.setAttribute('cy', String(c[1]));
+        o.setAttribute('r', '1.7');
+        o.setAttribute('stroke', 'currentColor');
+        o.setAttribute('stroke-width', '1.4');
+        o.setAttribute('fill', 'none');
+        svg.appendChild(o);
+      });
+      return svg;
+    }
 
     function el(tag, className, text) {
       var n = document.createElement(tag);
@@ -265,14 +325,6 @@
     function basename(p) {
       var parts = String(p).split('/');
       return parts[parts.length - 1] || p;
-    }
-    function timeAgo(ts) {
-      if (!ts) return '';
-      var s = Math.max(0, Math.floor((Date.now() - ts) / 1000));
-      if (s < 60) return 'just now';
-      if (s < 3600) return Math.floor(s / 60) + 'm ago';
-      if (s < 86400) return Math.floor(s / 3600) + 'h ago';
-      return Math.floor(s / 86400) + 'd ago';
     }
     function toast(msg) {
       var t = document.getElementById('toast');
@@ -297,172 +349,278 @@
     }
 @@markdown@@
 
-    function diffNode(d) {
-      var wrap = el('div', 'diff');
-      if (d && d.before != null && d.before !== '') {
-        var del = el('div', 'diff-block del');
-        del.appendChild(el('div', 'diff-label', '- 删除'));
-        del.appendChild(el('pre', 'diff-pre', d.before));
-        wrap.appendChild(del);
-      }
-      var add = el('div', 'diff-block add');
-      add.appendChild(el('div', 'diff-label', '+ 新增'));
-      add.appendChild(el('pre', 'diff-pre', d && d.after != null ? d.after : ''));
-      wrap.appendChild(add);
-      return wrap;
-    }
     function errNode(msg) {
       return el('div', 'err', msg || 'read failed');
     }
-    function render() {
+    function gitLabel(e) {
+      if (e.x === '?' || e.y === '?') return 'U';
+      return (e.y !== ' ' ? e.y : e.x) || 'M';
+    }
+    function gitTitle(e) {
+      var label = gitLabel(e);
+      var map = { U: '未跟踪', A: '新增', M: '修改', D: '删除', R: '重命名', C: '复制' };
+      var staged = e.x !== ' ' && e.x !== '?';
+      return (map[label] || label) + (staged ? '（已暂存）' : '（未暂存）');
+    }
+    function renderGit() {
       var list = document.getElementById('list');
       list.textContent = '';
-      if (!items.length) {
-        list.appendChild(el('div', 'empty', 'No artifacts yet — files created/edited by the agent will appear here.'));
+      if (currentView !== 'git') return;
+      if (gitError) {
+        list.appendChild(el('div', 'git-err', gitError));
         return;
       }
-      items.forEach(function (it) {
+      if (gitFiles == null) {
+        list.appendChild(el('div', 'empty', '加载变更列表…'));
+        return;
+      }
+      if (!gitFiles.length) {
+        list.appendChild(el('div', 'empty', '没有未提交的变更'));
+        return;
+      }
+      gitFiles.forEach(function (e) {
         var item = el('div', 'item');
-        if (it.path === selectedPath) item.className += ' active';
+        var at = activeTab();
+        if (at && at.git && at.path === e.path) item.className += ' active';
         var main = el('button', 'item-main');
+        main.title = gitTitle(e);
         var row = el('div', 'row');
-        var badge = el('span', 'badge ' + (it.kind === 'create' ? 'create' : 'edit'), it.kind === 'create' ? '新建' : '编辑');
-        var base = el('span', 'base', basename(it.path));
-        var time = el('span', 'time', timeAgo(it.at));
-        row.appendChild(badge);
-        row.appendChild(base);
-        row.appendChild(time);
-        var full = el('div', 'full', it.path);
+        row.appendChild(el('span', 'git-badge git-badge-' + gitLabel(e), gitLabel(e)));
+        row.appendChild(el('span', 'base', basename(e.path)));
+        if (e.origPath) row.appendChild(el('span', 'git-orig', '← ' + basename(e.origPath)));
         main.appendChild(row);
-        main.appendChild(full);
-        main.addEventListener('click', function () { select(it); });
+        main.appendChild(el('div', 'full', e.path));
+        main.addEventListener('click', function () { openGitDiff(e.path); });
         item.appendChild(main);
         var actions = el('div', 'actions');
         var cp = el('button', 'mini-btn', '⧉');
         cp.title = '复制路径';
-        cp.addEventListener('click', function (ev) { ev.stopPropagation(); copyText(it.path, '已复制路径'); });
+        cp.addEventListener('click', function (ev) { ev.stopPropagation(); copyText(e.path, '已复制路径'); });
         var qt = el('button', 'mini-btn', '@');
         qt.title = '复制 @path 引用';
-        qt.addEventListener('click', function (ev) { ev.stopPropagation(); copyText('@' + it.path, '已复制 @引用'); });
+        qt.addEventListener('click', function (ev) { ev.stopPropagation(); copyText('@' + e.path, '已复制 @引用'); });
         actions.appendChild(cp);
         actions.appendChild(qt);
         item.appendChild(actions);
         list.appendChild(item);
       });
     }
-    function openPath(path, diff) {
-      selectedPath = path;
-      selectedItem = null;
-      render();
-      if (treeRoot) renderTree();
-      var bar = document.getElementById('bar');
+    function gitLabelLabel(e) { return 'git-badge-' + gitLabel(e); }
+    // Unified git diff renderer: meta/hunk/+/- rows with colors.
+    function gitDiffNode(text) {
+      var wrap = el('div', 'gd');
+      if (!text) {
+        wrap.appendChild(el('div', 'hint', '没有未提交的变更（相对于 HEAD）'));
+        return wrap;
+      }
+      var lines = String(text).replace(/\n$/, '').split('\n');
+      lines.forEach(function (line) {
+        var cls = 'gd-line';
+        if (line.indexOf('@@') === 0) cls += ' gd-hunk';
+        else if (line.charAt(0) === '+' && line.indexOf('+++') !== 0) cls += ' gd-add';
+        else if (line.charAt(0) === '-' && line.indexOf('---') !== 0) cls += ' gd-del';
+        else if (line.indexOf('diff ') === 0 || line.indexOf('index ') === 0 || line.indexOf('--- ') === 0 ||
+          line.indexOf('+++ ') === 0 || line.indexOf('new file') === 0 || line.indexOf('deleted file') === 0 ||
+          line.indexOf('old mode') === 0 || line.indexOf('new mode') === 0 || line.indexOf('rename ') === 0 ||
+          line.indexOf('similarity ') === 0 || line.indexOf('copy ') === 0 || line.indexOf('Binary files') === 0 ||
+          line.charAt(0) === '\\') cls += ' gd-meta';
+        wrap.appendChild(el('div', cls, line));
+      });
+      return wrap;
+    }
+    // ── Multi-tab preview (mirrors the in-app overlay) ────────────────────
+    // tabs: [{ key, path, git, type, loading, ok, error, content, truncated, diff }]
+    // 'p:' keys are content previews, 'g:' keys are git diffs.
+    var tabs = [];
+    var activeKey = null;
+    function findTab(key) {
+      for (var i = 0; i < tabs.length; i += 1) if (tabs[i].key === key) return tabs[i];
+      return null;
+    }
+    function activeTab() { return findTab(activeKey); }
+    function renderTabs() {
+      var wrap = document.getElementById('ptabs');
+      wrap.textContent = '';
+      tabs.forEach(function (t) {
+        var tab = el('div', 'ptab' + (t.key === activeKey ? ' is-active' : ''));
+        tab.title = (t.git ? '[diff] ' : '') + t.path;
+        tab.appendChild(el('span', 'ptab-name', basename(t.path)));
+        var x = el('button', 'ptab-close', '×');
+        x.type = 'button';
+        x.title = '关闭标签页';
+        x.addEventListener('click', function (ev) { ev.stopPropagation(); closeTab(t.key); });
+        tab.appendChild(x);
+        tab.addEventListener('click', function () { setActiveTab(t.key); });
+        wrap.appendChild(tab);
+      });
+    }
+    function refreshTreeSelection() { if (treeRoot && currentView === 'tree') renderTree(); }
+    function setActiveTab(key) {
+      activeKey = key;
+      renderTabs();
+      renderActive();
+      refreshTreeSelection();
+    }
+    function closeTab(key) {
+      var idx = -1;
+      for (var i = 0; i < tabs.length; i += 1) if (tabs[i].key === key) { idx = i; break; }
+      if (idx < 0) return;
+      tabs.splice(idx, 1);
+      if (activeKey === key) activeKey = tabs.length ? tabs[Math.min(idx, tabs.length - 1)].key : null;
+      renderTabs();
+      renderActive();
+      refreshTreeSelection();
+    }
+    function patchTab(key, patch) {
+      var t = findTab(key);
+      if (!t) return;
+      for (var k in patch) if (Object.prototype.hasOwnProperty.call(patch, k)) t[k] = patch[k];
+      renderTabs();
+      renderActive();
+    }
+    function codeViewNode(content, path) {
+      var view = el('div', 'codeview');
+      var scroll = el('div', 'codeview-scroll');
+      var gutter = el('pre', 'codeview-gutter');
+      gutter.setAttribute('aria-hidden', 'true');
+      var lines = String(content).replace(/\n$/, '').split('\n');
+      var gt = '';
+      for (var gi = 0; gi < lines.length; gi += 1) gt += (gi + 1) + (gi < lines.length - 1 ? '\n' : '');
+      gutter.textContent = gt;
+      var pre = el('pre', 'codeview-pre');
+      var code = el('code');
+      code.innerHTML = highlightCode(content, fileExt(path));
+      pre.appendChild(code);
+      scroll.appendChild(gutter);
+      scroll.appendChild(pre);
+      view.appendChild(scroll);
+      return view;
+    }
+    function renderActive() {
       var area = document.getElementById('previewArea');
       area.textContent = '';
-      bar.textContent = '';
-      bar.appendChild(el('span', 'path', path));
-      var cp = el('button', 'mini-btn', '⧉');
-      cp.title = '复制路径';
-      cp.addEventListener('click', function () { copyText(path, '已复制路径'); });
-      bar.appendChild(cp);
-      var qt = el('button', 'mini-btn', '@');
-      qt.title = '复制 @path 引用';
-      qt.addEventListener('click', function () { copyText('@' + path, '已复制 @引用'); });
-      bar.appendChild(qt);
-
-      var type = extType(path);
+      var t = activeTab();
+      if (!t) {
+        area.appendChild(el('div', 'hint', currentView === 'git' ? '← 点击变更文件查看 diff' : '← 点击右侧文件查看内容'));
+        return;
+      }
+      if (t.loading) { area.appendChild(el('div', 'hint', '加载中…')); return; }
+      if (t.ok === false) { area.appendChild(errNode(t.error || '读取失败')); return; }
+      if (t.git) { area.appendChild(gitDiffNode(t.diff || '')); return; }
+      var type = t.type || 'text';
       if (type === 'image') {
         var img = el('img', 'preview-img');
-        img.src = MEDIA_URL + '?path=' + encodeURIComponent(path);
-        img.alt = path;
+        img.src = MEDIA_URL + '?path=' + encodeURIComponent(t.path);
+        img.alt = t.path;
         img.addEventListener('error', function () { area.textContent = ''; area.appendChild(errNode('图片加载失败')); });
         area.appendChild(img);
-        if (diff) area.appendChild(diffNode(diff));
         return;
       }
       if (type === 'pdf') {
         // Standalone tab: use the browser's NATIVE PDF viewer (with its own
-        // toolbar) — the sidebar uses a custom pdf.js renderer instead.
-        // #zoom=page-width fits the page to the box width instead of the
-        // viewer's default "fit page" (which leaves a portrait page small).
+        // toolbar). #zoom=page-width fits the page to the box width.
         var pdf = el('embed', 'preview-pdf');
-        pdf.src = MEDIA_URL + '?path=' + encodeURIComponent(path) + '#zoom=page-width';
+        pdf.src = MEDIA_URL + '?path=' + encodeURIComponent(t.path) + '#zoom=page-width';
         pdf.type = 'application/pdf';
         area.appendChild(pdf);
-        if (diff) area.appendChild(diffNode(diff));
         return;
       }
+      if (type === 'html') {
+        var frame = el('iframe', 'preview-iframe');
+        frame.setAttribute('sandbox', 'allow-scripts');
+        frame.setAttribute('srcdoc', t.content || '');
+        area.appendChild(frame);
+        return;
+      }
+      if (type === 'markdown') {
+        var md = el('div', 'markdown');
+        md.innerHTML = mdToHtml(t.content || '');
+        area.appendChild(md);
+        return;
+      }
+      if (t.truncated) area.appendChild(el('div', 'diff-label', '(truncated preview)'));
+      area.appendChild(codeViewNode(t.content || '', t.path));
+    }
+    function openFileTab(path) {
+      var key = 'p:' + path;
+      var type = extType(path);
+      var t = findTab(key);
+      if (!t) { t = { key: key, path: path, git: false, type: type }; tabs.push(t); }
+      t.type = type;
+      var needFetch = type !== 'image' && type !== 'pdf';
+      t.loading = needFetch;
+      activeKey = key;
+      renderTabs();
+      renderActive();
+      refreshTreeSelection();
+      if (!needFetch) return;
       fetch(CONTENT_URL + '?path=' + encodeURIComponent(path)).then(function (r) { return r.json(); }).then(function (data) {
-        if (!data || data.ok !== true) { area.appendChild(errNode(data && data.error)); return; }
-        if (diff) area.appendChild(diffNode(diff));
-        if (type === 'html') {
-          var frame = el('iframe', 'preview-iframe');
-          frame.setAttribute('sandbox', 'allow-scripts');
-          frame.setAttribute('srcdoc', data.content);
-          area.appendChild(frame);
-        } else if (type === 'markdown') {
-          var md = el('div', 'markdown');
-          md.innerHTML = mdToHtml(data.content);
-          area.appendChild(md);
-        } else {
-          if (data.truncated) area.appendChild(el('div', 'diff-label', '(truncated preview)'));
-          var ext = fileExt(path);
-          var codeView = el('div', 'codeview');
-          var head = el('div', 'codeview-head');
-          head.appendChild(el('span', 'codeview-lang', hlLangLabel(ext)));
-          codeView.appendChild(head);
-          var scroll = el('div', 'codeview-scroll');
-          var gutter = el('pre', 'codeview-gutter');
-          gutter.setAttribute('aria-hidden', 'true');
-          var lineCount = data.content.split('\n').length;
-          var gutterText = '';
-          for (var gi = 0; gi < lineCount; gi += 1) gutterText += (gi + 1) + (gi < lineCount - 1 ? '\n' : '');
-          gutter.textContent = gutterText;
-          var pre = el('pre', 'codeview-pre');
-          var code = el('code');
-          code.innerHTML = highlightCode(data.content, ext);
-          pre.appendChild(code);
-          scroll.appendChild(gutter);
-          scroll.appendChild(pre);
-          codeView.appendChild(scroll);
-          area.appendChild(codeView);
-        }
+        if (!data || data.ok !== true) { patchTab(key, { loading: false, ok: false, error: (data && data.error) || '读取失败' }); return; }
+        patchTab(key, { loading: false, ok: true, content: data.content, truncated: data.truncated });
       }).catch(function (e) {
-        area.appendChild(errNode(String(e && e.message ? e.message : e)));
+        patchTab(key, { loading: false, ok: false, error: String(e && e.message ? e.message : e) });
       });
     }
-
-    function select(it) { openPath(it.path, it.diff); }
-
-    // ── File tree (文件树) ────────────────────────────────────────────────
-    function setView(view) {
-      currentView = view;
-      var tabs = document.querySelectorAll('.tab');
-      for (var i = 0; i < tabs.length; i += 1) {
-        tabs[i].classList.toggle('is-active', tabs[i].getAttribute('data-view') === view);
-      }
-      document.getElementById('list').classList.toggle('is-hidden', view !== 'artifacts');
-      document.getElementById('tree').classList.toggle('is-active', view === 'tree');
-      if (view === 'tree' && !treeRoot) loadTreeRoot();
+    function openGitDiff(path) {
+      var key = 'g:' + path;
+      var t = findTab(key);
+      if (!t) { t = { key: key, path: path, git: true }; tabs.push(t); }
+      t.loading = true;
+      activeKey = key;
+      renderTabs();
+      renderActive();
+      fetch(GITDIFF_URL + '?path=' + encodeURIComponent(path) + '&sessionId=' + encodeURIComponent(currentSessionId() || ''), { cache: 'no-store' })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          if (!data || data.ok !== true) { patchTab(key, { loading: false, ok: false, error: (data && data.error) || '读取失败' }); return; }
+          patchTab(key, { loading: false, ok: true, diff: data.diff });
+        })
+        .catch(function (e) {
+          patchTab(key, { loading: false, ok: false, error: String(e && e.message ? e.message : e) });
+        });
     }
 
-    function loadTreeRoot() {
+    // ── View toggle: file tree ⇄ git changed files ───────────────────────
+    function setView(view) {
+      currentView = view;
+      var btn = document.getElementById('viewBtn');
+      var label = document.getElementById('viewLabel');
+      btn.classList.toggle('is-active', view === 'git');
+      btn.title = view === 'tree' ? '查看 Git 变更（未提交）' : '返回文件列表';
+      btn.textContent = '';
+      btn.appendChild(view === 'tree' ? gitBranchIcon() : folderClosedIcon());
+      var rb = document.getElementById('refreshBtn');
+      if (rb) rb.title = view === 'tree' ? '刷新文件树' : '刷新变更列表';
+      label.textContent = view === 'tree' ? '文件列表' : 'Git 变更（未提交）';
+      document.getElementById('list').classList.toggle('is-hidden', view !== 'git');
+      document.getElementById('tree').classList.toggle('is-active', view === 'tree');
+      if (view === 'tree' && !treeRoot) loadTreeRoot();
+      if (view === 'git') { loadGit(); }
+    }
+
+    function loadTreeRoot(retries) {
       treeRoot = null;
       treeChildren = {};
       treeExpanded = {};
-      var rootLabel = document.getElementById('treeRoot');
-      if (rootLabel) rootLabel.textContent = '…';
       var bodyEl = document.getElementById('treeBody');
       bodyEl.textContent = '';
       bodyEl.appendChild(el('div', 'tree-loading', '加载文件树…'));
+      // A freshly switched-to workspace may not be resolvable on the host yet
+      // (its session is still loading/persisting); retry briefly so the tree
+      // self-corrects instead of sitting on an error/empty state.
+      var left = typeof retries === 'number' ? retries : 3;
       fetch(listdirUrl(), { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (res) {
         if (res && res.ok) {
           treeRoot = { path: res.path, entries: res.entries };
-          if (rootLabel) rootLabel.textContent = basename(res.path);
+        } else if (left > 0) {
+          setTimeout(function () { loadTreeRoot(left - 1); }, 400);
+          return;
         } else {
           treeRoot = { path: null, entries: [] };
         }
         renderTree();
       }).catch(function () {
+        if (left > 0) { setTimeout(function () { loadTreeRoot(left - 1); }, 400); return; }
         treeRoot = { path: null, entries: [] };
         renderTree();
         document.getElementById('treeBody').appendChild(el('div', 'tree-error', '加载失败'));
@@ -488,7 +646,8 @@
 
     function renderTreeNode(entry, depth) {
       var wrap = el('div');
-      var isSelected = selectedPath === entry.path;
+      var at = activeTab();
+      var isSelected = !!(at && !at.git && at.path === entry.path);
       var row = el('div', 'tree-row' + (entry.isDir ? ' tree-dir' : '') + (entry.hidden ? ' tree-hidden' : '') + (isSelected ? ' is-selected' : ''));
       row.style.paddingLeft = (8 + depth * 20) + 'px';
       row.title = entry.path;
@@ -505,7 +664,7 @@
       if (entry.isDir) {
         row.addEventListener('click', function () { toggleTree(entry.path); });
       } else {
-        row.addEventListener('click', function () { openPath(entry.path, null); });
+        row.addEventListener('click', function () { openFileTab(entry.path); });
       }
       wrap.appendChild(row);
 
@@ -549,37 +708,91 @@
       }
     }
 
-    document.getElementById('tabs').addEventListener('click', function (ev) {
-      var btn = ev.target && ev.target.closest ? ev.target.closest('.tab') : null;
-      if (!btn) return;
-      setView(btn.getAttribute('data-view'));
+    document.getElementById('viewBtn').addEventListener('click', function () {
+      setView(currentView === 'tree' ? 'git' : 'tree');
     });
-    var treeRefreshBtn = document.getElementById('treeRefresh');
-    if (treeRefreshBtn) {
-      treeRefreshBtn.appendChild(refreshIcon());
-      treeRefreshBtn.addEventListener('click', function () { loadTreeRoot(); });
+    var refreshBtn = document.getElementById('refreshBtn');
+    if (refreshBtn) {
+      refreshBtn.appendChild(refreshIcon());
+      refreshBtn.addEventListener('click', function () {
+        if (currentView === 'tree') loadTreeRoot();
+        else loadGit();
+      });
     }
-    function load() {
-      var controller = typeof AbortController === 'function' ? new AbortController() : null;
-      var timer = controller ? setTimeout(function () { controller.abort(); }, 8000) : null;
-      fetch(DATA_URL, controller ? { signal: controller.signal, cache: 'no-store' } : { cache: 'no-store' })
+    // Poll git status for the changed-files view (and the live/offline badge).
+    function loadGit() {
+      fetch(GITSTATUS_URL + '?sessionId=' + encodeURIComponent(currentSessionId() || ''), { cache: 'no-store' })
         .then(function (r) { return r.json(); }).then(function (data) {
-          if (timer) clearTimeout(timer);
-          items = data && Array.isArray(data.artifacts) ? data.artifacts : [];
-          if (selectedPath && !items.some(function (x) { return x.path === selectedPath; })) { selectedPath = null; selectedItem = null; }
-          render();
           var st = document.getElementById('status');
-          st.textContent = 'live';
-          st.style.color = getComputedStyle(document.documentElement).getPropertyValue('--p-success-fg').trim() || '#34c55e';
+          if (data && data.ok === true) {
+            gitFiles = Array.isArray(data.entries) ? data.entries : [];
+            gitError = null;
+            st.textContent = 'live';
+            st.style.color = getComputedStyle(document.documentElement).getPropertyValue('--p-success-fg').trim() || '#34c55e';
+          } else {
+            gitFiles = [];
+            gitError = (data && data.error) || 'git status 失败';
+            st.textContent = 'git error';
+            st.style.color = getComputedStyle(document.documentElement).getPropertyValue('--p-error').trim() || '#ef4444';
+          }
+          renderGit();
         }).catch(function () {
-          if (timer) clearTimeout(timer);
           var st = document.getElementById('status');
           st.textContent = 'offline';
           st.style.color = getComputedStyle(document.documentElement).getPropertyValue('--p-error').trim() || '#ef4444';
         });
     }
-    load();
-    setInterval(load, 1500);
+    setView('tree');
+    renderTabs();
+    renderActive();
+    // ── Panel width: draggable divider; default = minimum ─────────────────
+    var PANEL_W_KEY = 'dsh-popout-sidebar:panelw';
+    var PANEL_MIN = 240;
+    var PANEL_MAX_RATIO = 0.6;
+    var panelW = PANEL_MIN;
+    try {
+      var _pw = parseInt(localStorage.getItem(PANEL_W_KEY), 10);
+      if (Number.isFinite(_pw) && _pw >= PANEL_MIN) panelW = _pw;
+    } catch (e) {}
+    function applyPanelW() {
+      var sb = document.querySelector('.sidebar');
+      if (sb) sb.style.width = panelW + 'px';
+    }
+    applyPanelW();
+    document.getElementById('divider').addEventListener('mousedown', function (ev) {
+      ev.preventDefault();
+      var divider = document.getElementById('divider');
+      divider.classList.add('dragging');
+      document.body.classList.add('panel-dragging');
+      var maxW = Math.max(PANEL_MIN, Math.round(window.innerWidth * PANEL_MAX_RATIO));
+      var onMove = function (e) {
+        panelW = Math.max(PANEL_MIN, Math.min(window.innerWidth - e.clientX, maxW));
+        applyPanelW();
+      };
+      var onUp = function () {
+        divider.classList.remove('dragging');
+        document.body.classList.remove('panel-dragging');
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        try { localStorage.setItem(PANEL_W_KEY, String(panelW)); } catch (e) {}
+      };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+    setInterval(function () { if (currentView === 'git') loadGit(); }, 2000);
+    // Follow the app's light/dark theme live: the main tab writes the theme to
+    // localStorage (THEME_KEY) whenever DSH's theme changes.
+    var THEME_KEY = 'dsh-popout-sidebar:theme';
+    function applyTheme() {
+      var v = null;
+      try { v = localStorage.getItem(THEME_KEY); } catch (e) {}
+      if (v !== 'dark' && v !== 'light') {
+        var m = /[?&]scheme=([^&]+)/.exec(location.search);
+        if (m) v = m[1];
+      }
+      if (v === 'dark') document.documentElement.setAttribute('data-ds-dark-theme', '');
+      else document.documentElement.removeAttribute('data-ds-dark-theme');
+    }
     // Follow the active session in real time: the main tab publishes the
     // current session id to localStorage (SESSION_KEY) only when it actually
     // changes, so the storage event alone is enough — no polling.
@@ -588,19 +801,21 @@
       var sid = currentSessionId();
       if (sid !== _lastTreeSession) {
         _lastTreeSession = sid;
-        if (treeRoot !== null) loadTreeRoot();
+        loadTreeRoot();
+        if (currentView === 'git') loadGit();
       }
     }
     window.addEventListener('storage', function (e) {
       if (e.key === SESSION_KEY) watchSession();
+      if (e.key === THEME_KEY) applyTheme();
     });
     // Background tabs throttle setInterval, so a tab left in the background can
-    // show stale artifacts for up to a minute. Refresh immediately whenever the
-    // user returns to (or focuses) this tab.
+    // show stale data for up to a minute. Refresh immediately whenever the
+    // user returns to (or focuses on) this tab.
     document.addEventListener('visibilitychange', function () {
-      if (!document.hidden) load();
+      if (!document.hidden && currentView === 'git') loadGit();
     });
-    window.addEventListener('focus', load);
+    window.addEventListener('focus', function () { if (currentView === 'git') loadGit(); });
   </script>
 </body>
 </html>`

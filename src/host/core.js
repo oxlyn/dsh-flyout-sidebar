@@ -323,6 +323,190 @@
       }
     }
 
+    // ── Git changes (git 变更列表 / diff) ──────────────────────────────────
+    // Changed-but-uncommitted files come from `git status --porcelain -z`; the
+    // per-file diff from `git diff HEAD -- <path>` (covers staged + unstaged).
+    // Untracked files have no git diff, so one is synthesized from the file
+    // content so the client renders them like a new-file diff.
+    // child_process is loaded lazily: the cordis loader evaluates this body
+    // without a CommonJS `require`, so fall back to a dynamic import().
+    let _cpPromise = null
+    const getCp = () => {
+      if (!_cpPromise) {
+        _cpPromise = (async () => {
+          try {
+            if (typeof require === 'function') return require('child_process')
+          } catch (e) {}
+          try {
+            const m = await import('node:child_process')
+            return (m && m.default) || m
+          } catch (e) {}
+          return null
+        })()
+      }
+      return _cpPromise
+    }
+
+    const runGit = async (args, cwd) => {
+      const cp = await getCp()
+      if (!cp || typeof cp.execFile !== 'function') return { ok: false, error: '无法执行 git（child_process 不可用）' }
+      return new Promise((resolve) => {
+        try {
+          cp.execFile('git', args, { cwd: cwd, maxBuffer: 20 * 1024 * 1024, timeout: 15000, windowsHide: true }, (err, stdout, stderr) => {
+            const out = String(stdout || '')
+            if (err && !out) {
+              resolve({ ok: false, error: (stderr && String(stderr).trim()) || (err && err.message) || 'git failed' })
+              return
+            }
+            resolve({ ok: true, out: out })
+          })
+        } catch (e) {
+          resolve({ ok: false, error: e && e.message ? String(e.message) : 'git failed' })
+        }
+      })
+    }
+
+    // Cached workspace roots: resolving a named-but-not-yet-live session can
+    // scan the persisted corpus on every status poll, so memoize per session.
+    // Entries are dropped when the cwd stops existing (workspace switched or
+    // was renamed) so a stale root is never pinned.
+    const cwdCache = new Map()
+    const resolveCwdCached = async (sessionId) => {
+      const key = sessionId || ''
+      if (cwdCache.has(key)) {
+        const c = cwdCache.get(key)
+        try {
+          const fs = ctx.get('fs')
+          const info = fs && typeof fs.stat === 'function' && typeof fs.resolve === 'function'
+            ? await fs.stat(await fs.resolve(c))
+            : null
+          if (info && info.type === 'directory') return c
+        } catch (e) {}
+        cwdCache.delete(key)
+      }
+      const c = await resolveCwd(sessionId)
+      if (c) cwdCache.set(key, c)
+      return c
+    }
+
+    // Status snapshot cache, per workspace (cwd). Once a workspace has been
+    // fetched its snapshot serves requests instantly, with the real
+    // `git status` re-run in the background (event-driven, debounced on tool
+    // executions, plus a slow safety-poll). The FIRST request for a workspace
+    // awaits the real status, so a click always shows THAT workspace's own
+    // changes — never another workspace's stale/empty snapshot.
+    const statusCache = new Map() // cwd -> { ok, error, entries, at }
+    const statusInFlight = new Set()
+    const statusTimers = new Map() // cwd -> pending debounce timer
+    const STATUS_MIN_INTERVAL = 1500
+
+    const gitStatusRemote = async (cwd) => {
+      // Default (non-recursive) untracked mode: listing every file under
+      // untracked directories dominated latency on large workspaces.
+      const res = await runGit(['status', '--porcelain=v1', '-z'], cwd)
+      if (!res.ok) return { ok: false, error: res.error, root: cwd }
+      const entries = []
+      const fields = String(res.out).split('\0').filter(Boolean)
+      for (let i = 0; i < fields.length; i += 1) {
+        const f = fields[i]
+        if (f.length < 4) continue
+        const x = f.charAt(0)
+        const y = f.charAt(1)
+        const path = f.slice(3)
+        // With -z, a rename entry is followed by the original path as its own
+        // NUL-separated record.
+        let origPath = null
+        if (x === 'R' || y === 'R') {
+          const next = fields[i + 1]
+          if (next != null && next.length >= 1 && !/^[MADRCU?][MDA?]/.test(next)) {
+            origPath = next
+            i += 1
+          }
+        }
+        entries.push({ path: path, origPath: origPath, x: x, y: y })
+      }
+      return { ok: true, root: cwd, entries: entries }
+    }
+
+    const refreshStatus = async (cwd, force) => {
+      if (!cwd || statusInFlight.has(cwd)) return
+      const cached = statusCache.get(cwd)
+      if (!force && cached && Date.now() - cached.at < STATUS_MIN_INTERVAL) return
+      statusInFlight.add(cwd)
+      try {
+        const res = await gitStatusRemote(cwd)
+        statusCache.set(cwd, { ok: res.ok, error: res.error || null, entries: res.entries || [], at: Date.now() })
+      } catch (e) {
+        statusCache.set(cwd, { ok: false, error: e && e.message ? String(e.message) : 'git failed', entries: [], at: Date.now() })
+      } finally {
+        statusInFlight.delete(cwd)
+      }
+    }
+
+    // Schedule a debounced background refresh: bursty tool activity collapses
+    // into one `git status` after the trailing edge (VSCode's watcher pattern,
+    // minus the FS watcher).
+    const scheduleStatusRefresh = (cwd) => {
+      if (!cwd || statusTimers.has(cwd)) return
+      statusTimers.set(cwd, setTimeout(() => {
+        statusTimers.delete(cwd)
+        refreshStatus(cwd, false)
+      }, 700))
+    }
+
+    // A completed tool run may have touched that session's worktree — refresh
+    // ITS workspace only.
+    ctx.on('tools/result', (exec) => {
+      try { scheduleStatusRefresh(execCwd(exec)) } catch (e) {}
+    })
+
+    // Safety poll for out-of-band edits (user editing in an IDE etc.) across
+    // every workspace that has been viewed.
+    ctx.interval(() => {
+      for (const cwd of Array.from(statusCache.keys())) refreshStatus(cwd, false)
+    }, 15000)
+
+    const gitStatus = async (sessionId) => {
+      const cwd = await resolveCwdCached(sessionId)
+      if (!cwd) return { ok: false, error: 'workspace unavailable' }
+      const cached = statusCache.get(cwd)
+      if (cached) {
+        // Stale-while-revalidate: answer instantly, refresh in the background.
+        scheduleStatusRefresh(cwd)
+        return { ok: cached.ok, error: cached.error, entries: cached.entries, root: cwd, cachedAt: cached.at }
+      }
+      await refreshStatus(cwd, true)
+      const fresh = statusCache.get(cwd)
+      return { ok: fresh.ok, error: fresh.error, entries: fresh.entries, root: cwd, cachedAt: fresh.at }
+    }
+
+    const gitDiff = async (path, sessionId) => {
+      const cwd = await resolveCwdCached(sessionId)
+      if (!cwd) return { ok: false, error: 'workspace unavailable' }
+      if (typeof path !== 'string' || !path) return { ok: false, error: 'missing path' }
+      // `git diff HEAD` fails in a repo with no commits yet; fall back to the
+      // staged diff there.
+      const hasHead = await runGit(['rev-parse', '--verify', '--quiet', 'HEAD'], cwd)
+      const base = hasHead.ok ? ['diff', 'HEAD', '-M', '--'] : ['diff', '--cached', '-M', '--']
+      const r = await runGit(base.concat([path]), cwd)
+      if (!r.ok) return { ok: false, error: r.error }
+      if (r.out) return { ok: true, root: cwd, diff: r.out }
+      // Empty diff but the file is listed as changed → untracked. Synthesize a
+      // new-file diff from its current content.
+      const read = await readFile(path)
+      if (read.ok && typeof read.content === 'string') {
+        const lines = read.content.split('\n')
+        if (lines.length && lines[lines.length - 1] === '') lines.pop()
+        const body = lines.map((l) => '+' + l).join('\n')
+        return {
+          ok: true, root: cwd,
+          diff: 'diff --git a/' + path + ' b/' + path + '\nnew file mode 100644\n--- /dev/null\n+++ b/' + path +
+            '\n@@ -0,0 +1,' + lines.length + ' @@\n' + body,
+        }
+      }
+      return { ok: true, root: cwd, diff: '' }
+    }
+
     // Package-private RPC (dynamic-plugin transport). Guarded so the same body
     // also runs as a static bundle (no `harness` global there); the static
     // client talks to the /popout-sidebar/* HTTP routes below instead.
@@ -331,5 +515,7 @@
       harness.handle('artifacts.remove', (args) => removeFile(args && args.path))
       harness.handle('artifacts.read', (args) => readFile(args && args.path))
       harness.handle('artifacts.listDir', (args) => listDir(args && args.path, args && args.sessionId))
+      harness.handle('git.status', (args) => gitStatus(args && args.sessionId))
+      harness.handle('git.diff', (args) => gitDiff(args && args.path, args && args.sessionId))
     }
 

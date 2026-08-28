@@ -24,12 +24,6 @@ window.__ModuleLoader__.load({
     // Closure symbols — the same names the dynamic runner injects.
     const React = require('react')
 
-    // DSH's built-in Shiki syntax highlighter. Optional: gracefully degrades to
-    // a plain code view when unavailable (e.g. under the dynamic runner, which
-    // does not inject this module).
-    let primitives = null
-    try { primitives = require('@deepseek-ai/dsh-client-ui-primitives') } catch (e) { primitives = null }
-
     const styles = {
       insert(css) {
         if (typeof document === 'undefined') return
@@ -44,16 +38,18 @@ window.__ModuleLoader__.load({
 
     const host = {
       call(method, args) {
-        if (method === 'artifacts.list') {
-          return fetch('/popout-sidebar/data').then((r) => r.json())
+        if (method === 'git.status') {
+          const sessionId = args && typeof args.sessionId === 'string' ? args.sessionId : ''
+          return fetch('/popout-sidebar/gitstatus?sessionId=' + encodeURIComponent(sessionId)).then((r) => r.json())
+        }
+        if (method === 'git.diff') {
+          const path = args && typeof args.path === 'string' ? args.path : ''
+          const sessionId = args && typeof args.sessionId === 'string' ? args.sessionId : ''
+          return fetch('/popout-sidebar/gitdiff?path=' + encodeURIComponent(path) + '&sessionId=' + encodeURIComponent(sessionId)).then((r) => r.json())
         }
         if (method === 'artifacts.read') {
           const path = args && typeof args.path === 'string' ? args.path : ''
           return fetch('/popout-sidebar/content?path=' + encodeURIComponent(path)).then((r) => r.json())
-        }
-        if (method === 'artifacts.remove') {
-          const path = args && typeof args.path === 'string' ? args.path : ''
-          return fetch('/popout-sidebar/remove?path=' + encodeURIComponent(path), { method: 'POST' }).then((r) => r.json())
         }
         if (method === 'artifacts.listDir') {
           const path = args && typeof args.path === 'string' ? args.path : ''

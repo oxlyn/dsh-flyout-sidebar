@@ -24,12 +24,6 @@ window.__ModuleLoader__.load({
     // Closure symbols — the same names the dynamic runner injects.
     const React = require('react')
 
-    // DSH's built-in Shiki syntax highlighter. Optional: gracefully degrades to
-    // a plain code view when unavailable (e.g. under the dynamic runner, which
-    // does not inject this module).
-    let primitives = null
-    try { primitives = require('@deepseek-ai/dsh-client-ui-primitives') } catch (e) { primitives = null }
-
     const styles = {
       insert(css) {
         if (typeof document === 'undefined') return
@@ -44,16 +38,18 @@ window.__ModuleLoader__.load({
 
     const host = {
       call(method, args) {
-        if (method === 'artifacts.list') {
-          return fetch('/popout-sidebar/data').then((r) => r.json())
+        if (method === 'git.status') {
+          const sessionId = args && typeof args.sessionId === 'string' ? args.sessionId : ''
+          return fetch('/popout-sidebar/gitstatus?sessionId=' + encodeURIComponent(sessionId)).then((r) => r.json())
+        }
+        if (method === 'git.diff') {
+          const path = args && typeof args.path === 'string' ? args.path : ''
+          const sessionId = args && typeof args.sessionId === 'string' ? args.sessionId : ''
+          return fetch('/popout-sidebar/gitdiff?path=' + encodeURIComponent(path) + '&sessionId=' + encodeURIComponent(sessionId)).then((r) => r.json())
         }
         if (method === 'artifacts.read') {
           const path = args && typeof args.path === 'string' ? args.path : ''
           return fetch('/popout-sidebar/content?path=' + encodeURIComponent(path)).then((r) => r.json())
-        }
-        if (method === 'artifacts.remove') {
-          const path = args && typeof args.path === 'string' ? args.path : ''
-          return fetch('/popout-sidebar/remove?path=' + encodeURIComponent(path), { method: 'POST' }).then((r) => r.json())
         }
         if (method === 'artifacts.listDir') {
           const path = args && typeof args.path === 'string' ? args.path : ''
@@ -455,7 +451,6 @@ window.__ModuleLoader__.load({
       minPanelWidth: 20,       // minimum panel width as % of window width
       showFileTree: true,      // show the 文件树 (file tree) tab in the panel
       defaultOpen: true,       // expand the sidebar by default on load
-      previewHeight: 70,       // default preview area height as % of the panel
     }
 
     function loadSettings() {
@@ -520,6 +515,52 @@ header:has([data-slot="conversation.session.header.utilities"]) {
   html #root { transition: none; }
   header:has([data-slot="conversation.session.header.utilities"]) { transition: none; }
 }
+/* Full-area preview overlay: covers everything to the LEFT of the sidebar
+   panel (the app's main column) while a file is being previewed. Sits just
+   below the panel's z-index so the panel stays on top. */
+.artifacts-preview-overlay {
+  position: fixed; top: 0; bottom: 0; left: 0;
+  right: calc(var(--dsh-sidebar-width, 0px) + var(--dsh-popout-sidebar-width, 0px));
+  z-index: 9998;
+  display: flex; flex-direction: column; min-width: 0;
+  background: var(--dsw-alias-bg-base);
+  color: var(--dsw-alias-label-primary);
+  border-right: 1px solid var(--dsw-alias-border-l1);
+  box-shadow: var(--dsw-shadow-lv2);
+  pointer-events: auto;
+  font-family: var(--dsw-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif);
+  font-size: 13px; line-height: 1.5;
+  transition: right var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease);
+}
+body[data-dsh-popout-dragging] .artifacts-preview-overlay { transition: none; }
+.artifacts-preview-overlay-tabs {
+  flex: none; display: flex; align-items: stretch; height: 28px;
+  overflow-x: auto; overflow-y: hidden; scrollbar-width: thin;
+  background: var(--dsw-alias-bg-layer-1);
+  border-bottom: 1px solid var(--dsw-alias-border-l2);
+}
+.artifacts-ptab {
+  flex: none; display: flex; align-items: center; gap: 6px;
+  max-width: 220px; padding: 0 6px 0 12px; cursor: pointer;
+  border-right: 1px solid var(--dsw-alias-border-l1);
+  color: var(--dsw-alias-label-secondary); font-size: 12px; line-height: 28px;
+  user-select: none;
+}
+.artifacts-ptab:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
+.artifacts-ptab.is-active {
+  background: var(--dsw-alias-bg-base); color: var(--dsw-alias-label-primary);
+  box-shadow: inset 0 -2px 0 var(--dsw-alias-state-business-primary);
+}
+.artifacts-ptab-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.artifacts-ptab-close {
+  flex: none; width: 18px; height: 18px; padding: 0; line-height: 1; font-size: 13px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: none; background: transparent; color: inherit; cursor: pointer; border-radius: 4px;
+}
+.artifacts-ptab-close:hover { background: var(--dsw-alias-interactive-bg-hover-accent, rgba(0, 0, 0, 0.08)); }
+.artifacts-preview-overlay .artifacts-preview-body { flex: 1; min-height: 0; }
+.artifacts-preview-overlay .artifacts-img { max-height: none; }
+
 .artifacts-panel {
   position: fixed; top: 0; right: var(--dsh-sidebar-width, 0px); bottom: 0; width: 30vw; max-width: calc(100vw - 24px); min-width: 0;
   display: flex; flex-direction: column;
@@ -534,12 +575,11 @@ header:has([data-slot="conversation.session.header.utilities"]) {
   --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
 }
 .artifacts-head {
-  position: relative; display: flex; align-items: center; gap: 8px; padding: 10px 12px; flex: none;
+  position: relative; display: flex; align-items: center; gap: 4px; padding: 0 6px; flex: none; height: 28px;
   border-bottom: 1px solid var(--dsw-alias-border-l2);
   background: var(--dsw-alias-bg-layer-1);
 }
 .artifacts-head-left { display: flex; align-items: center; gap: 4px; flex: none; }
-.artifacts-title { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); white-space: nowrap; font-weight: 600; font-size: 13px; color: var(--dsw-alias-label-primary); }
 .artifacts-spacer { flex: 1; }
 .artifacts-toggle {
   display: inline-flex; align-items: center; justify-content: center; padding: 4px; line-height: 0;
@@ -547,7 +587,7 @@ header:has([data-slot="conversation.session.header.utilities"]) {
   color: var(--dsw-alias-label-secondary); cursor: pointer;
 }
 .artifacts-toggle:hover { color: var(--dsw-alias-label-primary); }
-.artifacts-link { color: var(--dsw-alias-state-business-primary); text-decoration: none; font-size: 15px; padding: 2px 8px; border-radius: 6px; }
+.artifacts-link { color: var(--dsw-alias-state-business-primary); text-decoration: none; padding: 4px; border-radius: 6px; display: inline-flex; align-items: center; }
 .artifacts-link:hover { background: var(--dsw-alias-interactive-bg-hover); }
 .artifacts-iconbtn {
   background: transparent; border: 1px solid var(--dsw-alias-border-l2);
@@ -649,50 +689,34 @@ header:has([data-slot="conversation.session.header.utilities"]) {
 .artifacts-resize::after { content: ''; position: absolute; left: 3px; top: 0; bottom: 0; width: 2px; background: transparent; transition: background .15s; }
 .artifacts-resize:hover::after, .artifacts-resize:active::after { background: var(--dsw-alias-interactive-bg-hover-accent); }
 
-/* Divider between the artifact list and the preview (drag to resize) */
-.artifacts-splitter { flex: none; height: 6px; cursor: row-resize; position: relative; z-index: 2; touch-action: none; background: transparent; border-top: 1px solid var(--dsw-alias-border-l2); }
-.artifacts-splitter::after { content: ''; position: absolute; left: 0; right: 0; top: 2px; height: 2px; background: transparent; transition: background .15s; }
-.artifacts-splitter:hover::after, .artifacts-splitter.artifacts-splitting::after { background: var(--dsw-alias-interactive-bg-hover-accent); }
-.artifacts-splitter.artifacts-splitting { user-select: none; }
-/* Collapse button in the middle of the divider: shows on hover, and stays
-   visible while the preview is collapsed so it can be re-expanded. */
-.artifacts-collapse-btn {
-  position: absolute; left: 50%; top: 0; transform: translateX(-50%);
-  width: 32px; height: 16px; border: 1px solid var(--dsw-alias-border-l2);
-  /* Expanded: square top (attached to the divider), rounded bottom. */
-  border-radius: 0 0 999px 999px; background: var(--dsw-alias-bg-layer-1);
-  color: var(--dsw-alias-label-tertiary); cursor: pointer; z-index: 3;
-  display: flex; align-items: center; justify-content: center;
-  padding: 0; line-height: 1;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
-  opacity: 0; transition: opacity .15s, color .15s, background .15s, box-shadow .15s;
-}
-/* Expanded: hang below the divider (top edge flush with it). Collapsed: hang
-   above the divider (bottom edge flush with it) — never cross the line. */
-.artifacts-splitter.artifacts-collapsed .artifacts-collapse-btn {
-  top: auto; bottom: 0;
-  /* Collapsed: rounded top, square bottom (attached to the divider). */
-  border-radius: 999px 999px 0 0;
-}
-.artifacts-splitter:hover .artifacts-collapse-btn,
-.artifacts-splitter.artifacts-collapsed .artifacts-collapse-btn { opacity: 1; }
-.artifacts-collapse-btn:hover { color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-layer-2); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12); }
-.artifacts-collapse-icon { display: inline-flex; transition: transform .18s var(--ds-ease-in-out, ease); }
-.artifacts-splitter.artifacts-collapsed .artifacts-collapse-icon { transform: rotate(180deg); }
 
-/* Tabs (产物 / 文件树). The bottom border is the divider between the tab row
-   (including the「文件树」label) and the artifact/file list below it. */
-.artifacts-tabs { flex: none; display: flex; align-items: stretch; height: 32px; border-bottom: 2px solid #fff; background: var(--dsw-alias-bg-layer-1); }
-.artifacts-tab { flex: 1; border: none; background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-tertiary); font: inherit; font-size: 12px; cursor: pointer; border-right: 1px solid var(--dsw-alias-border-l1); }
-.artifacts-tab:hover { background: var(--dsw-alias-interactive-bg-hover-accent); }
-.artifacts-tab.is-active { color: var(--dsw-alias-label-primary); background: transparent; }
+/* Header icon toggle between the file tree and the changed-files list */
+.artifacts-viewbtn { display: inline-flex; align-items: center; justify-content: center; height: 26px; width: 26px; padding: 0; border: none; background: transparent; color: var(--dsw-alias-label-secondary); cursor: pointer; border-radius: 6px; }
+.artifacts-viewbtn:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
+.artifacts-viewbtn.is-active { color: var(--dsw-alias-state-business-primary); }
+
+/* Git changed-files list (git 变更) */
+.artifacts-git-badge { font-size: 10px; font-weight: 700; width: 16px; height: 16px; flex: none; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; font-family: var(--dsh-font-mono, ui-monospace, monospace); }
+.artifacts-git-badge-M { background: var(--dsw-alias-state-warn-tertiary); color: var(--dsw-alias-state-warn-label); }
+.artifacts-git-badge-A { background: var(--dsw-alias-state-success-tertiary); color: var(--dsw-alias-state-success-primary); }
+.artifacts-git-badge-D { background: rgba(236,19,19,0.1); color: var(--dsw-alias-state-error-primary); }
+.artifacts-git-badge-R { background: var(--dsw-alias-state-business-tertiary, rgba(65,118,230,0.1)); color: var(--dsw-alias-state-business-primary); }
+.artifacts-git-badge-U { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-tertiary); }
+.artifacts-git-orig { font-size: 11px; color: var(--dsw-alias-label-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.artifacts-git-error { padding: 14px 12px; word-break: break-all; }
+
+/* Unified git diff view (left-side overlay) */
+.artifacts-gitdiff { font-family: var(--dsh-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); font-size: 12px; line-height: 1.6; }
+.gd-line { white-space: pre-wrap; word-break: break-all; padding: 0 12px; }
+.gd-meta { color: var(--dsw-alias-label-tertiary); background: var(--dsw-alias-bg-layer-1); padding: 2px 12px; }
+.gd-hunk { color: var(--dsw-alias-state-business-primary); background: var(--dsw-alias-state-business-tertiary, rgba(65,118,230,0.08)); padding: 2px 12px; }
+.gd-add { color: #1a7f37; background: rgba(34,197,94,0.08); }
+.gd-del { color: #cf222e; background: rgba(236,19,19,0.07); }
+body[data-ds-dark-theme] .gd-add { color: #69db7c; }
+body[data-ds-dark-theme] .gd-del { color: #faa2c1; }
 
 /* File tree (文件树) — styled like better-sidebar's explorer */
 .artifacts-tree { display: flex; flex-direction: column; height: 100%; min-height: 0; }
-.artifacts-tree-header { flex: none; justify-content: space-between; align-items: center; gap: 8px; height: 36px; padding: 0 8px 0 12px; display: flex; }
-.artifacts-tree-root { font: var(--dsw-font-s-14); color: var(--dsw-alias-label-secondary); text-overflow: ellipsis; white-space: nowrap; overflow: hidden; }
-.artifacts-tree-refresh { width: 24px; height: 24px; color: var(--dsw-alias-label-secondary); cursor: pointer; background: transparent; border: none; border-radius: 6px; flex: none; justify-content: center; align-items: center; display: inline-flex; padding: 0; }
-.artifacts-tree-refresh:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
 .artifacts-tree-body { flex: 1; min-height: 0; overflow-y: auto; padding: 2px 6px 8px; }
 .artifacts-tree-row { box-sizing: border-box; width: 100%; height: 34px; font: var(--dsw-font-s-14); color: var(--dsw-alias-label-primary); text-align: left; cursor: pointer; white-space: nowrap; background: transparent; border: none; border-radius: 8px; align-items: center; gap: 6px; padding: 0 8px; display: flex; animation: artifacts-row-in .15s var(--ds-ease-in-out, ease); }
 .artifacts-tree-row:hover { background: var(--dsw-alias-interactive-bg-hover); }
@@ -740,10 +764,8 @@ header:has([data-slot="conversation.session.header.utilities"]) {
 /* Code preview (syntax-highlighted via DSH's Shiki — token colors come from
    the app's global --shiki-token-* palette, matching the rest of DSH) */
 .artifacts-code { display: flex; flex-direction: column; height: 100%; min-height: 0; }
-.artifacts-code-head { flex: none; display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-bottom: 1px solid var(--dsw-alias-border-l2); }
-.artifacts-code-lang { font-size: 11px; font-weight: 600; color: var(--dsw-alias-label-secondary); padding: 1px 8px; border-radius: 4px; background: var(--dsw-alias-bg-layer-2, var(--dsw-alias-bg-layer-1)); }
 .artifacts-code-scroll { flex: 1; min-height: 0; overflow: auto; display: flex; align-items: flex-start; background: var(--shiki-background, var(--dsw-alias-markdown-code-block, var(--dsw-alias-bg-layer-1))); }
-.artifacts-code-gutter { flex: none; min-width: 3em; margin: 0; padding: 12px 10px 12px 12px; text-align: right; color: var(--dsw-alias-label-tertiary); border-right: 1px solid var(--dsw-alias-border-l1); position: sticky; left: 0; user-select: none; background: var(--shiki-background, var(--dsw-alias-markdown-code-block, var(--dsw-alias-bg-layer-1))); font: 12px/1.6 var(--dsh-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); white-space: pre; }
+.artifacts-code-gutter { flex: none; min-width: 2.2em; margin: 0; padding: 12px 6px 12px 8px; text-align: right; color: var(--dsw-alias-label-tertiary); border-right: 1px solid var(--dsw-alias-border-l1); position: sticky; left: 0; user-select: none; background: var(--shiki-background, var(--dsw-alias-markdown-code-block, var(--dsw-alias-bg-layer-1))); font: 12px/1.6 var(--dsh-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); white-space: pre; }
 .artifacts-code-pre { flex: 1; margin: 0; padding: 12px; background: var(--shiki-background, var(--dsw-alias-markdown-code-block, var(--dsw-alias-bg-layer-1))); color: var(--shiki-foreground, var(--dsw-alias-label-primary)); font: 12px/1.6 var(--dsh-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); white-space: pre; }
 .artifacts-code-pre code { font: inherit; color: inherit; }
 .artifacts-code-line { display: block; }
@@ -774,9 +796,9 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
       React.createElement('rect', { x: 1.5, y: 1.5, width: 13, height: 13, rx: 2.8, stroke: 'currentColor', strokeWidth: 1.5 }),
       // Divider line at the right third (mirror of the sidebar's left divider).
       React.createElement('line', { x1: 10.2, y1: 2.6, x2: 10.2, y2: 13.4, stroke: 'currentColor', strokeWidth: 1.5 }),
-      // Pop-out arrow (↖) inside the left region.
+      // Pop-out arrow (↗) inside the left region, pointing up-right.
       React.createElement('path', {
-        d: 'M7.5 9.5 L4.5 6.5 M4.5 6.5 L6.2 6.5 M4.5 6.5 L4.5 8.2',
+        d: 'M6.2 9.2 L9.2 6.2 M9.2 6.2 L7.5 6.2 M9.2 6.2 L9.2 7.9',
         stroke: 'currentColor', strokeWidth: 1.4, strokeLinecap: 'round', strokeLinejoin: 'round', fill: 'none',
       }),
     )
@@ -817,6 +839,28 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
       stroke: 'currentColor', strokeWidth: 1.5, strokeLinecap: 'round', strokeLinejoin: 'round', fill: 'none',
     }))
 
+    // Pop-out (↗) arrow for the "open in a new tab" link — an SVG so it sizes
+    // the same as the other header icons (16px) instead of a text glyph.
+    const PopoutIcon = (size) => React.createElement('svg', {
+      width: size, height: size, viewBox: '0 0 16 16', fill: 'none', 'aria-hidden': true,
+    },
+      React.createElement('path', {
+        d: 'M3.5 12.5 L12.5 3.5 M6.2 3.5 H12.5 V9.8',
+        stroke: 'currentColor', strokeWidth: 1.5, strokeLinecap: 'round', strokeLinejoin: 'round', fill: 'none',
+      }),
+    )
+
+    // Git changes (git 变更): the classic git-branch glyph, for the header    // toggle between the file tree and the changed (uncommitted) files list.
+    const GitBranchIcon = (size) => React.createElement('svg', {
+      width: size, height: size, viewBox: '0 0 16 16', fill: 'none', 'aria-hidden': true,
+    },
+      React.createElement('path', { d: 'M4.5 4.6v6.8', stroke: 'currentColor', strokeWidth: 1.4, strokeLinecap: 'round', fill: 'none' }),
+      React.createElement('circle', { cx: 4.5, cy: 3, r: 1.7, stroke: 'currentColor', strokeWidth: 1.4, fill: 'none' }),
+      React.createElement('circle', { cx: 4.5, cy: 13, r: 1.7, stroke: 'currentColor', strokeWidth: 1.4, fill: 'none' }),
+      React.createElement('circle', { cx: 11.5, cy: 3, r: 1.7, stroke: 'currentColor', strokeWidth: 1.4, fill: 'none' }),
+      React.createElement('path', { d: 'M11.5 4.7v1.1c0 1.9-1.6 3.1-3.6 3.1-1.9 0-3.4 1.2-3.4 1.2', stroke: 'currentColor', strokeWidth: 1.4, strokeLinecap: 'round', fill: 'none' }),
+    )
+
     // File tree (文件树): lazy-loaded recursive directory browser styled like
     // better-sidebar's explorer — rounded rows, folder/file icons, a hover
     // `@引用` pill, and a header with the root name + refresh.
@@ -837,49 +881,20 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
       return React.createElement('div', { className: 'artifacts-diff' }, children)
     }
 
-    // Map file extensions to DSH's Shiki language ids (mirrors the client UI's
-    // LANG_ALIASES so the Shiki-powered CodeBlock resolves the same grammars).
-    const LANG_BY_EXT = {
-      js: 'js', mjs: 'js', cjs: 'js', jsx: 'jsx', ts: 'ts', tsx: 'tsx', mts: 'ts', cts: 'ts',
-      json: 'json', jsonc: 'jsonc', json5: 'js',
-      py: 'py', pyw: 'py', rb: 'rb', ruby: 'rb', go: 'go', rs: 'rust', rust: 'rust',
-      java: 'java', c: 'c', h: 'c', cc: 'cpp', cpp: 'cpp', cxx: 'cpp', hpp: 'cpp', cs: 'cs',
-      kotlin: 'kotlin', kt: 'kotlin', swift: 'swift', php: 'php',
-      yaml: 'yaml', yml: 'yaml', toml: 'toml', ini: 'ini', conf: 'ini', properties: 'ini', env: 'ini',
-      md: 'md', markdown: 'md', mdx: 'mdx', html: 'html', htm: 'html', xhtml: 'html', vue: 'html',
-      css: 'css', scss: 'scss', less: 'less', sql: 'sql', xml: 'xml', svg: 'xml', lua: 'lua',
-      sh: 'sh', bash: 'sh', shell: 'sh', zsh: 'sh', fish: 'sh',
-    }
-    const LANG_NAMES = {
-      js: 'JavaScript', jsx: 'JSX', ts: 'TypeScript', tsx: 'TSX', json: 'JSON', jsonc: 'JSON',
-      py: 'Python', rb: 'Ruby', go: 'Go', rust: 'Rust', java: 'Java', c: 'C', cpp: 'C++',
-      cs: 'C#', kotlin: 'Kotlin', swift: 'Swift', php: 'PHP', yaml: 'YAML', toml: 'TOML',
-      ini: 'INI', md: 'Markdown', mdx: 'MDX', html: 'HTML', css: 'CSS', scss: 'SCSS',
-      less: 'Less', sql: 'SQL', xml: 'XML', lua: 'Lua', sh: 'Shell',
-    }
-    const langFromExt = (path) => LANG_BY_EXT[fileExt(path)] || ''
-
-    // Code preview with syntax highlighting. Uses DSH's own Shiki `CodeBlock`
-    // component when available (native look + copy button + language banner);
-    // otherwise falls back to a plain code view with line numbers + label.
+    // Code preview: line-number gutter + syntax-highlighted code (the shared
+    // self-contained highlighter, language chosen from the file extension),
+    // filling the whole tab area with no banner chrome.
     const CodeView = (props) => {
-      const hl = (typeof primitives !== 'undefined' && primitives) ? primitives : null
-      const CodeBlockCmp = hl && typeof hl.CodeBlock === 'function' ? hl.CodeBlock : null
       const code = String(props.code || '')
-      const lang = props.lang || ''
-      if (CodeBlockCmp) {
-        return React.createElement(CodeBlockCmp, { code, lang: lang || undefined })
-      }
       const srcLines = code.replace(/\n$/, '').split('\n')
       const gutter = srcLines.map((_, i) => String(i + 1)).join('\n')
       return React.createElement('div', { className: 'artifacts-code' },
-        React.createElement('div', { className: 'artifacts-code-head' },
-          React.createElement('span', { className: 'artifacts-code-lang' }, LANG_NAMES[lang] || (lang || 'Text')),
-        ),
         React.createElement('div', { className: 'artifacts-code-scroll' },
           React.createElement('pre', { className: 'artifacts-code-gutter', 'aria-hidden': true }, gutter),
           React.createElement('pre', { className: 'artifacts-code-pre' },
-            React.createElement('code', null, code),
+            React.createElement('code', {
+              dangerouslySetInnerHTML: { __html: highlightCode(code, fileExt(props.path || '')) },
+            }),
           ),
         ),
       )
@@ -1029,9 +1044,30 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
       )
     }
 
+    // Unified git diff renderer: colors meta lines, hunk headers, and +/- lines
+    // (green/red backgrounds), one row per line, monospaced and scrollable.
+    const GitDiffView = (props) => {
+      const text = String(props.diff || '')
+      if (!text) return React.createElement('div', { className: 'artifacts-hint' }, '没有未提交的变更（相对于 HEAD）')
+      const lines = text.replace(/\n$/, '').split('\n')
+      const rows = lines.map((line, i) => {
+        let cls = 'gd-line'
+        if (line.startsWith('@@')) cls += ' gd-hunk'
+        else if (line.startsWith('+') && !line.startsWith('+++')) cls += ' gd-add'
+        else if (line.startsWith('-') && !line.startsWith('---')) cls += ' gd-del'
+        else if (line.startsWith('diff ') || line.startsWith('index ') || line.startsWith('--- ') || line.startsWith('+++ ') ||
+          line.startsWith('new file') || line.startsWith('deleted file') || line.startsWith('old mode') ||
+          line.startsWith('new mode') || line.startsWith('rename ') || line.startsWith('similarity ') ||
+          line.startsWith('copy ') || line.startsWith('Binary files') || line.startsWith('\\')) cls += ' gd-meta'
+        return React.createElement('div', { key: i, className: cls }, line)
+      })
+      return React.createElement('div', { className: 'artifacts-gitdiff' }, rows)
+    }
+
     const renderPreview = (p) => {
       if (p.loading) return React.createElement('div', { className: 'artifacts-hint' }, '加载中…')
       if (p.ok === false) return React.createElement('div', { className: 'artifacts-error' }, p.error || '读取失败')
+      if (p.git) return React.createElement('div', { className: 'artifacts-preview-body' }, GitDiffView(p))
       const type = p.type || 'text'
       const body = []
       if (type === 'image') {
@@ -1053,7 +1089,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
           dangerouslySetInnerHTML: { __html: mdToHtml(p.content) },
         }))
       } else {
-        body.push(React.createElement(CodeView, { key: 'code', code: p.content, lang: langFromExt(p.path) }))
+        body.push(React.createElement(CodeView, { key: 'code', code: p.content, path: p.path }))
         if (p.truncated) body.push(React.createElement('div', { key: 'trunc', className: 'artifacts-diff-label' }, '(truncated preview)'))
       }
       if (p.diff) body.unshift(renderDiff(p.diff))
@@ -1106,7 +1142,9 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
         attempt(3)
       }
 
-      React.useEffect(() => { loadRoot() }, [sessionId])
+      // Re-root on workspace switch and on an explicit refresh (the header's
+      // refresh button bumps `props.refreshToken`).
+      React.useEffect(() => { loadRoot() }, [sessionId, props.refreshToken])
       React.useEffect(() => () => clearTimeout(rootTimer.current), [])
 
       const toggle = (path) => {
@@ -1201,10 +1239,6 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
       }
 
       return React.createElement('div', { className: 'artifacts-tree' },
-        React.createElement('div', { className: 'artifacts-tree-header' },
-          React.createElement('span', { className: 'artifacts-tree-root', title: root ? root.path : '' }, root ? basename(root.path) : '…'),
-          React.createElement('button', { type: 'button', className: 'artifacts-tree-refresh', title: '刷新', onClick: loadRoot }, RefreshIcon(14)),
-        ),
         React.createElement('div', { className: 'artifacts-tree-body' },
           !root
             ? React.createElement('div', { className: 'artifacts-hint' }, '加载文件树…')
@@ -1218,48 +1252,41 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
     const ArtifactsPanel = () => {
       const open = useOpen()
       const settings = useSettings()
-      const [items, setItems] = React.useState([])
-      const [error, setError] = React.useState(null)
-      const [preview, setPreview] = React.useState(null)
+      const [tabs, setTabs] = React.useState([]) // open preview tabs { key, path, git, loading, ok, error, … }
+      const [activeKey, setActiveKey] = React.useState(null)
       const [notice, setNotice] = React.useState('')
-      const [deleteMode, setDeleteMode] = React.useState(false)
-      const [deleteTarget, setDeleteTarget] = React.useState(null)
+      const [gitFiles, setGitFiles] = React.useState(null) // null = loading
+      const [gitError, setGitError] = React.useState(null)
       const [panelWidth, setPanelWidth] = React.useState(null) // null = use min
       const [resizing, setResizing] = React.useState(false)
-      // The divider's initial position comes from the "预览区高度" setting
-      // (split = the list/tree area's height ratio; preview takes the rest).
-      // The user can still drag the splitter to override at runtime; that
-      // override is discarded whenever the preview is re-expanded, returning
-      // the divider to the configured default height.
-      const [split, setSplit] = React.useState(() => (100 - (settings.previewHeight ?? 70)) / 100)
-      const [splitting, setSplitting] = React.useState(false)
-      const [collapsed, setCollapsed] = React.useState(false) // preview collapsed to the bottom
-      const [activeView, setActiveView] = React.useState('artifacts') // 'artifacts' | 'tree'
-      const mainRef = React.useRef(null)
+      const [activeView, setActiveView] = React.useState(() => (settings.showFileTree ? 'tree' : 'git')) // 'tree' | 'git'
+      const [treeRefresh, setTreeRefresh] = React.useState(0) // bumped by the header refresh button
+      const [gitRefresh, setGitRefresh] = React.useState(0)
       const noticeTimer = React.useRef(null)
 
-      // The list/tree area can be dragged between 10% and 90% of the split
-      // area so the divider moves freely (never pinned to content or default).
-      const MIN_SPLIT = 0.1
-      const MAX_SPLIT = 0.9
-
+      // Git changed-but-uncommitted files, polled while the git view is visible.
       React.useEffect(() => {
-        if (!open) return
+        if (!open || activeView !== 'git') return
         let alive = true
         const load = () => {
-          host.call('artifacts.list').then((res) => {
+          host.call('git.status', { sessionId: currentSessionId() }).then((res) => {
             if (!alive) return
-            setItems(res && Array.isArray(res.artifacts) ? res.artifacts : [])
-            setError(null)
+            if (res && res.ok) {
+              setGitFiles(Array.isArray(res.entries) ? res.entries : [])
+              setGitError(null)
+            } else {
+              setGitFiles([])
+              setGitError((res && res.error) || 'git status 失败')
+            }
           }).catch((e) => {
-            if (alive) setError(e && e.message ? String(e.message) : String(e))
+            if (alive) setGitError(e && e.message ? String(e.message) : String(e))
           })
         }
         load()
         let dispose
         if (settings.autoRefresh) dispose = ctx.interval(load, 2000)
         return () => { alive = false; if (dispose) dispose() }
-      }, [open, settings.autoRefresh])
+      }, [open, activeView, settings.autoRefresh, gitRefresh])
 
       // Publish the current session id to localStorage so the standalone
       // popout tab (which has no client session store) can root its file tree
@@ -1277,6 +1304,32 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
         try { list = ctx.get('sessions') && ctx.get('sessions').list } catch (e) {}
         if (!list || typeof list.subscribe !== 'function') return
         return list.subscribe(write)
+      }, [])
+
+      // Publish DSH's light/dark theme so the standalone popout tab matches
+      // the app's appearance and follows live theme switches. DSH sets the
+      // dark attribute on <body> (see the body[data-ds-dark-theme] rules in
+      // styles), so check/observe both documentElement and body.
+      React.useEffect(() => {
+        const KEY = 'dsh-popout-sidebar:theme'
+        const isDark = () => {
+          if (document.documentElement.hasAttribute('data-ds-dark-theme')) return true
+          if (document.body && document.body.hasAttribute('data-ds-dark-theme')) return true
+          return false
+        }
+        const write = () => {
+          try {
+            const v = isDark() ? 'dark' : 'light'
+            if (localStorage.getItem(KEY) !== v) localStorage.setItem(KEY, v)
+          } catch (e) {}
+        }
+        write()
+        if (typeof MutationObserver !== 'function') return
+        const obs = new MutationObserver(write)
+        const opts = { attributes: true, attributeFilter: ['data-ds-dark-theme'] }
+        obs.observe(document.documentElement, opts)
+        if (document.body) obs.observe(document.body, opts)
+        return () => obs.disconnect()
       }, [])
 
       // Panel width (px): at least `minPanelWidth`% of the window, wider via
@@ -1328,38 +1381,6 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
         document.addEventListener('mouseup', onUp)
       }
 
-      // Expand the preview and reset the divider to the configured default
-      // height ("预览区默认高度") — applied on every re-expansion, regardless
-      // of any runtime drag override.
-      const expandPreview = () => {
-        setCollapsed(false)
-        setSplit((100 - (settings.previewHeight ?? 70)) / 100)
-      }
-
-      const startSplit = (e) => {
-        e.preventDefault()
-        // Dragging the splitter while collapsed just re-expands the preview
-        // (at the default height); drag-to-resize applies once visible again.
-        if (collapsed) { expandPreview(); return }
-        setSplitting(true)
-        const mainEl = mainRef.current
-        if (!mainEl) return
-        const top = mainEl.getBoundingClientRect().top
-        const height = mainEl.getBoundingClientRect().height
-        if (height <= 0) return
-        const onMove = (ev) => {
-          const ratio = (ev.clientY - top) / height
-          setSplit(Math.max(MIN_SPLIT, Math.min(MAX_SPLIT, ratio)))
-        }
-        const onUp = () => {
-          setSplitting(false)
-          document.removeEventListener('mousemove', onMove)
-          document.removeEventListener('mouseup', onUp)
-        }
-        document.addEventListener('mousemove', onMove)
-        document.addEventListener('mouseup', onUp)
-      }
-
       const flash = (msg) => {
         setNotice(msg)
         clearTimeout(noticeTimer.current)
@@ -1376,80 +1397,136 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
         copyText('@' + path, '已复制 @引用（未能写入输入框）')
       }
 
-      const remove = (path) => {
-        host.call('artifacts.remove', { path }).then((res) => {
-          if (res && res.ok) {
-            setItems((prev) => prev.filter((x) => x.path !== path))
-            if (preview && preview.path === path) setPreview(null)
-            setDeleteTarget(null)
-            flash('已清除')
-          } else {
-            flash((res && res.error) || '清除失败')
+      // Multi-tab preview state helpers: each opened file (or git diff) gets a
+      // tab keyed by its path (`g:` prefix distinguishes diff tabs).
+      const patchTab = (key, patch) => setTabs((prev) => prev.map((t) => (t.key === key ? Object.assign({}, t, patch) : t)))
+
+      const openTab = (key, path, git, initial) => {
+        setTabs((prev) => {
+          const i = prev.findIndex((t) => t.key === key)
+          if (i >= 0) {
+            // Reopening an open file just reloads it and focuses its tab.
+            const next = prev.slice()
+            next[i] = Object.assign({}, next[i], initial)
+            return next
           }
-        }).catch(() => flash('清除失败'))
+          return prev.concat([Object.assign({ key: key, path: path, git: git }, initial)])
+        })
+        setActiveKey(key)
       }
 
+      const closeTab = (key) => {
+        const idx = tabs.findIndex((t) => t.key === key)
+        const next = tabs.filter((t) => t.key !== key)
+        setTabs(next)
+        if (activeKey === key) setActiveKey(next.length ? next[Math.min(idx, next.length - 1)].key : null)
+      }
+
+      const activeTab = tabs.find((t) => t.key === activeKey) || null
+
       const openFile = (path, diff) => {
-        // Opening any previewable file re-expands a collapsed preview (at the
-        // default height).
-        if (collapsed) expandPreview()
+        const key = 'p:' + path
         const type = extType(path)
-        const base = { path, type, diff: diff || null }
         // Images and PDFs are served as binary media — no text read needed.
-        if (type === 'image' || type === 'pdf') {
-          setPreview(Object.assign({}, base, { loading: false }))
-          return
-        }
-        setPreview(Object.assign({}, base, { loading: true }))
+        const initial = { loading: false, type: type, diff: diff || null }
+        if (type !== 'image' && type !== 'pdf') initial.loading = true
+        openTab(key, path, false, initial)
+        if (type === 'image' || type === 'pdf') return
         host.call('artifacts.read', { path }).then((res) => {
-          setPreview(Object.assign({}, base, { loading: false }, res))
+          patchTab(key, Object.assign({ loading: false }, res))
         }).catch((e) => {
-          setPreview(Object.assign({}, base, { loading: false, ok: false, error: String(e && e.message ? e.message : e) }))
+          patchTab(key, { loading: false, ok: false, error: String(e && e.message ? e.message : e) })
         })
       }
 
-      const select = (it) => openFile(it.path, it.diff)
-
-      const listChildren = []
-      if (!items.length) {
-        listChildren.push(React.createElement('div', { key: 'empty', className: 'artifacts-empty' }, '暂无产物 — 代理创建/编辑的文件会出现在这里。'))
+      // Open one changed file's uncommitted diff in the left-side overlay.
+      const openGitDiff = (path) => {
+        const key = 'g:' + path
+        openTab(key, path, true, { loading: true })
+        host.call('git.diff', { path, sessionId: currentSessionId() }).then((res) => {
+          patchTab(key, Object.assign({ loading: false }, res))
+        }).catch((e) => {
+          patchTab(key, { loading: false, ok: false, error: String(e && e.message ? e.message : e) })
+        })
       }
-      items.forEach((it) => {
-        const isDeleteMarked = deleteMode && deleteTarget === it.path
-        listChildren.push(React.createElement('div', {
-          key: it.id || it.path,
-          className: 'artifacts-item' +
-            (preview && preview.path === it.path ? ' is-active' : '') +
-            (isDeleteMarked ? ' is-delete-marked' : ''),
+
+      // Status letter → display label for a changed file row.
+      const gitLabel = (e) => {
+        if (e.x === '?' || e.y === '?') return 'U'
+        const c = e.y !== ' ' ? e.y : e.x
+        return c || 'M'
+      }
+      const gitTitle = (e) => {
+        const label = gitLabel(e)
+        const map = { U: '未跟踪', A: '新增', M: '修改', D: '删除', R: '重命名', C: '复制' }
+        const staged = e.x !== ' ' && e.x !== '?'
+        return (map[label] || label) + (staged ? '（已暂存）' : '（未暂存）')
+      }
+
+      const gitListChildren = []
+      if (gitError) {
+        gitListChildren.push(React.createElement('div', { key: 'err', className: 'artifacts-tree-error artifacts-git-error' }, gitError))
+      } else if (gitFiles == null) {
+        gitListChildren.push(React.createElement('div', { key: 'load', className: 'artifacts-empty' }, '加载变更列表…'))
+      } else if (!gitFiles.length) {
+        gitListChildren.push(React.createElement('div', { key: 'empty', className: 'artifacts-empty' }, '没有未提交的变更'))
+      }
+      ;(gitFiles || []).forEach((e) => {
+        const label = gitLabel(e)
+        const isActive = !!(activeTab && activeTab.git && activeTab.path === e.path)
+        gitListChildren.push(React.createElement('div', {
+          key: e.path,
+          className: 'artifacts-item' + (isActive ? ' is-active' : ''),
         },
           React.createElement('button', {
             type: 'button',
             className: 'artifacts-item-main',
-            onClick: () => {
-              if (deleteMode) setDeleteTarget(isDeleteMarked ? null : it.path)
-              else select(it)
-            },
+            title: gitTitle(e),
+            onClick: () => openGitDiff(e.path),
           },
             React.createElement('div', { className: 'artifacts-item-row' },
-              React.createElement('span', { className: 'artifacts-badge artifacts-badge-' + it.kind }, it.kind === 'create' ? '新建' : '编辑'),
-              React.createElement('span', { className: 'artifacts-item-base' }, basename(it.path)),
+              React.createElement('span', { className: 'artifacts-git-badge artifacts-git-badge-' + label }, label),
+              React.createElement('span', { className: 'artifacts-item-base' }, basename(e.path)),
+              e.origPath ? React.createElement('span', { className: 'artifacts-git-orig' }, '← ' + basename(e.origPath)) : null,
             ),
-            React.createElement('div', { className: 'artifacts-item-full' }, it.path),
+            React.createElement('div', { className: 'artifacts-item-full' }, e.path),
           ),
           React.createElement('div', { className: 'artifacts-item-actions' },
-            isDeleteMarked ? React.createElement('button', {
-              type: 'button',
-              className: 'artifacts-minibtn artifacts-delete-x',
-              title: '清除该产物',
-              onClick: () => remove(it.path),
-            }, '×') : null,
-            deleteMode ? null : React.createElement('button', { type: 'button', className: 'artifacts-minibtn', title: '复制路径', onClick: () => copyText(it.path, '已复制路径') }, '⧉'),
-            deleteMode ? null : React.createElement('button', { type: 'button', className: 'artifacts-minibtn', title: '@引用到输入框', onClick: () => quotePath(it.path) }, '@'),
+            React.createElement('button', { type: 'button', className: 'artifacts-minibtn', title: '复制路径', onClick: () => copyText(e.path, '已复制路径') }, '⧉'),
+            React.createElement('button', { type: 'button', className: 'artifacts-minibtn', title: '@引用到输入框', onClick: () => quotePath(e.path) }, '@'),
           ),
         ))
       })
 
-      return React.createElement('div', {
+      // Multi-tab preview overlay: each opened file becomes a tab; the active
+      // tab's content covers the whole area LEFT of the sidebar panel.
+      const previewOverlay = tabs.length ? React.createElement('div', {
+        className: 'artifacts-preview-overlay',
+        key: 'preview-overlay',
+        role: 'region', 'aria-label': '文件预览',
+      },
+        React.createElement('div', { className: 'artifacts-preview-overlay-tabs' },
+          tabs.map((t) => React.createElement('div', {
+            key: t.key,
+            className: 'artifacts-ptab' + (t.key === activeKey ? ' is-active' : ''),
+            title: (t.git ? '[diff] ' : '') + (t.path || ''),
+            onClick: () => setActiveKey(t.key),
+          },
+            React.createElement('span', { className: 'artifacts-ptab-name' }, basename(t.path || '')),
+            React.createElement('button', {
+              type: 'button',
+              className: 'artifacts-ptab-close',
+              title: '关闭标签页',
+              onClick: (e) => { e.stopPropagation(); closeTab(t.key) },
+            }, '×'),
+          )),
+        ),
+        activeTab ? renderPreview(activeTab) : null,
+      ) : null
+
+      return React.createElement(React.Fragment, null,
+        previewOverlay,
+        React.createElement('div', {
         className: 'artifacts-panel' + (resizing ? ' artifacts-resizing' : ''),
         style: { width: widthPx },
         role: 'dialog', 'aria-label': 'Artifacts',
@@ -1472,70 +1549,37 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
               href: popoutHref,
               target: '_blank',
               rel: 'noreferrer noopener',
-              title: '在新标签页打开（可拖到另一块显示器）',
-            }, '↖'),
+              title: '弹出式侧边栏 — 在新标签页打开（可拖到另一块显示器）',
+            }, PopoutIcon(16)),
           ),
-          React.createElement('span', { className: 'artifacts-title' }, '弹出式侧边栏'),
           React.createElement('span', { className: 'artifacts-spacer' }),
           notice ? React.createElement('span', { className: 'artifacts-notice' }, notice) : null,
-          activeView === 'artifacts' ? React.createElement('button', {
+          React.createElement('button', {
             type: 'button',
-            className: 'artifacts-iconbtn' + (deleteMode ? ' artifacts-delete-on' : ''),
-            title: deleteMode ? '退出清除模式' : '清除模式',
-            onClick: () => { setDeleteMode(!deleteMode); setDeleteTarget(null) },
-          }, '清除') : null,
+            className: 'artifacts-toggle',
+            title: activeView === 'tree' ? '刷新文件树' : '刷新变更列表',
+            onClick: () => { if (activeView === 'tree') setTreeRefresh((n) => n + 1); else setGitRefresh((n) => n + 1) },
+          }, RefreshIcon(16)),
+          settings.showFileTree ? React.createElement('button', {
+            type: 'button',
+            className: 'artifacts-iconbtn artifacts-viewbtn' + (activeView === 'git' ? ' is-active' : ''),
+            title: activeView === 'tree' ? '查看 Git 变更（未提交）' : '返回文件列表',
+            'aria-pressed': activeView === 'git',
+            onClick: () => setActiveView(activeView === 'tree' ? 'git' : 'tree'),
+          }, activeView === 'tree' ? GitBranchIcon(16) : FolderClosedIcon(16)) : null,
         ),
-        settings.showFileTree ? React.createElement('div', { className: 'artifacts-tabs' },
-          React.createElement('button', {
-            type: 'button',
-            className: 'artifacts-tab' + (activeView === 'artifacts' ? ' is-active' : ''),
-            onClick: () => setActiveView('artifacts'),
-          }, '产物'),
-          React.createElement('button', {
-            type: 'button',
-            className: 'artifacts-tab' + (activeView === 'tree' ? ' is-active' : ''),
-            onClick: () => { setActiveView('tree'); setDeleteMode(false); setDeleteTarget(null) },
-          }, '文件树'),
-        ) : null,
         React.createElement('div', {
           className: 'artifacts-main',
-          ref: mainRef,
         },
           React.createElement('div', {
             className: 'artifacts-body',
-            // The body takes exactly `split` of the split area, so the divider
-            // freely divides list/tree from preview in BOTH tabs (its position
-            // follows the pointer, never the content height). When collapsed
-            // the list fills the whole area (preview hidden).
-            style: collapsed ? { flex: '1 1 auto' } : { flex: '0 0 auto', height: (split * 100) + '%' },
+            style: { flex: '1 1 auto' },
           },
             (activeView === 'tree' && settings.showFileTree)
-              ? React.createElement(FileTree, { onOpen: openFile, selectedPath: preview ? preview.path : null })
-              : [
-                  deleteMode ? React.createElement('div', { className: 'artifacts-delete-hint' }, '清除模式：点击产物标记，再点红色 × 清除（仅清除内存记录，不删除磁盘文件）') : null,
-                  listChildren,
-                ],
+              ? React.createElement(FileTree, { onOpen: openFile, selectedPath: activeTab && !activeTab.git ? activeTab.path : null, refreshToken: treeRefresh })
+              : gitListChildren,
           ),
-          React.createElement('div', {
-            className: 'artifacts-splitter' + (splitting ? ' artifacts-splitting' : '') + (collapsed ? ' artifacts-collapsed' : ''),
-            title: '拖动调整产物列表与预览的分界',
-            onMouseDown: startSplit,
-          },
-            React.createElement('button', {
-              type: 'button',
-              className: 'artifacts-collapse-btn',
-              title: collapsed ? '展开预览区' : '收起预览区',
-              'aria-expanded': !collapsed,
-              onMouseDown: (e) => e.stopPropagation(),
-              onClick: () => { if (collapsed) expandPreview(); else setCollapsed(true) },
-            }, React.createElement('span', { className: 'artifacts-collapse-icon' }, ChevronIcon(10))),
-          ),
-          React.createElement('div', {
-            className: 'artifacts-preview',
-            style: collapsed ? { flex: '0 0 0%', display: 'none' } : { flex: '1 1 auto', minHeight: 0 },
-          },
-            preview ? renderPreview(preview) : React.createElement('div', { className: 'artifacts-hint' }, '点击文件预览内容'),
-          ),
+        ),
         ),
       )
     }
@@ -1616,27 +1660,6 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
                   const n = parseInt(e.currentTarget.value, 10)
                   if (Number.isNaN(n)) return
                   set('minPanelWidth', Math.max(20, Math.min(60, n)))
-                },
-              }),
-              React.createElement('span', { className: 'artifacts-suffix' }, '%'),
-            ),
-          ),
-          React.createElement('div', { className: 'artifacts-setrow' },
-            React.createElement('div', { className: 'artifacts-settext' },
-              React.createElement('div', { className: 'artifacts-settitle' }, '预览区默认高度'),
-              React.createElement('div', { className: 'artifacts-setdesc' }, '预览区占面板高度的百分比（20–80），决定预览区与文件树/产物展示区分界线的位置；仍可拖动分界线临时调整。'),
-            ),
-            React.createElement('div', { className: 'artifacts-setcontrol' },
-              React.createElement('input', {
-                type: 'number',
-                className: 'artifacts-widthinput',
-                min: 20,
-                max: 80,
-                value: settings.previewHeight,
-                onChange: (e) => {
-                  const n = parseInt(e.currentTarget.value, 10)
-                  if (Number.isNaN(n)) return
-                  set('previewHeight', Math.max(20, Math.min(80, n)))
                 },
               }),
               React.createElement('span', { className: 'artifacts-suffix' }, '%'),

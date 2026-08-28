@@ -39,7 +39,9 @@
         attempt(3)
       }
 
-      React.useEffect(() => { loadRoot() }, [sessionId])
+      // Re-root on workspace switch and on an explicit refresh (the header's
+      // refresh button bumps `props.refreshToken`).
+      React.useEffect(() => { loadRoot() }, [sessionId, props.refreshToken])
       React.useEffect(() => () => clearTimeout(rootTimer.current), [])
 
       const toggle = (path) => {
@@ -134,10 +136,6 @@
       }
 
       return React.createElement('div', { className: 'artifacts-tree' },
-        React.createElement('div', { className: 'artifacts-tree-header' },
-          React.createElement('span', { className: 'artifacts-tree-root', title: root ? root.path : '' }, root ? basename(root.path) : '…'),
-          React.createElement('button', { type: 'button', className: 'artifacts-tree-refresh', title: '刷新', onClick: loadRoot }, RefreshIcon(14)),
-        ),
         React.createElement('div', { className: 'artifacts-tree-body' },
           !root
             ? React.createElement('div', { className: 'artifacts-hint' }, '加载文件树…')
@@ -151,48 +149,41 @@
     const ArtifactsPanel = () => {
       const open = useOpen()
       const settings = useSettings()
-      const [items, setItems] = React.useState([])
-      const [error, setError] = React.useState(null)
-      const [preview, setPreview] = React.useState(null)
+      const [tabs, setTabs] = React.useState([]) // open preview tabs { key, path, git, loading, ok, error, … }
+      const [activeKey, setActiveKey] = React.useState(null)
       const [notice, setNotice] = React.useState('')
-      const [deleteMode, setDeleteMode] = React.useState(false)
-      const [deleteTarget, setDeleteTarget] = React.useState(null)
+      const [gitFiles, setGitFiles] = React.useState(null) // null = loading
+      const [gitError, setGitError] = React.useState(null)
       const [panelWidth, setPanelWidth] = React.useState(null) // null = use min
       const [resizing, setResizing] = React.useState(false)
-      // The divider's initial position comes from the "预览区高度" setting
-      // (split = the list/tree area's height ratio; preview takes the rest).
-      // The user can still drag the splitter to override at runtime; that
-      // override is discarded whenever the preview is re-expanded, returning
-      // the divider to the configured default height.
-      const [split, setSplit] = React.useState(() => (100 - (settings.previewHeight ?? 70)) / 100)
-      const [splitting, setSplitting] = React.useState(false)
-      const [collapsed, setCollapsed] = React.useState(false) // preview collapsed to the bottom
-      const [activeView, setActiveView] = React.useState('artifacts') // 'artifacts' | 'tree'
-      const mainRef = React.useRef(null)
+      const [activeView, setActiveView] = React.useState(() => (settings.showFileTree ? 'tree' : 'git')) // 'tree' | 'git'
+      const [treeRefresh, setTreeRefresh] = React.useState(0) // bumped by the header refresh button
+      const [gitRefresh, setGitRefresh] = React.useState(0)
       const noticeTimer = React.useRef(null)
 
-      // The list/tree area can be dragged between 10% and 90% of the split
-      // area so the divider moves freely (never pinned to content or default).
-      const MIN_SPLIT = 0.1
-      const MAX_SPLIT = 0.9
-
+      // Git changed-but-uncommitted files, polled while the git view is visible.
       React.useEffect(() => {
-        if (!open) return
+        if (!open || activeView !== 'git') return
         let alive = true
         const load = () => {
-          host.call('artifacts.list').then((res) => {
+          host.call('git.status', { sessionId: currentSessionId() }).then((res) => {
             if (!alive) return
-            setItems(res && Array.isArray(res.artifacts) ? res.artifacts : [])
-            setError(null)
+            if (res && res.ok) {
+              setGitFiles(Array.isArray(res.entries) ? res.entries : [])
+              setGitError(null)
+            } else {
+              setGitFiles([])
+              setGitError((res && res.error) || 'git status 失败')
+            }
           }).catch((e) => {
-            if (alive) setError(e && e.message ? String(e.message) : String(e))
+            if (alive) setGitError(e && e.message ? String(e.message) : String(e))
           })
         }
         load()
         let dispose
         if (settings.autoRefresh) dispose = ctx.interval(load, 2000)
         return () => { alive = false; if (dispose) dispose() }
-      }, [open, settings.autoRefresh])
+      }, [open, activeView, settings.autoRefresh, gitRefresh])
 
       // Publish the current session id to localStorage so the standalone
       // popout tab (which has no client session store) can root its file tree
@@ -210,6 +201,32 @@
         try { list = ctx.get('sessions') && ctx.get('sessions').list } catch (e) {}
         if (!list || typeof list.subscribe !== 'function') return
         return list.subscribe(write)
+      }, [])
+
+      // Publish DSH's light/dark theme so the standalone popout tab matches
+      // the app's appearance and follows live theme switches. DSH sets the
+      // dark attribute on <body> (see the body[data-ds-dark-theme] rules in
+      // styles), so check/observe both documentElement and body.
+      React.useEffect(() => {
+        const KEY = 'dsh-popout-sidebar:theme'
+        const isDark = () => {
+          if (document.documentElement.hasAttribute('data-ds-dark-theme')) return true
+          if (document.body && document.body.hasAttribute('data-ds-dark-theme')) return true
+          return false
+        }
+        const write = () => {
+          try {
+            const v = isDark() ? 'dark' : 'light'
+            if (localStorage.getItem(KEY) !== v) localStorage.setItem(KEY, v)
+          } catch (e) {}
+        }
+        write()
+        if (typeof MutationObserver !== 'function') return
+        const obs = new MutationObserver(write)
+        const opts = { attributes: true, attributeFilter: ['data-ds-dark-theme'] }
+        obs.observe(document.documentElement, opts)
+        if (document.body) obs.observe(document.body, opts)
+        return () => obs.disconnect()
       }, [])
 
       // Panel width (px): at least `minPanelWidth`% of the window, wider via
@@ -261,38 +278,6 @@
         document.addEventListener('mouseup', onUp)
       }
 
-      // Expand the preview and reset the divider to the configured default
-      // height ("预览区默认高度") — applied on every re-expansion, regardless
-      // of any runtime drag override.
-      const expandPreview = () => {
-        setCollapsed(false)
-        setSplit((100 - (settings.previewHeight ?? 70)) / 100)
-      }
-
-      const startSplit = (e) => {
-        e.preventDefault()
-        // Dragging the splitter while collapsed just re-expands the preview
-        // (at the default height); drag-to-resize applies once visible again.
-        if (collapsed) { expandPreview(); return }
-        setSplitting(true)
-        const mainEl = mainRef.current
-        if (!mainEl) return
-        const top = mainEl.getBoundingClientRect().top
-        const height = mainEl.getBoundingClientRect().height
-        if (height <= 0) return
-        const onMove = (ev) => {
-          const ratio = (ev.clientY - top) / height
-          setSplit(Math.max(MIN_SPLIT, Math.min(MAX_SPLIT, ratio)))
-        }
-        const onUp = () => {
-          setSplitting(false)
-          document.removeEventListener('mousemove', onMove)
-          document.removeEventListener('mouseup', onUp)
-        }
-        document.addEventListener('mousemove', onMove)
-        document.addEventListener('mouseup', onUp)
-      }
-
       const flash = (msg) => {
         setNotice(msg)
         clearTimeout(noticeTimer.current)
@@ -309,80 +294,136 @@
         copyText('@' + path, '已复制 @引用（未能写入输入框）')
       }
 
-      const remove = (path) => {
-        host.call('artifacts.remove', { path }).then((res) => {
-          if (res && res.ok) {
-            setItems((prev) => prev.filter((x) => x.path !== path))
-            if (preview && preview.path === path) setPreview(null)
-            setDeleteTarget(null)
-            flash('已清除')
-          } else {
-            flash((res && res.error) || '清除失败')
+      // Multi-tab preview state helpers: each opened file (or git diff) gets a
+      // tab keyed by its path (`g:` prefix distinguishes diff tabs).
+      const patchTab = (key, patch) => setTabs((prev) => prev.map((t) => (t.key === key ? Object.assign({}, t, patch) : t)))
+
+      const openTab = (key, path, git, initial) => {
+        setTabs((prev) => {
+          const i = prev.findIndex((t) => t.key === key)
+          if (i >= 0) {
+            // Reopening an open file just reloads it and focuses its tab.
+            const next = prev.slice()
+            next[i] = Object.assign({}, next[i], initial)
+            return next
           }
-        }).catch(() => flash('清除失败'))
+          return prev.concat([Object.assign({ key: key, path: path, git: git }, initial)])
+        })
+        setActiveKey(key)
       }
 
+      const closeTab = (key) => {
+        const idx = tabs.findIndex((t) => t.key === key)
+        const next = tabs.filter((t) => t.key !== key)
+        setTabs(next)
+        if (activeKey === key) setActiveKey(next.length ? next[Math.min(idx, next.length - 1)].key : null)
+      }
+
+      const activeTab = tabs.find((t) => t.key === activeKey) || null
+
       const openFile = (path, diff) => {
-        // Opening any previewable file re-expands a collapsed preview (at the
-        // default height).
-        if (collapsed) expandPreview()
+        const key = 'p:' + path
         const type = extType(path)
-        const base = { path, type, diff: diff || null }
         // Images and PDFs are served as binary media — no text read needed.
-        if (type === 'image' || type === 'pdf') {
-          setPreview(Object.assign({}, base, { loading: false }))
-          return
-        }
-        setPreview(Object.assign({}, base, { loading: true }))
+        const initial = { loading: false, type: type, diff: diff || null }
+        if (type !== 'image' && type !== 'pdf') initial.loading = true
+        openTab(key, path, false, initial)
+        if (type === 'image' || type === 'pdf') return
         host.call('artifacts.read', { path }).then((res) => {
-          setPreview(Object.assign({}, base, { loading: false }, res))
+          patchTab(key, Object.assign({ loading: false }, res))
         }).catch((e) => {
-          setPreview(Object.assign({}, base, { loading: false, ok: false, error: String(e && e.message ? e.message : e) }))
+          patchTab(key, { loading: false, ok: false, error: String(e && e.message ? e.message : e) })
         })
       }
 
-      const select = (it) => openFile(it.path, it.diff)
-
-      const listChildren = []
-      if (!items.length) {
-        listChildren.push(React.createElement('div', { key: 'empty', className: 'artifacts-empty' }, '暂无产物 — 代理创建/编辑的文件会出现在这里。'))
+      // Open one changed file's uncommitted diff in the left-side overlay.
+      const openGitDiff = (path) => {
+        const key = 'g:' + path
+        openTab(key, path, true, { loading: true })
+        host.call('git.diff', { path, sessionId: currentSessionId() }).then((res) => {
+          patchTab(key, Object.assign({ loading: false }, res))
+        }).catch((e) => {
+          patchTab(key, { loading: false, ok: false, error: String(e && e.message ? e.message : e) })
+        })
       }
-      items.forEach((it) => {
-        const isDeleteMarked = deleteMode && deleteTarget === it.path
-        listChildren.push(React.createElement('div', {
-          key: it.id || it.path,
-          className: 'artifacts-item' +
-            (preview && preview.path === it.path ? ' is-active' : '') +
-            (isDeleteMarked ? ' is-delete-marked' : ''),
+
+      // Status letter → display label for a changed file row.
+      const gitLabel = (e) => {
+        if (e.x === '?' || e.y === '?') return 'U'
+        const c = e.y !== ' ' ? e.y : e.x
+        return c || 'M'
+      }
+      const gitTitle = (e) => {
+        const label = gitLabel(e)
+        const map = { U: '未跟踪', A: '新增', M: '修改', D: '删除', R: '重命名', C: '复制' }
+        const staged = e.x !== ' ' && e.x !== '?'
+        return (map[label] || label) + (staged ? '（已暂存）' : '（未暂存）')
+      }
+
+      const gitListChildren = []
+      if (gitError) {
+        gitListChildren.push(React.createElement('div', { key: 'err', className: 'artifacts-tree-error artifacts-git-error' }, gitError))
+      } else if (gitFiles == null) {
+        gitListChildren.push(React.createElement('div', { key: 'load', className: 'artifacts-empty' }, '加载变更列表…'))
+      } else if (!gitFiles.length) {
+        gitListChildren.push(React.createElement('div', { key: 'empty', className: 'artifacts-empty' }, '没有未提交的变更'))
+      }
+      ;(gitFiles || []).forEach((e) => {
+        const label = gitLabel(e)
+        const isActive = !!(activeTab && activeTab.git && activeTab.path === e.path)
+        gitListChildren.push(React.createElement('div', {
+          key: e.path,
+          className: 'artifacts-item' + (isActive ? ' is-active' : ''),
         },
           React.createElement('button', {
             type: 'button',
             className: 'artifacts-item-main',
-            onClick: () => {
-              if (deleteMode) setDeleteTarget(isDeleteMarked ? null : it.path)
-              else select(it)
-            },
+            title: gitTitle(e),
+            onClick: () => openGitDiff(e.path),
           },
             React.createElement('div', { className: 'artifacts-item-row' },
-              React.createElement('span', { className: 'artifacts-badge artifacts-badge-' + it.kind }, it.kind === 'create' ? '新建' : '编辑'),
-              React.createElement('span', { className: 'artifacts-item-base' }, basename(it.path)),
+              React.createElement('span', { className: 'artifacts-git-badge artifacts-git-badge-' + label }, label),
+              React.createElement('span', { className: 'artifacts-item-base' }, basename(e.path)),
+              e.origPath ? React.createElement('span', { className: 'artifacts-git-orig' }, '← ' + basename(e.origPath)) : null,
             ),
-            React.createElement('div', { className: 'artifacts-item-full' }, it.path),
+            React.createElement('div', { className: 'artifacts-item-full' }, e.path),
           ),
           React.createElement('div', { className: 'artifacts-item-actions' },
-            isDeleteMarked ? React.createElement('button', {
-              type: 'button',
-              className: 'artifacts-minibtn artifacts-delete-x',
-              title: '清除该产物',
-              onClick: () => remove(it.path),
-            }, '×') : null,
-            deleteMode ? null : React.createElement('button', { type: 'button', className: 'artifacts-minibtn', title: '复制路径', onClick: () => copyText(it.path, '已复制路径') }, '⧉'),
-            deleteMode ? null : React.createElement('button', { type: 'button', className: 'artifacts-minibtn', title: '@引用到输入框', onClick: () => quotePath(it.path) }, '@'),
+            React.createElement('button', { type: 'button', className: 'artifacts-minibtn', title: '复制路径', onClick: () => copyText(e.path, '已复制路径') }, '⧉'),
+            React.createElement('button', { type: 'button', className: 'artifacts-minibtn', title: '@引用到输入框', onClick: () => quotePath(e.path) }, '@'),
           ),
         ))
       })
 
-      return React.createElement('div', {
+      // Multi-tab preview overlay: each opened file becomes a tab; the active
+      // tab's content covers the whole area LEFT of the sidebar panel.
+      const previewOverlay = tabs.length ? React.createElement('div', {
+        className: 'artifacts-preview-overlay',
+        key: 'preview-overlay',
+        role: 'region', 'aria-label': '文件预览',
+      },
+        React.createElement('div', { className: 'artifacts-preview-overlay-tabs' },
+          tabs.map((t) => React.createElement('div', {
+            key: t.key,
+            className: 'artifacts-ptab' + (t.key === activeKey ? ' is-active' : ''),
+            title: (t.git ? '[diff] ' : '') + (t.path || ''),
+            onClick: () => setActiveKey(t.key),
+          },
+            React.createElement('span', { className: 'artifacts-ptab-name' }, basename(t.path || '')),
+            React.createElement('button', {
+              type: 'button',
+              className: 'artifacts-ptab-close',
+              title: '关闭标签页',
+              onClick: (e) => { e.stopPropagation(); closeTab(t.key) },
+            }, '×'),
+          )),
+        ),
+        activeTab ? renderPreview(activeTab) : null,
+      ) : null
+
+      return React.createElement(React.Fragment, null,
+        previewOverlay,
+        React.createElement('div', {
         className: 'artifacts-panel' + (resizing ? ' artifacts-resizing' : ''),
         style: { width: widthPx },
         role: 'dialog', 'aria-label': 'Artifacts',
@@ -405,70 +446,37 @@
               href: popoutHref,
               target: '_blank',
               rel: 'noreferrer noopener',
-              title: '在新标签页打开（可拖到另一块显示器）',
-            }, '↖'),
+              title: '弹出式侧边栏 — 在新标签页打开（可拖到另一块显示器）',
+            }, PopoutIcon(16)),
           ),
-          React.createElement('span', { className: 'artifacts-title' }, '弹出式侧边栏'),
           React.createElement('span', { className: 'artifacts-spacer' }),
           notice ? React.createElement('span', { className: 'artifacts-notice' }, notice) : null,
-          activeView === 'artifacts' ? React.createElement('button', {
+          React.createElement('button', {
             type: 'button',
-            className: 'artifacts-iconbtn' + (deleteMode ? ' artifacts-delete-on' : ''),
-            title: deleteMode ? '退出清除模式' : '清除模式',
-            onClick: () => { setDeleteMode(!deleteMode); setDeleteTarget(null) },
-          }, '清除') : null,
+            className: 'artifacts-toggle',
+            title: activeView === 'tree' ? '刷新文件树' : '刷新变更列表',
+            onClick: () => { if (activeView === 'tree') setTreeRefresh((n) => n + 1); else setGitRefresh((n) => n + 1) },
+          }, RefreshIcon(16)),
+          settings.showFileTree ? React.createElement('button', {
+            type: 'button',
+            className: 'artifacts-iconbtn artifacts-viewbtn' + (activeView === 'git' ? ' is-active' : ''),
+            title: activeView === 'tree' ? '查看 Git 变更（未提交）' : '返回文件列表',
+            'aria-pressed': activeView === 'git',
+            onClick: () => setActiveView(activeView === 'tree' ? 'git' : 'tree'),
+          }, activeView === 'tree' ? GitBranchIcon(16) : FolderClosedIcon(16)) : null,
         ),
-        settings.showFileTree ? React.createElement('div', { className: 'artifacts-tabs' },
-          React.createElement('button', {
-            type: 'button',
-            className: 'artifacts-tab' + (activeView === 'artifacts' ? ' is-active' : ''),
-            onClick: () => setActiveView('artifacts'),
-          }, '产物'),
-          React.createElement('button', {
-            type: 'button',
-            className: 'artifacts-tab' + (activeView === 'tree' ? ' is-active' : ''),
-            onClick: () => { setActiveView('tree'); setDeleteMode(false); setDeleteTarget(null) },
-          }, '文件树'),
-        ) : null,
         React.createElement('div', {
           className: 'artifacts-main',
-          ref: mainRef,
         },
           React.createElement('div', {
             className: 'artifacts-body',
-            // The body takes exactly `split` of the split area, so the divider
-            // freely divides list/tree from preview in BOTH tabs (its position
-            // follows the pointer, never the content height). When collapsed
-            // the list fills the whole area (preview hidden).
-            style: collapsed ? { flex: '1 1 auto' } : { flex: '0 0 auto', height: (split * 100) + '%' },
+            style: { flex: '1 1 auto' },
           },
             (activeView === 'tree' && settings.showFileTree)
-              ? React.createElement(FileTree, { onOpen: openFile, selectedPath: preview ? preview.path : null })
-              : [
-                  deleteMode ? React.createElement('div', { className: 'artifacts-delete-hint' }, '清除模式：点击产物标记，再点红色 × 清除（仅清除内存记录，不删除磁盘文件）') : null,
-                  listChildren,
-                ],
+              ? React.createElement(FileTree, { onOpen: openFile, selectedPath: activeTab && !activeTab.git ? activeTab.path : null, refreshToken: treeRefresh })
+              : gitListChildren,
           ),
-          React.createElement('div', {
-            className: 'artifacts-splitter' + (splitting ? ' artifacts-splitting' : '') + (collapsed ? ' artifacts-collapsed' : ''),
-            title: '拖动调整产物列表与预览的分界',
-            onMouseDown: startSplit,
-          },
-            React.createElement('button', {
-              type: 'button',
-              className: 'artifacts-collapse-btn',
-              title: collapsed ? '展开预览区' : '收起预览区',
-              'aria-expanded': !collapsed,
-              onMouseDown: (e) => e.stopPropagation(),
-              onClick: () => { if (collapsed) expandPreview(); else setCollapsed(true) },
-            }, React.createElement('span', { className: 'artifacts-collapse-icon' }, ChevronIcon(10))),
-          ),
-          React.createElement('div', {
-            className: 'artifacts-preview',
-            style: collapsed ? { flex: '0 0 0%', display: 'none' } : { flex: '1 1 auto', minHeight: 0 },
-          },
-            preview ? renderPreview(preview) : React.createElement('div', { className: 'artifacts-hint' }, '点击文件预览内容'),
-          ),
+        ),
         ),
       )
     }
@@ -549,27 +557,6 @@
                   const n = parseInt(e.currentTarget.value, 10)
                   if (Number.isNaN(n)) return
                   set('minPanelWidth', Math.max(20, Math.min(60, n)))
-                },
-              }),
-              React.createElement('span', { className: 'artifacts-suffix' }, '%'),
-            ),
-          ),
-          React.createElement('div', { className: 'artifacts-setrow' },
-            React.createElement('div', { className: 'artifacts-settext' },
-              React.createElement('div', { className: 'artifacts-settitle' }, '预览区默认高度'),
-              React.createElement('div', { className: 'artifacts-setdesc' }, '预览区占面板高度的百分比（20–80），决定预览区与文件树/产物展示区分界线的位置；仍可拖动分界线临时调整。'),
-            ),
-            React.createElement('div', { className: 'artifacts-setcontrol' },
-              React.createElement('input', {
-                type: 'number',
-                className: 'artifacts-widthinput',
-                min: 20,
-                max: 80,
-                value: settings.previewHeight,
-                onChange: (e) => {
-                  const n = parseInt(e.currentTarget.value, 10)
-                  if (Number.isNaN(n)) return
-                  set('previewHeight', Math.max(20, Math.min(80, n)))
                 },
               }),
               React.createElement('span', { className: 'artifacts-suffix' }, '%'),

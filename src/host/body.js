@@ -17,7 +17,8 @@ return {
   // before `webServer` is provided and silently skip every route).
   // `sessionQuery` is also required so the file tree can resolve a switched-to
   // session's workspace from the persisted corpus when it is not yet live.
-  inject: ['webServer', 'sessionQuery'],
+  // `timer` provides ctx.interval (the git-status safety poll).
+  inject: ['webServer', 'sessionQuery', 'timer'],
   apply(ctx) {
 @@ext@@
 @@core@@

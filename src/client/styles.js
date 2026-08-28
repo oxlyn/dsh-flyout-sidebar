@@ -20,6 +20,52 @@ header:has([data-slot="conversation.session.header.utilities"]) {
   html #root { transition: none; }
   header:has([data-slot="conversation.session.header.utilities"]) { transition: none; }
 }
+/* Full-area preview overlay: covers everything to the LEFT of the sidebar
+   panel (the app's main column) while a file is being previewed. Sits just
+   below the panel's z-index so the panel stays on top. */
+.artifacts-preview-overlay {
+  position: fixed; top: 0; bottom: 0; left: 0;
+  right: calc(var(--dsh-sidebar-width, 0px) + var(--dsh-popout-sidebar-width, 0px));
+  z-index: 9998;
+  display: flex; flex-direction: column; min-width: 0;
+  background: var(--dsw-alias-bg-base);
+  color: var(--dsw-alias-label-primary);
+  border-right: 1px solid var(--dsw-alias-border-l1);
+  box-shadow: var(--dsw-shadow-lv2);
+  pointer-events: auto;
+  font-family: var(--dsw-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif);
+  font-size: 13px; line-height: 1.5;
+  transition: right var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease);
+}
+body[data-dsh-popout-dragging] .artifacts-preview-overlay { transition: none; }
+.artifacts-preview-overlay-tabs {
+  flex: none; display: flex; align-items: stretch; height: 28px;
+  overflow-x: auto; overflow-y: hidden; scrollbar-width: thin;
+  background: var(--dsw-alias-bg-layer-1);
+  border-bottom: 1px solid var(--dsw-alias-border-l2);
+}
+.artifacts-ptab {
+  flex: none; display: flex; align-items: center; gap: 6px;
+  max-width: 220px; padding: 0 6px 0 12px; cursor: pointer;
+  border-right: 1px solid var(--dsw-alias-border-l1);
+  color: var(--dsw-alias-label-secondary); font-size: 12px; line-height: 28px;
+  user-select: none;
+}
+.artifacts-ptab:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
+.artifacts-ptab.is-active {
+  background: var(--dsw-alias-bg-base); color: var(--dsw-alias-label-primary);
+  box-shadow: inset 0 -2px 0 var(--dsw-alias-state-business-primary);
+}
+.artifacts-ptab-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.artifacts-ptab-close {
+  flex: none; width: 18px; height: 18px; padding: 0; line-height: 1; font-size: 13px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: none; background: transparent; color: inherit; cursor: pointer; border-radius: 4px;
+}
+.artifacts-ptab-close:hover { background: var(--dsw-alias-interactive-bg-hover-accent, rgba(0, 0, 0, 0.08)); }
+.artifacts-preview-overlay .artifacts-preview-body { flex: 1; min-height: 0; }
+.artifacts-preview-overlay .artifacts-img { max-height: none; }
+
 .artifacts-panel {
   position: fixed; top: 0; right: var(--dsh-sidebar-width, 0px); bottom: 0; width: 30vw; max-width: calc(100vw - 24px); min-width: 0;
   display: flex; flex-direction: column;
@@ -34,12 +80,11 @@ header:has([data-slot="conversation.session.header.utilities"]) {
   --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
 }
 .artifacts-head {
-  position: relative; display: flex; align-items: center; gap: 8px; padding: 10px 12px; flex: none;
+  position: relative; display: flex; align-items: center; gap: 4px; padding: 0 6px; flex: none; height: 28px;
   border-bottom: 1px solid var(--dsw-alias-border-l2);
   background: var(--dsw-alias-bg-layer-1);
 }
 .artifacts-head-left { display: flex; align-items: center; gap: 4px; flex: none; }
-.artifacts-title { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); white-space: nowrap; font-weight: 600; font-size: 13px; color: var(--dsw-alias-label-primary); }
 .artifacts-spacer { flex: 1; }
 .artifacts-toggle {
   display: inline-flex; align-items: center; justify-content: center; padding: 4px; line-height: 0;
@@ -47,7 +92,7 @@ header:has([data-slot="conversation.session.header.utilities"]) {
   color: var(--dsw-alias-label-secondary); cursor: pointer;
 }
 .artifacts-toggle:hover { color: var(--dsw-alias-label-primary); }
-.artifacts-link { color: var(--dsw-alias-state-business-primary); text-decoration: none; font-size: 15px; padding: 2px 8px; border-radius: 6px; }
+.artifacts-link { color: var(--dsw-alias-state-business-primary); text-decoration: none; padding: 4px; border-radius: 6px; display: inline-flex; align-items: center; }
 .artifacts-link:hover { background: var(--dsw-alias-interactive-bg-hover); }
 .artifacts-iconbtn {
   background: transparent; border: 1px solid var(--dsw-alias-border-l2);
@@ -149,50 +194,34 @@ header:has([data-slot="conversation.session.header.utilities"]) {
 .artifacts-resize::after { content: ''; position: absolute; left: 3px; top: 0; bottom: 0; width: 2px; background: transparent; transition: background .15s; }
 .artifacts-resize:hover::after, .artifacts-resize:active::after { background: var(--dsw-alias-interactive-bg-hover-accent); }
 
-/* Divider between the artifact list and the preview (drag to resize) */
-.artifacts-splitter { flex: none; height: 6px; cursor: row-resize; position: relative; z-index: 2; touch-action: none; background: transparent; border-top: 1px solid var(--dsw-alias-border-l2); }
-.artifacts-splitter::after { content: ''; position: absolute; left: 0; right: 0; top: 2px; height: 2px; background: transparent; transition: background .15s; }
-.artifacts-splitter:hover::after, .artifacts-splitter.artifacts-splitting::after { background: var(--dsw-alias-interactive-bg-hover-accent); }
-.artifacts-splitter.artifacts-splitting { user-select: none; }
-/* Collapse button in the middle of the divider: shows on hover, and stays
-   visible while the preview is collapsed so it can be re-expanded. */
-.artifacts-collapse-btn {
-  position: absolute; left: 50%; top: 0; transform: translateX(-50%);
-  width: 32px; height: 16px; border: 1px solid var(--dsw-alias-border-l2);
-  /* Expanded: square top (attached to the divider), rounded bottom. */
-  border-radius: 0 0 999px 999px; background: var(--dsw-alias-bg-layer-1);
-  color: var(--dsw-alias-label-tertiary); cursor: pointer; z-index: 3;
-  display: flex; align-items: center; justify-content: center;
-  padding: 0; line-height: 1;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
-  opacity: 0; transition: opacity .15s, color .15s, background .15s, box-shadow .15s;
-}
-/* Expanded: hang below the divider (top edge flush with it). Collapsed: hang
-   above the divider (bottom edge flush with it) — never cross the line. */
-.artifacts-splitter.artifacts-collapsed .artifacts-collapse-btn {
-  top: auto; bottom: 0;
-  /* Collapsed: rounded top, square bottom (attached to the divider). */
-  border-radius: 999px 999px 0 0;
-}
-.artifacts-splitter:hover .artifacts-collapse-btn,
-.artifacts-splitter.artifacts-collapsed .artifacts-collapse-btn { opacity: 1; }
-.artifacts-collapse-btn:hover { color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-layer-2); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12); }
-.artifacts-collapse-icon { display: inline-flex; transition: transform .18s var(--ds-ease-in-out, ease); }
-.artifacts-splitter.artifacts-collapsed .artifacts-collapse-icon { transform: rotate(180deg); }
 
-/* Tabs (产物 / 文件树). The bottom border is the divider between the tab row
-   (including the「文件树」label) and the artifact/file list below it. */
-.artifacts-tabs { flex: none; display: flex; align-items: stretch; height: 32px; border-bottom: 2px solid #fff; background: var(--dsw-alias-bg-layer-1); }
-.artifacts-tab { flex: 1; border: none; background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-tertiary); font: inherit; font-size: 12px; cursor: pointer; border-right: 1px solid var(--dsw-alias-border-l1); }
-.artifacts-tab:hover { background: var(--dsw-alias-interactive-bg-hover-accent); }
-.artifacts-tab.is-active { color: var(--dsw-alias-label-primary); background: transparent; }
+/* Header icon toggle between the file tree and the changed-files list */
+.artifacts-viewbtn { display: inline-flex; align-items: center; justify-content: center; height: 26px; width: 26px; padding: 0; border: none; background: transparent; color: var(--dsw-alias-label-secondary); cursor: pointer; border-radius: 6px; }
+.artifacts-viewbtn:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
+.artifacts-viewbtn.is-active { color: var(--dsw-alias-state-business-primary); }
+
+/* Git changed-files list (git 变更) */
+.artifacts-git-badge { font-size: 10px; font-weight: 700; width: 16px; height: 16px; flex: none; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; font-family: var(--dsh-font-mono, ui-monospace, monospace); }
+.artifacts-git-badge-M { background: var(--dsw-alias-state-warn-tertiary); color: var(--dsw-alias-state-warn-label); }
+.artifacts-git-badge-A { background: var(--dsw-alias-state-success-tertiary); color: var(--dsw-alias-state-success-primary); }
+.artifacts-git-badge-D { background: rgba(236,19,19,0.1); color: var(--dsw-alias-state-error-primary); }
+.artifacts-git-badge-R { background: var(--dsw-alias-state-business-tertiary, rgba(65,118,230,0.1)); color: var(--dsw-alias-state-business-primary); }
+.artifacts-git-badge-U { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-tertiary); }
+.artifacts-git-orig { font-size: 11px; color: var(--dsw-alias-label-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.artifacts-git-error { padding: 14px 12px; word-break: break-all; }
+
+/* Unified git diff view (left-side overlay) */
+.artifacts-gitdiff { font-family: var(--dsh-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); font-size: 12px; line-height: 1.6; }
+.gd-line { white-space: pre-wrap; word-break: break-all; padding: 0 12px; }
+.gd-meta { color: var(--dsw-alias-label-tertiary); background: var(--dsw-alias-bg-layer-1); padding: 2px 12px; }
+.gd-hunk { color: var(--dsw-alias-state-business-primary); background: var(--dsw-alias-state-business-tertiary, rgba(65,118,230,0.08)); padding: 2px 12px; }
+.gd-add { color: #1a7f37; background: rgba(34,197,94,0.08); }
+.gd-del { color: #cf222e; background: rgba(236,19,19,0.07); }
+body[data-ds-dark-theme] .gd-add { color: #69db7c; }
+body[data-ds-dark-theme] .gd-del { color: #faa2c1; }
 
 /* File tree (文件树) — styled like better-sidebar's explorer */
 .artifacts-tree { display: flex; flex-direction: column; height: 100%; min-height: 0; }
-.artifacts-tree-header { flex: none; justify-content: space-between; align-items: center; gap: 8px; height: 36px; padding: 0 8px 0 12px; display: flex; }
-.artifacts-tree-root { font: var(--dsw-font-s-14); color: var(--dsw-alias-label-secondary); text-overflow: ellipsis; white-space: nowrap; overflow: hidden; }
-.artifacts-tree-refresh { width: 24px; height: 24px; color: var(--dsw-alias-label-secondary); cursor: pointer; background: transparent; border: none; border-radius: 6px; flex: none; justify-content: center; align-items: center; display: inline-flex; padding: 0; }
-.artifacts-tree-refresh:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
 .artifacts-tree-body { flex: 1; min-height: 0; overflow-y: auto; padding: 2px 6px 8px; }
 .artifacts-tree-row { box-sizing: border-box; width: 100%; height: 34px; font: var(--dsw-font-s-14); color: var(--dsw-alias-label-primary); text-align: left; cursor: pointer; white-space: nowrap; background: transparent; border: none; border-radius: 8px; align-items: center; gap: 6px; padding: 0 8px; display: flex; animation: artifacts-row-in .15s var(--ds-ease-in-out, ease); }
 .artifacts-tree-row:hover { background: var(--dsw-alias-interactive-bg-hover); }
@@ -240,10 +269,8 @@ header:has([data-slot="conversation.session.header.utilities"]) {
 /* Code preview (syntax-highlighted via DSH's Shiki — token colors come from
    the app's global --shiki-token-* palette, matching the rest of DSH) */
 .artifacts-code { display: flex; flex-direction: column; height: 100%; min-height: 0; }
-.artifacts-code-head { flex: none; display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-bottom: 1px solid var(--dsw-alias-border-l2); }
-.artifacts-code-lang { font-size: 11px; font-weight: 600; color: var(--dsw-alias-label-secondary); padding: 1px 8px; border-radius: 4px; background: var(--dsw-alias-bg-layer-2, var(--dsw-alias-bg-layer-1)); }
 .artifacts-code-scroll { flex: 1; min-height: 0; overflow: auto; display: flex; align-items: flex-start; background: var(--shiki-background, var(--dsw-alias-markdown-code-block, var(--dsw-alias-bg-layer-1))); }
-.artifacts-code-gutter { flex: none; min-width: 3em; margin: 0; padding: 12px 10px 12px 12px; text-align: right; color: var(--dsw-alias-label-tertiary); border-right: 1px solid var(--dsw-alias-border-l1); position: sticky; left: 0; user-select: none; background: var(--shiki-background, var(--dsw-alias-markdown-code-block, var(--dsw-alias-bg-layer-1))); font: 12px/1.6 var(--dsh-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); white-space: pre; }
+.artifacts-code-gutter { flex: none; min-width: 2.2em; margin: 0; padding: 12px 6px 12px 8px; text-align: right; color: var(--dsw-alias-label-tertiary); border-right: 1px solid var(--dsw-alias-border-l1); position: sticky; left: 0; user-select: none; background: var(--shiki-background, var(--dsw-alias-markdown-code-block, var(--dsw-alias-bg-layer-1))); font: 12px/1.6 var(--dsh-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); white-space: pre; }
 .artifacts-code-pre { flex: 1; margin: 0; padding: 12px; background: var(--shiki-background, var(--dsw-alias-markdown-code-block, var(--dsw-alias-bg-layer-1))); color: var(--shiki-foreground, var(--dsw-alias-label-primary)); font: 12px/1.6 var(--dsh-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); white-space: pre; }
 .artifacts-code-pre code { font: inherit; color: inherit; }
 .artifacts-code-line { display: block; }
