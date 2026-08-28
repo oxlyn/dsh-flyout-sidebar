@@ -151,6 +151,27 @@
       const settings = useSettings()
       const [tabs, setTabs] = React.useState([]) // open preview tabs { key, path, git, loading, ok, error, … }
       const [activeKey, setActiveKey] = React.useState(null)
+      // ⇥ hides the whole preview overlay but keeps the tabs in memory;
+      // opening any file from the tree/git list brings them all back.
+      const [previewHidden, setPreviewHidden] = React.useState(false)
+
+      // Track the active session: preview tabs belong to a project's files,
+      // so they are all closed when the workspace switches (otherwise stale
+      // tabs would show the old project's content next to the new one).
+      const [sessionId, setSessionId] = React.useState(currentSessionId())
+      React.useEffect(() => {
+        let list
+        try { list = ctx.get('sessions') && ctx.get('sessions').list } catch (e) {}
+        if (!list || typeof list.subscribe !== 'function') return
+        return list.subscribe(() => setSessionId(currentSessionId()))
+      }, [])
+      const firstSession = React.useRef(true)
+      React.useEffect(() => {
+        if (firstSession.current) { firstSession.current = false; return }
+        setTabs([])
+        setActiveKey(null)
+        setPreviewHidden(false)
+      }, [sessionId])
       const [notice, setNotice] = React.useState('')
       const [gitFiles, setGitFiles] = React.useState(null) // null = loading
       const [gitError, setGitError] = React.useState(null)
@@ -299,6 +320,7 @@
       const patchTab = (key, patch) => setTabs((prev) => prev.map((t) => (t.key === key ? Object.assign({}, t, patch) : t)))
 
       const openTab = (key, path, git, initial) => {
+        setPreviewHidden(false)
         setTabs((prev) => {
           const i = prev.findIndex((t) => t.key === key)
           if (i >= 0) {
@@ -396,27 +418,37 @@
       })
 
       // Multi-tab preview overlay: each opened file becomes a tab; the active
-      // tab's content covers the whole area LEFT of the sidebar panel.
-      const previewOverlay = tabs.length ? React.createElement('div', {
+      // tab's content covers the whole area LEFT of the sidebar panel. The ⇥
+      // button hides the whole overlay — tabs survive and are restored via the
+      // left-edge pill or by opening any file.
+      const previewOverlay = (tabs.length && !previewHidden) ? React.createElement('div', {
         className: 'artifacts-preview-overlay',
         key: 'preview-overlay',
         role: 'region', 'aria-label': '文件预览',
       },
         React.createElement('div', { className: 'artifacts-preview-overlay-tabs' },
-          tabs.map((t) => React.createElement('div', {
-            key: t.key,
-            className: 'artifacts-ptab' + (t.key === activeKey ? ' is-active' : ''),
-            title: (t.git ? '[diff] ' : '') + (t.path || ''),
-            onClick: () => setActiveKey(t.key),
-          },
-            React.createElement('span', { className: 'artifacts-ptab-name' }, basename(t.path || '')),
-            React.createElement('button', {
-              type: 'button',
-              className: 'artifacts-ptab-close',
-              title: '关闭标签页',
-              onClick: (e) => { e.stopPropagation(); closeTab(t.key) },
-            }, '×'),
-          )),
+          React.createElement('div', { className: 'artifacts-ptabs-scroll' },
+            tabs.map((t) => React.createElement('div', {
+              key: t.key,
+              className: 'artifacts-ptab' + (t.key === activeKey ? ' is-active' : ''),
+              title: (t.git ? '[diff] ' : '') + (t.path || ''),
+              onClick: () => setActiveKey(t.key),
+            },
+              React.createElement('span', { className: 'artifacts-ptab-name' }, basename(t.path || '')),
+              React.createElement('button', {
+                type: 'button',
+                className: 'artifacts-ptab-close',
+                title: '关闭标签页',
+                onClick: (e) => { e.stopPropagation(); closeTab(t.key) },
+              }, '×'),
+            )),
+          ),
+          React.createElement('button', {
+            type: 'button',
+            className: 'artifacts-preview-hide',
+            title: '隐藏预览（标签页保留）',
+            onClick: () => setPreviewHidden(true),
+          }, PanelCollapseIcon(16)),
         ),
         activeTab ? renderPreview(activeTab) : null,
       ) : null

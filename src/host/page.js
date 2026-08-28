@@ -68,17 +68,14 @@
     background: var(--p-bg); color: var(--p-text);
     display: flex; flex-direction: column;
   }
-  header { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--p-border-l2); background: var(--p-bg-layer-1); flex: none; }
-  header h1 { font-size: 15px; margin: 0; font-weight: 600; }
-  header .spacer { flex: 1; }
-  header .status { font-size: 12px; color: var(--p-success-fg); }
   main { flex: 1; display: flex; min-height: 0; }
   /* Content (preview) on the LEFT, file panel on the RIGHT — mirrors the
      in-app layout where the preview covers the area left of the sidebar.
-     Panel width is adjustable via the divider (default = minimum). */
-  .sidebar { width: var(--popout-panel-w, 240px); flex: none; display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--p-border-l2); }
-  .divider { flex: none; width: 6px; cursor: col-resize; position: relative; touch-action: none; }
-  .divider::after { content: ''; position: absolute; top: 0; bottom: 0; left: 2px; width: 2px; background: transparent; transition: background .15s; }
+     Panel width is adjustable via an invisible handle straddling the panel's
+     left border (same pattern as the in-app panel, no visible gap). */
+  .sidebar { width: var(--popout-panel-w, 240px); flex: none; display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--p-border-l2); position: relative; }
+  .divider { position: absolute; left: -4px; top: 0; bottom: 0; width: 8px; cursor: col-resize; z-index: 5; touch-action: none; }
+  .divider::after { content: ''; position: absolute; left: 3px; top: 0; bottom: 0; width: 2px; background: transparent; transition: background .15s; }
   .divider:hover::after, .divider.dragging::after { background: var(--p-accent); }
   body.panel-dragging iframe, body.panel-dragging embed { pointer-events: none; }
   body.panel-dragging { user-select: none; }
@@ -102,7 +99,8 @@
   .mini-btn:hover { background: var(--p-hover); color: var(--p-text); }
   .preview { flex: 1; display: flex; flex-direction: column; min-width: 0; }
   /* Tab strip above the preview area (multi-tab, mirrors the in-app overlay) */
-  .ptabs { flex: none; display: flex; align-items: stretch; height: 28px; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; background: var(--p-bg-layer-1); border-bottom: 1px solid var(--p-border-l2); }
+  .ptabs { flex: none; display: flex; align-items: stretch; height: 28px; background: var(--p-bg-layer-1); border-bottom: 1px solid var(--p-border-l2); }
+  .ptabs-scroll { flex: 1 1 auto; display: flex; align-items: stretch; min-width: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
   .ptab { flex: none; display: flex; align-items: center; gap: 6px; max-width: 220px; padding: 0 6px 0 12px; cursor: pointer; border-right: 1px solid var(--p-border-l1); color: var(--p-text-secondary); font-size: 12px; line-height: 28px; user-select: none; }
   .ptab:hover { background: var(--p-hover); color: var(--p-text); }
   .ptab.is-active { background: var(--p-bg); color: var(--p-text); box-shadow: inset 0 -2px 0 var(--p-accent); }
@@ -140,6 +138,7 @@
   .diff-block.add .diff-pre { background: rgba(34,197,94,0.06); }
   .toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--p-bg-layer-1); border: 1px solid var(--p-border-l2); color: var(--p-text); padding: 6px 14px; border-radius: 8px; font-size: 12px; opacity: 0; transition: opacity .18s; pointer-events: none; box-shadow: var(--p-shadow); z-index: 10; }
   .gtoggle { flex: none; display: flex; align-items: center; gap: 4px; height: 28px; padding: 0 6px; border-bottom: 1px solid var(--p-border-l2); background: var(--p-bg-layer-1); }
+  .gtoggle-status { flex: none; font-size: 11px; color: var(--p-text-tertiary); margin-right: 2px; }
   .gtoggle-btn { width: 26px; height: 24px; flex: none; display: inline-flex; align-items: center; justify-content: center; border: none; background: transparent; color: var(--p-text-secondary); cursor: pointer; border-radius: 6px; padding: 0; }
   .gtoggle-btn:hover { background: var(--p-hover); color: var(--p-text); }
   .gtoggle-btn.is-active { color: var(--p-accent); }
@@ -200,22 +199,18 @@
 </style>
 </head>
 <body>
-  <header>
-    <h1>弹出式侧边栏</h1>
-    <span class="spacer"></span>
-    <span class="status" id="status">connecting…</span>
-  </header>
   <main>
     <div class="preview">
       <div class="ptabs" id="ptabs"></div>
       <div class="area" id="previewArea"></div>
     </div>
-    <div class="divider" id="divider" title="拖动调整面板宽度（默认最小）"></div>
     <div class="sidebar">
+      <div class="divider" id="divider" title="拖动调整面板宽度"></div>
       <div class="gtoggle">
-        <button class="gtoggle-btn" id="viewBtn" type="button" title="查看 Git 变更（未提交）"></button>
-        <button class="gtoggle-btn" id="refreshBtn" type="button" title="刷新"></button>
         <span class="gtoggle-label" id="viewLabel">文件列表</span>
+        <span class="gtoggle-status" id="status">connecting…</span>
+        <button class="gtoggle-btn" id="refreshBtn" type="button" title="刷新"></button>
+        <button class="gtoggle-btn" id="viewBtn" type="button" title="查看 Git 变更（未提交）"></button>
       </div>
       <div class="list is-hidden" id="list"></div>
       <div class="tree is-active" id="tree">
@@ -441,6 +436,7 @@
     function renderTabs() {
       var wrap = document.getElementById('ptabs');
       wrap.textContent = '';
+      var scroll = el('div', 'ptabs-scroll');
       tabs.forEach(function (t) {
         var tab = el('div', 'ptab' + (t.key === activeKey ? ' is-active' : ''));
         tab.title = (t.git ? '[diff] ' : '') + t.path;
@@ -451,8 +447,9 @@
         x.addEventListener('click', function (ev) { ev.stopPropagation(); closeTab(t.key); });
         tab.appendChild(x);
         tab.addEventListener('click', function () { setActiveTab(t.key); });
-        wrap.appendChild(tab);
+        scroll.appendChild(tab);
       });
+      wrap.appendChild(scroll);
     }
     function refreshTreeSelection() { if (treeRoot && currentView === 'tree') renderTree(); }
     function setActiveTab(key) {
@@ -501,7 +498,7 @@
       area.textContent = '';
       var t = activeTab();
       if (!t) {
-        area.appendChild(el('div', 'hint', currentView === 'git' ? '← 点击变更文件查看 diff' : '← 点击右侧文件查看内容'));
+        area.appendChild(el('div', 'hint', currentView === 'git' ? '点击右侧变更文件查看 diff' : '点击右侧文件查看内容'));
         return;
       }
       if (t.loading) { area.appendChild(el('div', 'hint', '加载中…')); return; }
@@ -801,6 +798,12 @@
       var sid = currentSessionId();
       if (sid !== _lastTreeSession) {
         _lastTreeSession = sid;
+        // Preview tabs hold the previous project's files — close them all so
+        // the new workspace starts clean.
+        tabs = [];
+        activeKey = null;
+        renderTabs();
+        renderActive();
         loadTreeRoot();
         if (currentView === 'git') loadGit();
       }

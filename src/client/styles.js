@@ -40,9 +40,12 @@ header:has([data-slot="conversation.session.header.utilities"]) {
 body[data-dsh-popout-dragging] .artifacts-preview-overlay { transition: none; }
 .artifacts-preview-overlay-tabs {
   flex: none; display: flex; align-items: stretch; height: 28px;
-  overflow-x: auto; overflow-y: hidden; scrollbar-width: thin;
   background: var(--dsw-alias-bg-layer-1);
   border-bottom: 1px solid var(--dsw-alias-border-l2);
+}
+.artifacts-ptabs-scroll {
+  flex: 1 1 auto; display: flex; align-items: stretch; min-width: 0;
+  overflow-x: auto; overflow-y: hidden; scrollbar-width: thin;
 }
 .artifacts-ptab {
   flex: none; display: flex; align-items: center; gap: 6px;
@@ -63,6 +66,14 @@ body[data-dsh-popout-dragging] .artifacts-preview-overlay { transition: none; }
   border: none; background: transparent; color: inherit; cursor: pointer; border-radius: 4px;
 }
 .artifacts-ptab-close:hover { background: var(--dsw-alias-interactive-bg-hover-accent, rgba(0, 0, 0, 0.08)); }
+/* ⇥ collapse button pinned at the right end of the tab strip: hides the
+   preview content while keeping the tabs; flipped (⇤) while hidden. */
+.artifacts-preview-hide {
+  flex: none; width: 32px; display: inline-flex; align-items: center; justify-content: center;
+  border: none; border-left: 1px solid var(--dsw-alias-border-l1); background: transparent;
+  color: var(--dsw-alias-label-secondary); cursor: pointer; padding: 0;
+}
+.artifacts-preview-hide:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
 .artifacts-preview-overlay .artifacts-preview-body { flex: 1; min-height: 0; }
 .artifacts-preview-overlay .artifacts-img { max-height: none; }
 

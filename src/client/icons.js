@@ -5,11 +5,6 @@
       React.createElement('rect', { x: 1.5, y: 1.5, width: 13, height: 13, rx: 2.8, stroke: 'currentColor', strokeWidth: 1.5 }),
       // Divider line at the right third (mirror of the sidebar's left divider).
       React.createElement('line', { x1: 10.2, y1: 2.6, x2: 10.2, y2: 13.4, stroke: 'currentColor', strokeWidth: 1.5 }),
-      // Pop-out arrow (↗) inside the left region, pointing up-right.
-      React.createElement('path', {
-        d: 'M6.2 9.2 L9.2 6.2 M9.2 6.2 L7.5 6.2 M9.2 6.2 L9.2 7.9',
-        stroke: 'currentColor', strokeWidth: 1.4, strokeLinecap: 'round', strokeLinejoin: 'round', fill: 'none',
-      }),
     )
 
     const FolderClosedIcon = (size) => React.createElement('svg', {
@@ -55,6 +50,19 @@
     },
       React.createElement('path', {
         d: 'M3.5 12.5 L12.5 3.5 M6.2 3.5 H12.5 V9.8',
+        stroke: 'currentColor', strokeWidth: 1.5, strokeLinecap: 'round', strokeLinejoin: 'round', fill: 'none',
+      }),
+    )
+
+    // ⇥ Panel-collapse: arrow pushing into a vertical bar (toward the sidebar).
+    // Used to hide the preview overlay while keeping its tabs; flipped
+    // horizontally (⇤) when the preview is hidden, meaning "pull back out".
+    const PanelCollapseIcon = (size) => React.createElement('svg', {
+      width: size, height: size, viewBox: '0 0 16 16', fill: 'none', 'aria-hidden': true,
+    },
+      React.createElement('line', { x1: 12.5, y1: 3, x2: 12.5, y2: 13, stroke: 'currentColor', strokeWidth: 1.5, strokeLinecap: 'round' }),
+      React.createElement('path', {
+        d: 'M3 8 H10 M7.8 5.6 L10.2 8 L7.8 10.4',
         stroke: 'currentColor', strokeWidth: 1.5, strokeLinecap: 'round', strokeLinejoin: 'round', fill: 'none',
       }),
     )

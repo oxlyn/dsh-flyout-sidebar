@@ -535,9 +535,12 @@ header:has([data-slot="conversation.session.header.utilities"]) {
 body[data-dsh-popout-dragging] .artifacts-preview-overlay { transition: none; }
 .artifacts-preview-overlay-tabs {
   flex: none; display: flex; align-items: stretch; height: 28px;
-  overflow-x: auto; overflow-y: hidden; scrollbar-width: thin;
   background: var(--dsw-alias-bg-layer-1);
   border-bottom: 1px solid var(--dsw-alias-border-l2);
+}
+.artifacts-ptabs-scroll {
+  flex: 1 1 auto; display: flex; align-items: stretch; min-width: 0;
+  overflow-x: auto; overflow-y: hidden; scrollbar-width: thin;
 }
 .artifacts-ptab {
   flex: none; display: flex; align-items: center; gap: 6px;
@@ -558,6 +561,14 @@ body[data-dsh-popout-dragging] .artifacts-preview-overlay { transition: none; }
   border: none; background: transparent; color: inherit; cursor: pointer; border-radius: 4px;
 }
 .artifacts-ptab-close:hover { background: var(--dsw-alias-interactive-bg-hover-accent, rgba(0, 0, 0, 0.08)); }
+/* ⇥ collapse button pinned at the right end of the tab strip: hides the
+   preview content while keeping the tabs; flipped (⇤) while hidden. */
+.artifacts-preview-hide {
+  flex: none; width: 32px; display: inline-flex; align-items: center; justify-content: center;
+  border: none; border-left: 1px solid var(--dsw-alias-border-l1); background: transparent;
+  color: var(--dsw-alias-label-secondary); cursor: pointer; padding: 0;
+}
+.artifacts-preview-hide:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
 .artifacts-preview-overlay .artifacts-preview-body { flex: 1; min-height: 0; }
 .artifacts-preview-overlay .artifacts-img { max-height: none; }
 
@@ -796,11 +807,6 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
       React.createElement('rect', { x: 1.5, y: 1.5, width: 13, height: 13, rx: 2.8, stroke: 'currentColor', strokeWidth: 1.5 }),
       // Divider line at the right third (mirror of the sidebar's left divider).
       React.createElement('line', { x1: 10.2, y1: 2.6, x2: 10.2, y2: 13.4, stroke: 'currentColor', strokeWidth: 1.5 }),
-      // Pop-out arrow (↗) inside the left region, pointing up-right.
-      React.createElement('path', {
-        d: 'M6.2 9.2 L9.2 6.2 M9.2 6.2 L7.5 6.2 M9.2 6.2 L9.2 7.9',
-        stroke: 'currentColor', strokeWidth: 1.4, strokeLinecap: 'round', strokeLinejoin: 'round', fill: 'none',
-      }),
     )
 
     const FolderClosedIcon = (size) => React.createElement('svg', {
@@ -846,6 +852,19 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
     },
       React.createElement('path', {
         d: 'M3.5 12.5 L12.5 3.5 M6.2 3.5 H12.5 V9.8',
+        stroke: 'currentColor', strokeWidth: 1.5, strokeLinecap: 'round', strokeLinejoin: 'round', fill: 'none',
+      }),
+    )
+
+    // ⇥ Panel-collapse: arrow pushing into a vertical bar (toward the sidebar).
+    // Used to hide the preview overlay while keeping its tabs; flipped
+    // horizontally (⇤) when the preview is hidden, meaning "pull back out".
+    const PanelCollapseIcon = (size) => React.createElement('svg', {
+      width: size, height: size, viewBox: '0 0 16 16', fill: 'none', 'aria-hidden': true,
+    },
+      React.createElement('line', { x1: 12.5, y1: 3, x2: 12.5, y2: 13, stroke: 'currentColor', strokeWidth: 1.5, strokeLinecap: 'round' }),
+      React.createElement('path', {
+        d: 'M3 8 H10 M7.8 5.6 L10.2 8 L7.8 10.4',
         stroke: 'currentColor', strokeWidth: 1.5, strokeLinecap: 'round', strokeLinejoin: 'round', fill: 'none',
       }),
     )
@@ -1254,6 +1273,27 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
       const settings = useSettings()
       const [tabs, setTabs] = React.useState([]) // open preview tabs { key, path, git, loading, ok, error, … }
       const [activeKey, setActiveKey] = React.useState(null)
+      // ⇥ hides the whole preview overlay but keeps the tabs in memory;
+      // opening any file from the tree/git list brings them all back.
+      const [previewHidden, setPreviewHidden] = React.useState(false)
+
+      // Track the active session: preview tabs belong to a project's files,
+      // so they are all closed when the workspace switches (otherwise stale
+      // tabs would show the old project's content next to the new one).
+      const [sessionId, setSessionId] = React.useState(currentSessionId())
+      React.useEffect(() => {
+        let list
+        try { list = ctx.get('sessions') && ctx.get('sessions').list } catch (e) {}
+        if (!list || typeof list.subscribe !== 'function') return
+        return list.subscribe(() => setSessionId(currentSessionId()))
+      }, [])
+      const firstSession = React.useRef(true)
+      React.useEffect(() => {
+        if (firstSession.current) { firstSession.current = false; return }
+        setTabs([])
+        setActiveKey(null)
+        setPreviewHidden(false)
+      }, [sessionId])
       const [notice, setNotice] = React.useState('')
       const [gitFiles, setGitFiles] = React.useState(null) // null = loading
       const [gitError, setGitError] = React.useState(null)
@@ -1402,6 +1442,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
       const patchTab = (key, patch) => setTabs((prev) => prev.map((t) => (t.key === key ? Object.assign({}, t, patch) : t)))
 
       const openTab = (key, path, git, initial) => {
+        setPreviewHidden(false)
         setTabs((prev) => {
           const i = prev.findIndex((t) => t.key === key)
           if (i >= 0) {
@@ -1499,27 +1540,37 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
       })
 
       // Multi-tab preview overlay: each opened file becomes a tab; the active
-      // tab's content covers the whole area LEFT of the sidebar panel.
-      const previewOverlay = tabs.length ? React.createElement('div', {
+      // tab's content covers the whole area LEFT of the sidebar panel. The ⇥
+      // button hides the whole overlay — tabs survive and are restored via the
+      // left-edge pill or by opening any file.
+      const previewOverlay = (tabs.length && !previewHidden) ? React.createElement('div', {
         className: 'artifacts-preview-overlay',
         key: 'preview-overlay',
         role: 'region', 'aria-label': '文件预览',
       },
         React.createElement('div', { className: 'artifacts-preview-overlay-tabs' },
-          tabs.map((t) => React.createElement('div', {
-            key: t.key,
-            className: 'artifacts-ptab' + (t.key === activeKey ? ' is-active' : ''),
-            title: (t.git ? '[diff] ' : '') + (t.path || ''),
-            onClick: () => setActiveKey(t.key),
-          },
-            React.createElement('span', { className: 'artifacts-ptab-name' }, basename(t.path || '')),
-            React.createElement('button', {
-              type: 'button',
-              className: 'artifacts-ptab-close',
-              title: '关闭标签页',
-              onClick: (e) => { e.stopPropagation(); closeTab(t.key) },
-            }, '×'),
-          )),
+          React.createElement('div', { className: 'artifacts-ptabs-scroll' },
+            tabs.map((t) => React.createElement('div', {
+              key: t.key,
+              className: 'artifacts-ptab' + (t.key === activeKey ? ' is-active' : ''),
+              title: (t.git ? '[diff] ' : '') + (t.path || ''),
+              onClick: () => setActiveKey(t.key),
+            },
+              React.createElement('span', { className: 'artifacts-ptab-name' }, basename(t.path || '')),
+              React.createElement('button', {
+                type: 'button',
+                className: 'artifacts-ptab-close',
+                title: '关闭标签页',
+                onClick: (e) => { e.stopPropagation(); closeTab(t.key) },
+              }, '×'),
+            )),
+          ),
+          React.createElement('button', {
+            type: 'button',
+            className: 'artifacts-preview-hide',
+            title: '隐藏预览（标签页保留）',
+            onClick: () => setPreviewHidden(true),
+          }, PanelCollapseIcon(16)),
         ),
         activeTab ? renderPreview(activeTab) : null,
       ) : null
