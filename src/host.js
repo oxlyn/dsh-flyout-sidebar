@@ -709,6 +709,12 @@ return {
   .toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--p-bg-layer-1); border: 1px solid var(--p-border-l2); color: var(--p-text); padding: 6px 14px; border-radius: 8px; font-size: 12px; opacity: 0; transition: opacity .18s; pointer-events: none; box-shadow: var(--p-shadow); z-index: 10; }
   .gtoggle { flex: none; display: flex; align-items: center; gap: 4px; height: 28px; padding: 0 6px; border-bottom: 1px solid var(--p-border-l2); background: var(--p-bg-layer-1); }
   .gtoggle-status { flex: none; font-size: 11px; color: var(--p-text-tertiary); margin-right: 2px; }
+  /* Panel on the left side: preview and panel swap via flex-direction */
+  main.side-left { flex-direction: row-reverse; }
+  main.side-left .sidebar { border-left: none; border-right: 1px solid var(--p-border-l2); }
+  main.side-left .divider { left: auto; right: -4px; }
+  .gtoggle-side-icon { display: inline-flex; transition: transform .15s; }
+  .gtoggle-side-icon.is-flipped { transform: scaleX(-1); }
   .gtoggle-btn { width: 26px; height: 24px; flex: none; display: inline-flex; align-items: center; justify-content: center; border: none; background: transparent; color: var(--p-text-secondary); cursor: pointer; border-radius: 6px; padding: 0; }
   .gtoggle-btn:hover { background: var(--p-hover); color: var(--p-text); }
   .gtoggle-btn.is-active { color: var(--p-accent); }
@@ -779,6 +785,7 @@ return {
       <div class="gtoggle">
         <span class="gtoggle-label" id="viewLabel">文件列表</span>
         <span class="gtoggle-status" id="status">connecting…</span>
+        <button class="gtoggle-btn" id="sideBtn" type="button" title="将文件面板移到左侧"></button>
         <button class="gtoggle-btn" id="refreshBtn" type="button" title="刷新"></button>
         <button class="gtoggle-btn" id="viewBtn" type="button" title="查看 Git 变更（未提交）"></button>
       </div>
@@ -1600,6 +1607,52 @@ return {
     setView('tree');
     renderTabs();
     renderActive();
+    // ── Panel side: file panel on the right (default) or the left ─────────
+    var PANEL_SIDE_KEY = 'dsh-popout-sidebar:panelLeft';
+    var panelLeft = false;
+    try { panelLeft = localStorage.getItem(PANEL_SIDE_KEY) === '1'; } catch (e) {}
+    function panelSideIcon() {
+      var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('width', 16); svg.setAttribute('height', 16);
+      svg.setAttribute('viewBox', '0 0 16 16'); svg.setAttribute('fill', 'none');
+      var rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      rect.setAttribute('x', '1.5'); rect.setAttribute('y', '1.5');
+      rect.setAttribute('width', '13'); rect.setAttribute('height', '13');
+      rect.setAttribute('rx', '2.8');
+      rect.setAttribute('stroke', 'currentColor');
+      rect.setAttribute('stroke-width', '1.5');
+      rect.setAttribute('fill', 'none');
+      svg.appendChild(rect);
+      var line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('x1', '10.2'); line.setAttribute('y1', '2.6');
+      line.setAttribute('x2', '10.2'); line.setAttribute('y2', '13.4');
+      line.setAttribute('stroke', 'currentColor');
+      line.setAttribute('stroke-width', '1.5');
+      svg.appendChild(line);
+      return svg;
+    }
+    function applyPanelSide() {
+      var main = document.querySelector('main');
+      if (main) main.classList.toggle('side-left', panelLeft);
+      var b = document.getElementById('sideBtn');
+      if (b) {
+        b.title = panelLeft ? '将文件面板移到右侧' : '将文件面板移到左侧';
+        var icon = b.querySelector('.gtoggle-side-icon');
+        if (icon) icon.classList.toggle('is-flipped', panelLeft);
+      }
+    }
+    var sideBtn = document.getElementById('sideBtn');
+    if (sideBtn) {
+      var sideIconWrap = el('span', 'gtoggle-side-icon');
+      sideIconWrap.appendChild(panelSideIcon());
+      sideBtn.appendChild(sideIconWrap);
+      sideBtn.addEventListener('click', function () {
+        panelLeft = !panelLeft;
+        applyPanelSide();
+        try { localStorage.setItem(PANEL_SIDE_KEY, panelLeft ? '1' : '0'); } catch (e) {}
+      });
+    }
+    applyPanelSide();
     // ── Panel width: draggable divider; default = minimum ─────────────────
     var PANEL_W_KEY = 'dsh-popout-sidebar:panelw';
     var PANEL_MIN = 240;
@@ -1621,7 +1674,8 @@ return {
       document.body.classList.add('panel-dragging');
       var maxW = Math.max(PANEL_MIN, Math.round(window.innerWidth * PANEL_MAX_RATIO));
       var onMove = function (e) {
-        panelW = Math.max(PANEL_MIN, Math.min(window.innerWidth - e.clientX, maxW));
+        var w = panelLeft ? e.clientX : window.innerWidth - e.clientX;
+        panelW = Math.max(PANEL_MIN, Math.min(w, maxW));
         applyPanelW();
       };
       var onUp = function () {
