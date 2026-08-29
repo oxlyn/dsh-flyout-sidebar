@@ -33,7 +33,8 @@
     "cordis.patch.yml",
     "README.md",
     "README_EN.md",
-    "LICENSE"
+    "LICENSE",
+    "snapshots"
   ],
   "engines": {
     "node": ">=20"

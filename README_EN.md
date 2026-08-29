@@ -1,12 +1,21 @@
 # dsh-flyout-sidebar
 
+[![npm version](https://img.shields.io/npm/v/dsh-flyout-sidebar.svg)](https://www.npmjs.com/package/dsh-flyout-sidebar)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](#license)
 
-> DeepSeek Harness (DSH) plugin: a flyout sidebar with a file tree and the Git changed-but-uncommitted files, multi-tab file preview, and a standalone flyout browser tab.
+> DeepSeek Harness (DSH) plugin: a **flyout sidebar** — file tree + Git changed-but-uncommitted files, multi-tab preview of files and diffs, a preview area that covers the whole conversation region, and one-click **pop-out to a standalone browser tab** you can drag to another monitor.
 >
 > [中文](README.md) ｜ EN
 
+![Sidebar panel](snapshots/sidebar.png)
+
 ## Install
+
+### From npm (recommended)
+
+```sh
+dsh plugin --profile web add dsh-flyout-sidebar
+```
 
 ### From GitHub sources
 
@@ -36,6 +45,15 @@ After installing, **restart `dsh web`** and **hard-refresh the browser** (Cmd/Ct
 dsh --profile web --dump-config | grep dsh-flyout-sidebar   # this line should appear
 ```
 
+## Highlights
+
+- **Pop it out**: the ↗ button in the panel header pops the sidebar out to a standalone `/flyout-sidebar` browser tab — drag it to another monitor and use it as a dedicated file panel while the main screen keeps the conversation unobstructed; the panel and the flyout sync session and theme in real time via `localStorage`, and the flyout has no title bar so all vertical space goes to content
+- **Large preview area**: the preview overlay covers the **entire conversation region to the left of the sidebar** (not a narrow strip) — code with line numbers + syntax highlighting, long files, large images and PDFs all get plenty of reading width
+- **Multi-tab preview of files / diffs**: open many file tabs at once, or click a Git change to open a **colored unified diff**; supports code highlighting, Markdown rendering, images, PDF (embedded pdf.js, offline-safe) and sandboxed HTML iframes; ⇥ collapses/restores all tabs at once
+- **Auto refresh**: the Git changes list follows automatically — a 700ms debounce after every agent tool run, 2s polling, and a 15s fallback covering out-of-band IDE edits; the refresh button forces a real fetch with a row-by-row reveal animation
+
+![Multi-tab preview — large preview area](snapshots/sidebar-file-preview.png)
+
 ## Features
 
 | # | Form | Entry | Description |
@@ -45,14 +63,15 @@ dsh --profile web --dump-config | grep dsh-flyout-sidebar   # this line should a
 | 3 | Multi-tab preview | click a file | The preview overlay covers the entire area left of the sidebar; open many files at once; syntax highlighting by extension, plus Markdown, images, PDF and sandboxed HTML iframes; ⇥ collapses the whole preview (tabs kept, opening a file restores them) |
 | 4 | Flyout tab | ↗ in the panel header | Pops out to `/flyout-sidebar`, draggable to another monitor; content left / file panel right, one-click side swap, draggable width (defaults to minimum, preference remembered) |
 
-**Highlights:**
+**More:**
 
-- Git status is cached per workspace: the first request awaits the real result, then polls answer instantly while a background refresh runs (700ms debounce after every agent tool run, plus a 15s safety poll covering IDE edits)
 - Switching projects/sessions clears all preview tabs automatically, so content never leaks across workspaces
 - One-click path copy, or write an `@path` quote into the session composer, from git change rows and file tree rows
 - Both the panel and the flyout tab follow DSH's light/dark theme in real time (the flyout syncs via `localStorage`, correct on first paint)
 - Coexists with other sidebar plugins: it shifts left of other side cards automatically, both stay visible
-- The flyout has no title bar — all vertical space goes to content; the status (live / git error / offline) lives in the panel header row
+- The panel opens/closes with a push-pull slide animation; the trigger button slides along with it
+
+![Flyout tab — full-window preview](snapshots/flyout-file-preview.png)
 
 ## Settings
 
@@ -83,7 +102,7 @@ The plugin splits into a host side and a client side, written in TypeScript + JS
 │  - host/page.ts        standalone flyout page HTML (inlines the │
 │                        shared modules)                          │
 │  - host/routes.ts      ctx.webServer.register:                  │
-│      GET /flyout-sidebar/gitstatus  change list JSON            │
+│      GET /flyout-sidebar/gitstatus  change list JSON (?force)   │
 │      GET /flyout-sidebar/gitdiff    per-file diff JSON          │
 │      GET /flyout-sidebar/listdir    directory listing           │
 │      GET /flyout-sidebar/content    text content (code preview) │
@@ -127,6 +146,7 @@ dsh-flyout-sidebar/
 ├── tsdown.config.ts      # tsdown build: host/client bundles + ?raw inline plugin
 ├── src/index.ts          # host entry (exports name/inject/apply, ESM)
 ├── dist/                 # ⚙️ generated: index.js (host) / client.js (browser), do not edit
+├── snapshots/            # README screenshots
 ├── src/shared/           # shared portable modules (JSDoc types, inlined into the flyout page): ext / markdown / highlight
 ├── src/host/             # host modules: types / artifacts / workspace / files / git / page (flyout HTML) / routes (HTTP)
 ├── src/client/           # client modules (TSX): jsx (React bridge) / runtime / store / styles / icons / preview / components
@@ -142,6 +162,8 @@ dsh plugin --profile web update dsh-flyout-sidebar    # or `add` again
 ```
 
 Then restart `dsh web` and hard-refresh the browser.
+
+> If you still get the old version after publishing: the DSH profile's pnpm supply-chain policy `minimumReleaseAge` (24h by default) holds back freshly published versions. Add this package's name (without a version) to `minimumReleaseAgeExclude` in the profile's `pnpm-workspace.yaml` to unlock it immediately.
 
 ## Links
 

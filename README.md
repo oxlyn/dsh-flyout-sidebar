@@ -1,12 +1,21 @@
 # dsh-flyout-sidebar
 
+[![npm version](https://img.shields.io/npm/v/dsh-flyout-sidebar.svg)](https://www.npmjs.com/package/dsh-flyout-sidebar)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](#license)
 
-> DeepSeek Harness (DSH) 插件：可弹出式侧边栏——文件树 + Git 未提交变更列表，点击文件即可多标签预览，并可弹出为独立浏览器标签页。
+> DeepSeek Harness (DSH) 插件：**可弹出式侧边栏**——文件树 + Git 未提交变更列表，多标签预览文件与 diff，预览区盖住整个会话区，还能一键**弹出为独立浏览器标签页**、拖到另一块显示器。
 >
 > 中文 ｜ [EN](README_EN.md)
 
+![侧边栏面板](snapshots/sidebar.png)
+
 ## 安装 / Install
+
+### npm 安装（推荐）
+
+```sh
+dsh plugin --profile web add dsh-flyout-sidebar
+```
 
 ### 源码安装（GitHub）
 
@@ -36,6 +45,15 @@ dsh web
 dsh --profile web --dump-config | grep dsh-flyout-sidebar   # 配置层含本行
 ```
 
+## 核心特性 / Highlights
+
+- **可弹出**：面板左上角 ↗ 一键弹出为 `/flyout-sidebar` 独立浏览器标签页——可拖到另一块显示器当"文件面板"用，主屏对话不受任何遮挡；面板与弹出页经 `localStorage` 实时同步会话与主题，弹出页无标题栏、垂直空间全部留给内容
+- **预览显示面积大**：预览覆盖层盖住侧边栏**左侧整个会话区域**（不是挤在窄面板里），代码行号 + 语法高亮、长文件、大图、PDF 都有足够的阅读宽度
+- **多标签预览文件 / diff**：可同时打开多个文件标签，也可直接点 Git 变更列表打开**着色 unified diff**；支持代码高亮、Markdown 渲染、图片、PDF（内嵌 pdf.js，离线可用）、HTML 沙箱 iframe；⇥ 一键收起/恢复全部标签
+- **自动刷新**：Git 变更列表自动跟随——agent 每次工具执行后 700ms 去抖刷新 + 2s 轮询 + 15s 兜底覆盖 IDE 等带外修改；点刷新按钮强制拉取真实状态，列表逐行浮现提示
+
+![多标签预览——大面积预览区](snapshots/sidebar-file-preview.png)
+
 ## 功能 / Features
 
 | # | 形式 | 入口 | 说明 |
@@ -45,14 +63,15 @@ dsh --profile web --dump-config | grep dsh-flyout-sidebar   # 配置层含本行
 | 3 | 多标签预览 | 点击文件 | 预览覆盖层盖住侧边栏左侧整个区域，可同时打开多个文件；按扩展名自动语法高亮，另支持 Markdown 渲染、图片、PDF、HTML 沙箱 iframe；⇥ 收起整个预览（标签保留，点文件恢复） |
 | 4 | 弹出独立标签页 | 面板左上角 ↗ | 弹出为 `/flyout-sidebar` 独立网页，可拖到另一显示器；内容在左/面板在右，面板左右位置一键切换、宽度可拖动（默认最小宽，记忆偏好） |
 
-**特性一览：**
+**其他特性一览：**
 
-- Git 变更列表按工作区分桶缓存：首次请求同步等待真实结果，之后即时响应 + 后台刷新（agent 每次工具执行后 700ms 去抖刷新，另有 15s 兜底轮询覆盖 IDE 等带外修改）
 - 切换项目/会话时自动清空全部预览标签，杜绝跨项目内容串显
 - git 变更行与文件树行可一键复制路径，或把 `@path` 引用写入会话输入框
 - 面板与弹出页实时跟随 DSH 浅色 / 深色主题（弹出页经 `localStorage` 同步，首屏即正确）
 - 与其他 sidebar 插件兼容：其他侧边卡片打开时自动让位到其左侧，两者同时可见
-- 弹出页无标题栏，垂直空间全部留给内容；状态（live / git error / offline）并入面板顶行
+- 面板开合为推拉滑动动画，触发按钮随面板同步滑入滑出
+
+![弹出页——独立窗口全屏预览](snapshots/flyout-file-preview.png)
 
 ## 设置 / Settings
 
@@ -81,7 +100,7 @@ DSH 设置面板（左下角 ⚙️）新增「**Flyout Sidebar**」选项卡：
 │  - host/files.ts       文件树列目录 / 文本读取                  │
 │  - host/page.ts        独立弹出页 HTML（内联 shared 源码）       │
 │  - host/routes.ts      ctx.webServer.register：                 │
-│      GET /flyout-sidebar/gitstatus  变更列表 JSON               │
+│      GET /flyout-sidebar/gitstatus  变更列表 JSON（支持 force） │
 │      GET /flyout-sidebar/gitdiff    单文件 diff JSON            │
 │      GET /flyout-sidebar/listdir    文件树目录列表              │
 │      GET /flyout-sidebar/content    文本内容（代码预览）        │
@@ -124,6 +143,7 @@ dsh-flyout-sidebar/
 ├── tsdown.config.ts      # tsdown 构建：host/client 双 bundle + ?raw 内联插件
 ├── src/index.ts          # Host 入口（导出 name/inject/apply，ESM）
 ├── dist/                 # ⚙️ 构建产物：index.js（host）/ client.js（浏览器），勿手改
+├── snapshots/            # README 截图
 ├── src/shared/           # 两端共享可移植模块（JSDoc 类型，随弹出页内联）：ext / markdown / highlight
 ├── src/host/             # host 模块：types / artifacts / workspace / files / git / page（弹出页 HTML）/ routes（HTTP）
 ├── src/client/           # client 模块（TSX）：jsx（React 桥）/ runtime / store / styles / icons / preview / components
@@ -139,6 +159,8 @@ dsh plugin --profile web update dsh-flyout-sidebar    # 或重新 add
 ```
 
 随后重启 `dsh web` 并硬刷新浏览器。
+
+> 若安装后仍是旧版本：DSH profile 的 pnpm 供应链策略 `minimumReleaseAge`（默认 24 小时）会暂缓安装刚发布的版本；可在 profile 的 `pnpm-workspace.yaml` 的 `minimumReleaseAgeExclude` 中加入本包名（不带版本号）立即解锁。
 
 ## 友情链接 / Links
 
