@@ -32,8 +32,8 @@
 	}
 	/** host RPC 桥：与 host 侧 /flyout-sidebar/* 路由一一对应 */
 	const host = {
-		gitStatus(sessionId) {
-			return getJson("/flyout-sidebar/gitstatus" + qs(["sessionId", sessionId]));
+		gitStatus(sessionId, force) {
+			return getJson("/flyout-sidebar/gitstatus" + qs(["sessionId", sessionId], ["force", force ? "1" : ""]));
 		},
 		gitDiff(path, sessionId) {
 			return getJson("/flyout-sidebar/gitdiff" + qs(["path", path], ["sessionId", sessionId]));
@@ -165,7 +165,16 @@ body[data-dsh-flyout-dragging] .artifacts-preview-overlay { transition: none; }
 }
 .artifacts-iconbtn:hover { background: var(--dsw-alias-interactive-bg-hover); }
 .artifacts-main { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
-.artifacts-body { flex: 0 0 auto; min-height: 0; overflow-y: auto; }
+.artifacts-body { flex: 0 0 auto; min-height: 0; overflow-y: auto; transition: opacity .15s; }
+.artifacts-body.artifacts-refreshing { opacity: .45; }
+/* 刷新后逐行浮现：延迟由行内 style 按行号注入 */
+.artifacts-item.artifacts-flash-in,
+.artifacts-tree-node.artifacts-flash-in,
+.artifacts-tree-row.artifacts-flash-in { animation: artifacts-flash-in .3s var(--ds-ease-in-out, ease) both; }
+@keyframes artifacts-flash-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: none; }
+}
 .artifacts-empty { padding: 28px 16px; color: var(--dsw-alias-label-tertiary); text-align: center; }
 .artifacts-item {
   display: flex; align-items: stretch; width: 100%; padding: 0;
@@ -1423,14 +1432,18 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 				copyRef(entry.path);
 			}
 		}, "@引用");
-		const renderNode = (entry, depth) => {
+		const renderNode = (entry, depth, flashDelay) => {
 			const pad = { paddingLeft: 6 + depth * 20 };
 			const isSelected = selectedPath === entry.path;
 			const rowClass = "artifacts-tree-row" + (entry.hidden ? " artifacts-tree-hidden" : "") + (isSelected ? " is-selected" : "");
 			if (entry.isDir) {
 				const isExpanded = !!expanded[entry.path];
 				const node = children[entry.path];
-				return /* @__PURE__ */ h("div", { key: entry.path }, /* @__PURE__ */ h("div", {
+				return /* @__PURE__ */ h("div", {
+					key: entry.path,
+					className: flashDelay != null ? "artifacts-tree-node artifacts-flash-in" : "artifacts-tree-node",
+					style: flashDelay != null ? { animationDelay: flashDelay + "ms" } : void 0
+				}, /* @__PURE__ */ h("div", {
 					role: "button",
 					tabIndex: 0,
 					className: rowClass + " artifacts-tree-dir",
@@ -1454,8 +1467,11 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			return /* @__PURE__ */ h("div", {
 				role: "button",
 				tabIndex: 0,
-				className: rowClass,
-				style: pad,
+				className: rowClass + (flashDelay != null ? " artifacts-flash-in" : ""),
+				style: flashDelay != null ? {
+					...pad,
+					animationDelay: flashDelay + "ms"
+				} : pad,
 				onClick: () => {
 					if (onOpen) onOpen(entry.path);
 				},
@@ -1468,7 +1484,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 				title: entry.path
 			}, /* @__PURE__ */ h(FileCodeIcon, { size: 14 }), /* @__PURE__ */ h("span", { className: "artifacts-tree-name" }, entry.name), rowActions(entry));
 		};
-		return /* @__PURE__ */ h("div", { className: "artifacts-tree" }, /* @__PURE__ */ h("div", { className: "artifacts-tree-body" }, !root ? /* @__PURE__ */ h("div", { className: "artifacts-hint" }, "加载文件树…") : !root.entries || !root.entries.length ? /* @__PURE__ */ h("div", { className: "artifacts-hint" }, "（空目录）") : root.entries.map((e) => renderNode(e, 0))));
+		return /* @__PURE__ */ h("div", { className: "artifacts-tree" }, /* @__PURE__ */ h("div", { className: "artifacts-tree-body" }, !root ? /* @__PURE__ */ h("div", { className: "artifacts-hint" }, "加载文件树…") : !root.entries || !root.entries.length ? /* @__PURE__ */ h("div", { className: "artifacts-hint" }, "（空目录）") : root.entries.map((e, i) => renderNode(e, 0, Math.min(i, 12) * 45))));
 	}
 	function ArtifactsPanel() {
 		const open = useOpen();
@@ -1495,13 +1511,22 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		const [activeView, setActiveView] = React.useState(() => settings.showFileTree ? "tree" : "git");
 		const [treeRefresh, setTreeRefresh] = React.useState(0);
 		const [gitRefresh, setGitRefresh] = React.useState(0);
+		const [gitRefreshing, setGitRefreshing] = React.useState(false);
+		const [gitFlash, setGitFlash] = React.useState(0);
 		const noticeTimer = React.useRef(null);
+		const gitForceRef = React.useRef(false);
 		React.useEffect(() => {
 			if (!open || activeView !== "git") return;
 			let alive = true;
 			const load = () => {
-				host.gitStatus(currentSessionId()).then((res) => {
+				const force = gitForceRef.current;
+				gitForceRef.current = false;
+				host.gitStatus(currentSessionId(), force).then((res) => {
 					if (!alive) return;
+					if (force) {
+						setGitRefreshing(false);
+						setGitFlash((n) => n + 1);
+					}
 					if (res && res.ok) {
 						setGitFiles(Array.isArray(res.entries) ? res.entries : []);
 						setGitError(null);
@@ -1510,6 +1535,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 						setGitError(res && res.error || "git status 失败");
 					}
 				}).catch((e) => {
+					if (force) setGitRefreshing(false);
 					if (alive) setGitError(e instanceof Error && e.message ? String(e.message) : String(e));
 				});
 			};
@@ -1734,12 +1760,14 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			key: "empty",
 			className: "artifacts-empty"
 		}, "没有未提交的变更"));
-		(gitFiles || []).forEach((e) => {
+		(gitFiles || []).forEach((e, idx) => {
 			const label = gitLabel(e);
 			const isActive = !!(activeTab && activeTab.git && activeTab.path === e.path);
+			const flashKey = gitFlash > 0 ? gitFlash + ":" : "";
 			gitListRows.push(/* @__PURE__ */ h("div", {
-				key: e.path,
-				className: "artifacts-item" + (isActive ? " is-active" : "")
+				key: flashKey + e.path,
+				className: "artifacts-item" + (isActive ? " is-active" : "") + (flashKey ? " artifacts-flash-in" : ""),
+				style: flashKey ? { animationDelay: Math.min(idx, 12) * 45 + "ms" } : void 0
 			}, /* @__PURE__ */ h("button", {
 				type: "button",
 				className: "artifacts-item-main",
@@ -1806,7 +1834,11 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			title: activeView === "tree" ? "刷新文件树" : "刷新变更列表",
 			onClick: () => {
 				if (activeView === "tree") setTreeRefresh((n) => n + 1);
-				else setGitRefresh((n) => n + 1);
+				else {
+					gitForceRef.current = true;
+					setGitRefreshing(true);
+					setGitRefresh((n) => n + 1);
+				}
 			}
 		}, /* @__PURE__ */ h(RefreshIcon, { size: 16 })), settings.showFileTree ? /* @__PURE__ */ h("button", {
 			type: "button",
@@ -1815,7 +1847,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			"aria-pressed": activeView === "git",
 			onClick: () => setActiveView(activeView === "tree" ? "git" : "tree")
 		}, activeView === "tree" ? /* @__PURE__ */ h(GitBranchIcon, { size: 16 }) : /* @__PURE__ */ h(FolderClosedIcon, { size: 16 })) : null), /* @__PURE__ */ h("div", { className: "artifacts-main" }, /* @__PURE__ */ h("div", {
-			className: "artifacts-body",
+			className: "artifacts-body" + (activeView === "git" && gitRefreshing ? " artifacts-refreshing" : ""),
 			style: { flex: "1 1 auto" }
 		}, activeView === "tree" && settings.showFileTree ? /* @__PURE__ */ h(FileTree, {
 			onOpen: openFile,

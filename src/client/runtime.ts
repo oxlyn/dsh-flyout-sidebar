@@ -81,8 +81,8 @@ function qs(...pairs: Array<[string, string]>): string {
 
 /** host RPC 桥：与 host 侧 /flyout-sidebar/* 路由一一对应 */
 export const host = {
-  gitStatus(sessionId: string): Promise<GitStatusResponse> {
-    return getJson('/flyout-sidebar/gitstatus' + qs(['sessionId', sessionId])) as Promise<GitStatusResponse>
+  gitStatus(sessionId: string, force?: boolean): Promise<GitStatusResponse> {
+    return getJson('/flyout-sidebar/gitstatus' + qs(['sessionId', sessionId], ['force', force ? '1' : ''])) as Promise<GitStatusResponse>
   },
   gitDiff(path: string, sessionId: string): Promise<GitDiffResponse> {
     return getJson('/flyout-sidebar/gitdiff' + qs(['path', path], ['sessionId', sessionId])) as Promise<GitDiffResponse>

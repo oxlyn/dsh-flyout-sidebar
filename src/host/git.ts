@@ -129,9 +129,16 @@ export function attachGitTracking(ctx: HostContext): void {
   }, 15000)
 }
 
-export async function gitStatus(ctx: HostContext, sessionId?: string): Promise<GitStatusResult> {
+export async function gitStatus(ctx: HostContext, sessionId?: string, opts?: { force?: boolean }): Promise<GitStatusResult> {
   const cwd = await resolveCwdCached(ctx, sessionId)
   if (!cwd) return { ok: false, error: 'workspace unavailable' }
+  // 用户点「刷新」时绕过 stale-while-revalidate，同步取一次真实状态。
+  if (opts?.force) {
+    await refreshStatus(cwd, true)
+    const fresh = statusCache.get(cwd)
+    if (!fresh) return { ok: false, error: 'git status 失败', root: cwd }
+    return { ok: fresh.ok, error: fresh.error || undefined, entries: fresh.entries, root: cwd, cachedAt: fresh.at }
+  }
   const cached = statusCache.get(cwd)
   if (cached) {
     // stale-while-revalidate：即时应答，后台刷新。

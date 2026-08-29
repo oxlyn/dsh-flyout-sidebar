@@ -108,7 +108,11 @@ export function buildFlyoutPage(): string {
   .divider:hover::after, .divider.dragging::after { background: var(--p-accent); }
   body.panel-dragging iframe, body.panel-dragging embed { pointer-events: none; }
   body.panel-dragging { user-select: none; }
-  .list { flex: 1; min-height: 0; overflow-y: auto; }
+  .list { flex: 1; min-height: 0; overflow-y: auto; transition: opacity .15s; }
+  .list.is-refreshing { opacity: .45; }
+  /* 刷新后逐行浮现：延迟由 JS 按行号注入 */
+  .item.flash-in, .tree-row.flash-in { animation: flash-in .3s ease both; }
+  @keyframes flash-in { from { opacity: 0; transform: translateY(-8px); } }
   .list .empty { padding: 32px 20px; color: var(--p-text-tertiary); text-align: center; }
   .item { display: flex; align-items: stretch; border-bottom: 1px solid var(--p-border-l1); }
   /* Selected artifact: left accent bar distinguishes it from the file tree. */
@@ -282,6 +286,7 @@ ${sharedScript}
     }
     var gitFiles = null;
     var gitError = null;
+    var gitSig = null; // 上次渲染的变更签名；轮询数据未变时跳过重渲染，避免冲掉刷新动画
     var treeRoot = null;
     var treeChildren = {};
     var treeExpanded = {};
@@ -648,6 +653,7 @@ ${sharedScript}
           treeRoot = { path: null, entries: [] };
         }
         renderTree();
+        staggerList(document.getElementById('treeBody'), '.tree-row');
       }).catch(function () {
         if (left > 0) { setTimeout(function () { loadTreeRoot(left - 1); }, 400); return; }
         treeRoot = { path: null, entries: [] };
@@ -745,27 +751,50 @@ ${sharedScript}
       refreshBtn.appendChild(refreshIcon());
       refreshBtn.addEventListener('click', function () {
         if (currentView === 'tree') loadTreeRoot();
-        else loadGit();
+        else loadGit(true);
       });
     }
     // Poll git status for the changed-files view (and the live/offline badge).
-    function loadGit() {
-      fetch(GITSTATUS_URL + '?sessionId=' + encodeURIComponent(currentSessionId() || ''), { cache: 'no-store' })
+    // force=1 绕过 host 的 stale-while-revalidate 缓存，由刷新按钮使用。
+    // 刷新后给列表行加交错浮现动画（从上往下）；selector 区分 git 列表与文件树。
+    function staggerList(list, selector) {
+      var items = list.querySelectorAll(selector || '.item');
+      for (var i = 0; i < items.length; i++) {
+        var it = items[i];
+        it.classList.remove('flash-in');
+        void it.offsetWidth; // 重置动画，使连续刷新也能重放
+        it.classList.add('flash-in');
+        it.style.animationDelay = (Math.min(i, 12) * 45) + 'ms';
+      }
+    }
+    function loadGit(force) {
+      var list = document.getElementById('list');
+      // 强制刷新时列表短暂变暗，响应返回后恢复，给出「刷新过了」的可见反馈。
+      if (force && list) list.classList.add('is-refreshing');
+      fetch(GITSTATUS_URL + '?sessionId=' + encodeURIComponent(currentSessionId() || '') + (force ? '&force=1' : ''), { cache: 'no-store' })
         .then(function (r) { return r.json(); }).then(function (data) {
+          if (list) list.classList.remove('is-refreshing');
           var st = document.getElementById('status');
-          if (data && data.ok === true) {
-            gitFiles = Array.isArray(data.entries) ? data.entries : [];
-            gitError = null;
+          var ok = data && data.ok === true;
+          if (ok) {
             st.textContent = 'live';
             st.style.color = getComputedStyle(document.documentElement).getPropertyValue('--p-success-fg').trim() || '#34c55e';
           } else {
-            gitFiles = [];
-            gitError = (data && data.error) || 'git status 失败';
             st.textContent = 'git error';
             st.style.color = getComputedStyle(document.documentElement).getPropertyValue('--p-error').trim() || '#ef4444';
           }
+          // 数据签名未变时跳过重渲染：2s 轮询不会重建行元素、冲掉浮现动画。
+          var nextFiles = ok ? (Array.isArray(data.entries) ? data.entries : []) : [];
+          var nextError = ok ? null : ((data && data.error) || 'git status 失败');
+          var sig = JSON.stringify([nextError, nextFiles]);
+          if (!force && sig === gitSig) return;
+          gitSig = sig;
+          gitFiles = nextFiles;
+          gitError = nextError;
           renderGit();
+          if (force && list) staggerList(list);
         }).catch(function () {
+          if (list) list.classList.remove('is-refreshing');
           var st = document.getElementById('status');
           st.textContent = 'offline';
           st.style.color = getComputedStyle(document.documentElement).getPropertyValue('--p-error').trim() || '#ef4444';
@@ -774,10 +803,10 @@ ${sharedScript}
     setView('tree');
     renderTabs();
     renderActive();
-    // ── Panel side: file panel on the right (default) or the left ─────────
+    // ── Panel side: file panel on the left (default) or the right ─────────
     var PANEL_SIDE_KEY = 'dsh-flyout-sidebar:panelLeft';
-    var panelLeft = false;
-    try { panelLeft = localStorage.getItem(PANEL_SIDE_KEY) === '1'; } catch (e) {}
+    var panelLeft = true;
+    try { var _savedSide = localStorage.getItem(PANEL_SIDE_KEY); if (_savedSide === '0') panelLeft = false; } catch (e) {}
     function panelSideIcon() {
       var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
       svg.setAttribute('width', 16); svg.setAttribute('height', 16);

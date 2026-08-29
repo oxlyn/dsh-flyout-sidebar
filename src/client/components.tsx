@@ -154,7 +154,8 @@ export function FileTree({ onOpen, selectedPath, refreshToken }: FileTreeProps):
       </button>
     )
 
-  const renderNode = (entry: ListEntry, depth: number): ReactElement => {
+  // flashDelay 非空时给节点加交错浮现动画（刷新后从上往下逐条出现）。
+  const renderNode = (entry: ListEntry, depth: number, flashDelay?: number): ReactElement => {
     const pad = { paddingLeft: 6 + depth * 20 }
     const isSelected = selectedPath === entry.path
     const rowClass =
@@ -163,7 +164,11 @@ export function FileTree({ onOpen, selectedPath, refreshToken }: FileTreeProps):
       const isExpanded = !!expanded[entry.path]
       const node = children[entry.path]
       return (
-        <div key={entry.path}>
+        <div
+          key={entry.path}
+          className={flashDelay != null ? 'artifacts-tree-node artifacts-flash-in' : 'artifacts-tree-node'}
+          style={flashDelay != null ? { animationDelay: flashDelay + 'ms' } : undefined}
+        >
           <div
             role="button"
             tabIndex={0}
@@ -208,8 +213,8 @@ export function FileTree({ onOpen, selectedPath, refreshToken }: FileTreeProps):
       <div
         role="button"
         tabIndex={0}
-        className={rowClass}
-        style={pad}
+        className={rowClass + (flashDelay != null ? ' artifacts-flash-in' : '')}
+        style={flashDelay != null ? { ...pad, animationDelay: flashDelay + 'ms' } : pad}
         onClick={() => {
           if (onOpen) onOpen(entry.path)
         }}
@@ -236,7 +241,7 @@ export function FileTree({ onOpen, selectedPath, refreshToken }: FileTreeProps):
         ) : !root.entries || !root.entries.length ? (
           <div className="artifacts-hint">（空目录）</div>
         ) : (
-          root.entries.map((e) => renderNode(e, 0))
+          root.entries.map((e, i) => renderNode(e, 0, Math.min(i, 12) * 45))
         )}
       </div>
     </div>
@@ -273,17 +278,29 @@ export function ArtifactsPanel(): ReactElement | null {
   const [activeView, setActiveView] = React.useState<'tree' | 'git'>(() => (settings.showFileTree ? 'tree' : 'git'))
   const [treeRefresh, setTreeRefresh] = React.useState(0) // 头部刷新按钮递增
   const [gitRefresh, setGitRefresh] = React.useState(0)
+  // 刷新按钮点击后置真：git 列表短暂变暗，强制响应返回后恢复，给出「刷新
+  // 过了」的可见反馈。gitFlash 递增使行重新挂载，重放逐行浮现动画。
+  const [gitRefreshing, setGitRefreshing] = React.useState(false)
+  const [gitFlash, setGitFlash] = React.useState(0)
   const noticeTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // git 视图可见时轮询「已变更未提交」文件。
+  // git 视图可见时轮询「已变更未提交」文件。gitForceRef 标记下一次加载
+  // （由刷新按钮触发）需绕过 host 缓存强制取真实状态。
+  const gitForceRef = React.useRef(false)
   React.useEffect(() => {
     if (!open || activeView !== 'git') return
     let alive = true
     const load = (): void => {
+      const force = gitForceRef.current
+      gitForceRef.current = false
       host
-        .gitStatus(currentSessionId())
+        .gitStatus(currentSessionId(), force)
         .then((res) => {
           if (!alive) return
+          if (force) {
+            setGitRefreshing(false)
+            setGitFlash((n) => n + 1)
+          }
           if (res && res.ok) {
             setGitFiles(Array.isArray(res.entries) ? res.entries : [])
             setGitError(null)
@@ -293,6 +310,7 @@ export function ArtifactsPanel(): ReactElement | null {
           }
         })
         .catch((e: unknown) => {
+          if (force) setGitRefreshing(false)
           if (alive) setGitError(e instanceof Error && e.message ? String(e.message) : String(e))
         })
     }
@@ -520,11 +538,18 @@ export function ArtifactsPanel(): ReactElement | null {
   } else if (!gitFiles.length) {
     gitListRows.push(<div key="empty" className="artifacts-empty">没有未提交的变更</div>)
   }
-  ;(gitFiles || []).forEach((e) => {
+  ;(gitFiles || []).forEach((e, idx) => {
     const label = gitLabel(e)
     const isActive = !!(activeTab && activeTab.git && activeTab.path === e.path)
+    // 刚刷新过：key 带上 gitFlash 令行重新挂载、重放动画；延迟按行号递增，
+    // 形成「从上往下逐行浮现」，封顶避免长列表拖太久。
+    const flashKey = gitFlash > 0 ? gitFlash + ':' : ''
     gitListRows.push(
-      <div key={e.path} className={'artifacts-item' + (isActive ? ' is-active' : '')}>
+      <div
+        key={flashKey + e.path}
+        className={'artifacts-item' + (isActive ? ' is-active' : '') + (flashKey ? ' artifacts-flash-in' : '')}
+        style={flashKey ? { animationDelay: Math.min(idx, 12) * 45 + 'ms' } : undefined}
+      >
         <button type="button" className="artifacts-item-main" title={gitTitle(e)} onClick={() => openGitDiff(e.path)}>
           <div className="artifacts-item-row">
             <span className={'artifacts-git-badge artifacts-git-badge-' + label}>{label}</span>
@@ -622,7 +647,11 @@ export function ArtifactsPanel(): ReactElement | null {
             title={activeView === 'tree' ? '刷新文件树' : '刷新变更列表'}
             onClick={() => {
               if (activeView === 'tree') setTreeRefresh((n) => n + 1)
-              else setGitRefresh((n) => n + 1)
+              else {
+                gitForceRef.current = true
+                setGitRefreshing(true)
+                setGitRefresh((n) => n + 1)
+              }
             }}
           >
             <RefreshIcon size={16} />
@@ -640,7 +669,10 @@ export function ArtifactsPanel(): ReactElement | null {
           ) : null}
         </div>
         <div className="artifacts-main">
-          <div className="artifacts-body" style={{ flex: '1 1 auto' }}>
+          <div
+            className={'artifacts-body' + (activeView === 'git' && gitRefreshing ? ' artifacts-refreshing' : '')}
+            style={{ flex: '1 1 auto' }}
+          >
             {activeView === 'tree' && settings.showFileTree ? (
               <FileTree
                 onOpen={openFile}

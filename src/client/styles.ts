@@ -116,7 +116,16 @@ body[data-dsh-flyout-dragging] .artifacts-preview-overlay { transition: none; }
 }
 .artifacts-iconbtn:hover { background: var(--dsw-alias-interactive-bg-hover); }
 .artifacts-main { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
-.artifacts-body { flex: 0 0 auto; min-height: 0; overflow-y: auto; }
+.artifacts-body { flex: 0 0 auto; min-height: 0; overflow-y: auto; transition: opacity .15s; }
+.artifacts-body.artifacts-refreshing { opacity: .45; }
+/* 刷新后逐行浮现：延迟由行内 style 按行号注入 */
+.artifacts-item.artifacts-flash-in,
+.artifacts-tree-node.artifacts-flash-in,
+.artifacts-tree-row.artifacts-flash-in { animation: artifacts-flash-in .3s var(--ds-ease-in-out, ease) both; }
+@keyframes artifacts-flash-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: none; }
+}
 .artifacts-empty { padding: 28px 16px; color: var(--dsw-alias-label-tertiary); text-align: center; }
 .artifacts-item {
   display: flex; align-items: stretch; width: 100%; padding: 0;

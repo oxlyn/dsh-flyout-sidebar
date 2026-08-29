@@ -126,7 +126,8 @@ export function registerRoutes(ctx: HostContext, webServer: DshWebServer): void 
     kind: 'exact',
     path: '/flyout-sidebar/gitstatus',
     handler: async (req, res) => {
-      const out = await gitStatus(ctx, queryParams(req.url).get('sessionId') || undefined)
+      const q = queryParams(req.url)
+      const out = await gitStatus(ctx, q.get('sessionId') || undefined, { force: q.get('force') === '1' })
       sendJson(res, out, true)
     },
   }, 'git: status route')
