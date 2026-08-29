@@ -59,7 +59,7 @@ function loadClientBundle() {
   const runner = new Function('window', 'document', 'localStorage', 'navigator', 'fetch', clientCode)
   runner(windowStub, documentStub, localStorage, {}, () => Promise.resolve({ json: () => Promise.resolve({}) }))
   assert.ok(captured, '__ModuleLoader__.load 应被调用')
-  assert.equal(captured.id, 'dsh-popout-sidebar')
+  assert.equal(captured.id, 'dsh-flyout-sidebar')
   const plugin = captured.factory((id) => {
     if (id === 'react') return React
     throw new Error('unexpected require: ' + id)
@@ -114,12 +114,12 @@ test('client bundle: apply inserts styles and registers three slots', () => {
   const { plugin, created } = loadClientBundle()
   const ctx = makeClientCtx()
   plugin.apply(ctx)
-  assert.ok(created.some((el) => el.tag === 'style' && el.id === 'dsh-popout-sidebar-styles'), '样式应被注入')
+  assert.ok(created.some((el) => el.tag === 'style' && el.id === 'dsh-flyout-sidebar-styles'), '样式应被注入')
   assert.equal(ctx.registered.length, 3)
   const [trigger, panel, settings] = ctx.registered.map((r) => r.definition)
   assert.deepEqual(trigger, { name: 'shell.overlay', id: 'artifacts-sidebar-trigger', order: 40, label: 'Artifacts' })
   assert.deepEqual(panel, { name: 'shell.overlay', id: 'artifacts-sidebar-panel', order: 50, label: 'Artifacts Panel' })
-  assert.deepEqual(settings, { name: 'settings.section', id: 'artifacts-sidebar', order: 90, label: 'Popout Sidebar' })
+  assert.deepEqual(settings, { name: 'settings.section', id: 'artifacts-sidebar', order: 90, label: 'Flyout Sidebar' })
 })
 
 test('client bundle: ArtifactsPanel renders file tree panel', () => {
@@ -131,7 +131,7 @@ test('client bundle: ArtifactsPanel renders file tree panel', () => {
   assert.ok(html.includes('artifacts-panel'), '应有侧边栏面板')
   assert.ok(html.includes('artifacts-tree'), '默认应为文件树视图')
   assert.ok(html.includes('加载文件树'), '初始应显示加载提示')
-  assert.ok(html.includes('popout-sidebar?sessionId=sess-1'), '弹出链接应携带会话 id')
+  assert.ok(html.includes('flyout-sidebar?sessionId=sess-1'), '弹出链接应携带会话 id')
   assert.ok(html.includes('artifacts-resize'), '应有拖拽手柄')
 })
 

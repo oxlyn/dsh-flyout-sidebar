@@ -98,7 +98,7 @@ function loadPdfjs(): Promise<PdfJsLib> {
   if (typeof window === 'undefined') return Promise.reject(new Error('no window'))
   if (window.pdfjsLib) {
     try {
-      window.pdfjsLib.GlobalWorkerOptions.workerSrc = '/popout-sidebar/pdfjs/pdf.worker.min.js'
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc = '/flyout-sidebar/pdfjs/pdf.worker.min.js'
     } catch {
       // workerSrc 赋值失败不影响库本身
     }
@@ -107,12 +107,12 @@ function loadPdfjs(): Promise<PdfJsLib> {
   if (pdfjsPromise) return pdfjsPromise
   pdfjsPromise = new Promise<PdfJsLib>((resolve, reject) => {
     const s = document.createElement('script')
-    s.src = '/popout-sidebar/pdfjs/pdf.min.js'
+    s.src = '/flyout-sidebar/pdfjs/pdf.min.js'
     s.async = true
     s.onload = () => {
       try {
         if (!window.pdfjsLib) throw new Error('pdf.js 加载失败')
-        window.pdfjsLib.GlobalWorkerOptions.workerSrc = '/popout-sidebar/pdfjs/pdf.worker.min.js'
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = '/flyout-sidebar/pdfjs/pdf.worker.min.js'
         resolve(window.pdfjsLib)
       } catch (e) {
         reject(e)
@@ -150,7 +150,7 @@ export function PdfView({ path }: { path: string }): ReactElement | null {
     setFitScale(null)
     loadPdfjs()
       .then((lib) => {
-        const url = '/popout-sidebar/media?path=' + encodeURIComponent(path)
+        const url = '/flyout-sidebar/media?path=' + encodeURIComponent(path)
         return lib.getDocument({ url }).promise
       })
       .then((doc) => {
@@ -273,7 +273,7 @@ export function PdfView({ path }: { path: string }): ReactElement | null {
     return (
       <embed
         className="artifacts-pdf"
-        src={'/popout-sidebar/media?path=' + encodeURIComponent(path)}
+        src={'/flyout-sidebar/media?path=' + encodeURIComponent(path)}
         type="application/pdf"
         title={path}
       />
@@ -362,7 +362,7 @@ export function renderPreview(p: PreviewTab): ReactElement {
     view = (
       <img
         className="artifacts-img"
-        src={'/popout-sidebar/media?path=' + encodeURIComponent(p.path || '')}
+        src={'/flyout-sidebar/media?path=' + encodeURIComponent(p.path || '')}
         alt={p.path || ''}
       />
     )

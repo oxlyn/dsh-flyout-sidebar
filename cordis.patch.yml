@@ -1,9 +1,9 @@
-# dsh-popout-sidebar bundle patch
+# dsh-flyout-sidebar bundle patch
 #
 # This file is the `dsh.bundle.patch` layer of the package: when installed
 # through the official CLI —
 #
-#   dsh plugin --profile web add dsh-popout-sidebar
+#   dsh plugin --profile web add dsh-flyout-sidebar
 #
 # — the command reconciles `dsh.profile.bundles` against installed packages
 # and, seeing this declaration, appends the package to the bundle stack. The
@@ -15,5 +15,5 @@
 # Do not also add a manual mount line to the profile's cordis.patch.yml for
 # this package — that would double-mount (two Node halves, two sidebars).
 - insert:
-    - id: popout-sidebar
-      name: 'dsh-popout-sidebar'
+    - id: flyout-sidebar
+      name: 'dsh-flyout-sidebar'

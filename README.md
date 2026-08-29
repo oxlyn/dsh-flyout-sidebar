@@ -1,4 +1,4 @@
-# dsh-popout-sidebar
+# dsh-flyout-sidebar
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](#license)
 
@@ -11,20 +11,20 @@
 ### 源码安装（GitHub）
 
 ```sh
-dsh plugin --profile web add github:oxlyn/dsh-popout-sidebar
+dsh plugin --profile web add github:oxlyn/dsh-flyout-sidebar
 ```
 
 ### 本地安装（开发）
 
 ```sh
-git clone https://github.com/oxlyn/dsh-popout-sidebar.git
-cd dsh-popout-sidebar
+git clone https://github.com/oxlyn/dsh-flyout-sidebar.git
+cd dsh-flyout-sidebar
 npm install
 npm run build          # tsdown → dist/index.js + dist/client.js
 
 # 在插件的父目录执行（dsh plugin add 的相对路径锚定调用目录）：
 cd ..
-dsh plugin --profile web add ./dsh-popout-sidebar   # 符号链接安装；改 src/ 后 npm run build 并重启 dsh web 即可生效
+dsh plugin --profile web add ./dsh-flyout-sidebar   # 符号链接安装；改 src/ 后 npm run build 并重启 dsh web 即可生效
 dsh web
 ```
 
@@ -33,7 +33,7 @@ dsh web
 装完**重启 `dsh web`** 并**硬刷新浏览器**（Cmd/Ctrl+Shift+R），界面右上角应出现常驻侧边栏图标按钮（无会话时也可见）。也可验证配置层：
 
 ```sh
-dsh --profile web --dump-config | grep dsh-popout-sidebar   # 配置层含本行
+dsh --profile web --dump-config | grep dsh-flyout-sidebar   # 配置层含本行
 ```
 
 ## 功能 / Features
@@ -43,7 +43,7 @@ dsh --profile web --dump-config | grep dsh-popout-sidebar   # 配置层含本行
 | 1 | 文件树视图（默认） | 面板打开即见 | 浏览当前工作区目录，懒加载展开、目录优先排序，实时跟随工作区/会话切换重新定位根目录 |
 | 2 | Git 变更视图 | 面板右上角 git 分支图标 | 列出已变更未提交文件（`M`/`A`/`D`/`R`/`U` 徽章，悬停显示已暂存/未暂存，重命名显示原路径）；点击文件显示相对 HEAD 的着色 unified diff，未跟踪文件自动合成新文件 diff |
 | 3 | 多标签预览 | 点击文件 | 预览覆盖层盖住侧边栏左侧整个区域，可同时打开多个文件；按扩展名自动语法高亮，另支持 Markdown 渲染、图片、PDF、HTML 沙箱 iframe；⇥ 收起整个预览（标签保留，点文件恢复） |
-| 4 | 弹出独立标签页 | 面板左上角 ↗ | 弹出为 `/popout-sidebar` 独立网页，可拖到另一显示器；内容在左/面板在右，面板左右位置一键切换、宽度可拖动（默认最小宽，记忆偏好） |
+| 4 | 弹出独立标签页 | 面板左上角 ↗ | 弹出为 `/flyout-sidebar` 独立网页，可拖到另一显示器；内容在左/面板在右，面板左右位置一键切换、宽度可拖动（默认最小宽，记忆偏好） |
 
 **特性一览：**
 
@@ -56,7 +56,7 @@ dsh --profile web --dump-config | grep dsh-popout-sidebar   # 配置层含本行
 
 ## 设置 / Settings
 
-DSH 设置面板（左下角 ⚙️）新增「**Popout Sidebar**」选项卡：
+DSH 设置面板（左下角 ⚙️）新增「**Flyout Sidebar**」选项卡：
 
 | 设置 | 默认 | 说明 |
 |---|---|---|
@@ -65,7 +65,7 @@ DSH 设置面板（左下角 ⚙️）新增「**Popout Sidebar**」选项卡：
 | 文件树 | 开 | 显示文件树视图与视图切换图标；关闭后面板固定显示 Git 变更视图 |
 | 最短面板宽度 | 20% | 面板最小宽度（占窗口宽度的百分比，20–60%）；更宽可拖动面板左边缘调整 |
 
-设置保存在浏览器 `localStorage`（键 `dsh-popout-sidebar:settings`），刷新后仍生效；弹出页的面板宽度/左右位置偏好分别存于 `dsh-popout-sidebar:panelw` / `panelLeft`。
+设置保存在浏览器 `localStorage`（键 `dsh-flyout-sidebar:settings`），刷新后仍生效；弹出页的面板宽度/左右位置偏好分别存于 `dsh-flyout-sidebar:panelw` / `panelLeft`。
 
 ## 实现方式 / How it works
 
@@ -81,11 +81,11 @@ DSH 设置面板（左下角 ⚙️）新增「**Popout Sidebar**」选项卡：
 │  - host/files.ts       文件树列目录 / 文本读取                  │
 │  - host/page.ts        独立弹出页 HTML（内联 shared 源码）       │
 │  - host/routes.ts      ctx.webServer.register：                 │
-│      GET /popout-sidebar/gitstatus  变更列表 JSON               │
-│      GET /popout-sidebar/gitdiff    单文件 diff JSON            │
-│      GET /popout-sidebar/listdir    文件树目录列表              │
-│      GET /popout-sidebar/content    文本内容（代码预览）        │
-│      GET /popout-sidebar/media      图片 / PDF 二进制           │
+│      GET /flyout-sidebar/gitstatus  变更列表 JSON               │
+│      GET /flyout-sidebar/gitdiff    单文件 diff JSON            │
+│      GET /flyout-sidebar/listdir    文件树目录列表              │
+│      GET /flyout-sidebar/content    文本内容（代码预览）        │
+│      GET /flyout-sidebar/media      图片 / PDF 二进制           │
 │  - tools/result 事件 → 700ms 去抖刷新对应工作区的状态缓存        │
 └──────────────────────────────────────────────────────────────────┘
                           │ fetch
@@ -94,7 +94,7 @@ DSH 设置面板（左下角 ⚙️）新增「**Popout Sidebar**」选项卡：
 │    __ModuleLoader__ factory(require) 运行时提供，bundle 不内嵌） │
 │  - shell.overlay：右上角常驻图标按钮 + 侧边栏面板                │
 │  - 文件树 ⇄ Git 变更视图切换；多标签预览覆盖层（左侧全区域）     │
-│  - settings.section：Popout Sidebar 设置项                       │
+│  - settings.section：Flyout Sidebar 设置项                       │
 │  - localStorage 跨页同步：当前会话 id、主题、面板偏好             │
 └──────────────────────────────────────────────────────────────────┘
 ```
@@ -120,7 +120,7 @@ npm test              # node:test smoke：host 路由/事件 + client 组件渲�
 项目结构：
 
 ```
-dsh-popout-sidebar/
+dsh-flyout-sidebar/
 ├── tsdown.config.ts      # tsdown 构建：host/client 双 bundle + ?raw 内联插件
 ├── src/index.ts          # Host 入口（导出 name/inject/apply，ESM）
 ├── dist/                 # ⚙️ 构建产物：index.js（host）/ client.js（浏览器），勿手改
@@ -135,7 +135,7 @@ dsh-popout-sidebar/
 ## 更新 / Updates
 
 ```sh
-dsh plugin --profile web update dsh-popout-sidebar    # 或重新 add
+dsh plugin --profile web update dsh-flyout-sidebar    # 或重新 add
 ```
 
 随后重启 `dsh web` 并硬刷新浏览器。

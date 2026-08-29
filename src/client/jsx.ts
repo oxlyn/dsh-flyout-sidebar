@@ -22,7 +22,7 @@ export function initReact(runtime: unknown): void {
  * JSX 元素类型；运行时值始终是 Symbol 哨兵。
  */
 export const Fragment: ReactNS.ExoticComponent<{ children?: ReactNS.ReactNode }> = Symbol(
-  'dsh-popout-sidebar.Fragment',
+  'dsh-flyout-sidebar.Fragment',
 ) as unknown as ReactNS.ExoticComponent<{ children?: ReactNS.ReactNode }>
 
 /** JSX 工厂：转发 React.createElement，并处理 Fragment 哨兵 */

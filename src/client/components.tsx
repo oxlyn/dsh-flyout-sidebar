@@ -26,7 +26,7 @@ import {
   GitBranchIcon,
   PanelCollapseIcon,
   PanelIcon,
-  PopoutIcon,
+  FlyoutIcon,
   RefreshIcon,
 } from './icons'
 
@@ -307,7 +307,7 @@ export function ArtifactsPanel(): ReactElement | null {
   // 把当前会话 id 发布到 localStorage：独立弹出标签页没有客户端会话库，
   // 靠它把文件树根植到活动工作区并实时跟随切换。
   React.useEffect(() => {
-    const KEY = 'dsh-popout-sidebar:session'
+    const KEY = 'dsh-flyout-sidebar:session'
     const write = (): void => {
       try {
         const sid = currentSessionId()
@@ -331,7 +331,7 @@ export function ArtifactsPanel(): ReactElement | null {
   // 切换。DSH 在 <body> 上设置 dark 属性（见 styles 中 body[data-ds-dark-theme]
   // 规则），因此同时观察 documentElement 和 body。
   React.useEffect(() => {
-    const KEY = 'dsh-popout-sidebar:theme'
+    const KEY = 'dsh-flyout-sidebar:theme'
     const isDark = (): boolean => {
       if (document.documentElement.hasAttribute('data-ds-dark-theme')) return true
       if (document.body && document.body.hasAttribute('data-ds-dark-theme')) return true
@@ -363,24 +363,24 @@ export function ArtifactsPanel(): ReactElement | null {
   //（见 styles 中 html #root 规则）。
   React.useEffect(() => {
     const root = document.documentElement
-    root.style.setProperty('--dsh-popout-sidebar-width', open ? widthPx + 'px' : '0px')
+    root.style.setProperty('--dsh-flyout-sidebar-width', open ? widthPx + 'px' : '0px')
     return () => {
-      root.style.setProperty('--dsh-popout-sidebar-width', '0px')
+      root.style.setProperty('--dsh-flyout-sidebar-width', '0px')
     }
   }, [open, widthPx])
 
-  // 拖拽时禁用布局过渡，框架才能跟住指针（对应 body[data-dsh-popout-dragging]）。
+  // 拖拽时禁用布局过渡，框架才能跟住指针（对应 body[data-dsh-flyout-dragging]）。
   React.useEffect(() => {
-    if (resizing) document.body.setAttribute('data-dsh-popout-dragging', '')
-    else document.body.removeAttribute('data-dsh-popout-dragging')
+    if (resizing) document.body.setAttribute('data-dsh-flyout-dragging', '')
+    else document.body.removeAttribute('data-dsh-flyout-dragging')
     return () => {
-      document.body.removeAttribute('data-dsh-popout-dragging')
+      document.body.removeAttribute('data-dsh-flyout-dragging')
     }
   }, [resizing])
 
   if (!open) return null
 
-  const popoutHref = '/popout-sidebar' + (sessionId ? '?sessionId=' + encodeURIComponent(sessionId) : '')
+  const flyoutHref = '/flyout-sidebar' + (sessionId ? '?sessionId=' + encodeURIComponent(sessionId) : '')
 
   const startResize = (e: React.MouseEvent): void => {
     e.preventDefault()
@@ -594,12 +594,12 @@ export function ArtifactsPanel(): ReactElement | null {
             </button>
             <a
               className="artifacts-link"
-              href={popoutHref}
+              href={flyoutHref}
               target="_blank"
               rel="noreferrer noopener"
               title="弹出式侧边栏 — 在新标签页打开（可拖到另一块显示器）"
             >
-              <PopoutIcon size={16} />
+              <FlyoutIcon size={16} />
             </a>
           </div>
           <span className="artifacts-spacer" />
@@ -692,7 +692,7 @@ export function SettingsSection(): ReactElement {
 
   return (
     <div className="artifacts-settings">
-      <p className="artifacts-setintro">管理「Popout Sidebar」的显示与行为。</p>
+      <p className="artifacts-setintro">管理「Flyout Sidebar」的显示与行为。</p>
       <div className="artifacts-setgroup">
         <SettingsToggle
           label="默认展开"

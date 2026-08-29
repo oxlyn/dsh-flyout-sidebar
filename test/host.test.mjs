@@ -108,25 +108,25 @@ function git(cwd, ...args) {
 }
 
 test('host plugin: apply registers routes, events and intervals', async () => {
-  const workspace = mkdtempSync(join(os.tmpdir(), 'dsh-popout-'))
+  const workspace = mkdtempSync(join(os.tmpdir(), 'dsh-flyout-'))
   const plugin = await import('../dist/index.js')
-  assert.equal(plugin.name, 'dsh-popout-sidebar')
+  assert.equal(plugin.name, 'dsh-flyout-sidebar')
   assert.deepEqual(plugin.inject, ['webServer', 'sessionQuery', 'timer'])
 
   const ctx = makeCtx(workspace)
   plugin.apply(ctx)
 
   const expectedRoutes = [
-    '/popout-sidebar',
-    '/popout-sidebar/data',
-    '/popout-sidebar/content',
-    '/popout-sidebar/media',
-    '/popout-sidebar/remove',
-    '/popout-sidebar/listdir',
-    '/popout-sidebar/gitstatus',
-    '/popout-sidebar/gitdiff',
-    '/popout-sidebar/pdfjs/pdf.min.js',
-    '/popout-sidebar/pdfjs/pdf.worker.min.js',
+    '/flyout-sidebar',
+    '/flyout-sidebar/data',
+    '/flyout-sidebar/content',
+    '/flyout-sidebar/media',
+    '/flyout-sidebar/remove',
+    '/flyout-sidebar/listdir',
+    '/flyout-sidebar/gitstatus',
+    '/flyout-sidebar/gitdiff',
+    '/flyout-sidebar/pdfjs/pdf.min.js',
+    '/flyout-sidebar/pdfjs/pdf.worker.min.js',
   ]
   for (const r of expectedRoutes) assert.ok(ctx.routes.has(r), 'missing route ' + r)
   assert.equal(ctx.handlers['tools/result'].length, 2) // artifacts + git 刷新
@@ -135,19 +135,19 @@ test('host plugin: apply registers routes, events and intervals', async () => {
   assert.equal(ctx.disposers.length, expectedRoutes.length)
 })
 
-test('host plugin: popout page HTML is complete and scripts compile', async () => {
-  const workspace = mkdtempSync(join(os.tmpdir(), 'dsh-popout-'))
+test('host plugin: flyout page HTML is complete and scripts compile', async () => {
+  const workspace = mkdtempSync(join(os.tmpdir(), 'dsh-flyout-'))
   const plugin = await import('../dist/index.js')
   const ctx = makeCtx(workspace)
   plugin.apply(ctx)
   const res = makeFakeRes()
-  await ctx.routes.get('/popout-sidebar')({ url: '/popout-sidebar' }, res)
+  await ctx.routes.get('/flyout-sidebar')({ url: '/flyout-sidebar' }, res)
   assert.equal(res.statusCode, 200)
   assert.match(res.headers['Content-Type'], /text\/html/)
   const html = res.body
   assert.ok(html.startsWith('<!doctype html>'))
   assert.ok(!/@@[A-Za-z]+@@/.test(html), 'leftover build markers')
-  for (const marker of ['highlightCode', 'mdToHtml', 'extType', 'fileExt', 'gitBranchIcon', 'dsh-popout-sidebar:theme']) {
+  for (const marker of ['highlightCode', 'mdToHtml', 'extType', 'fileExt', 'gitBranchIcon', 'dsh-flyout-sidebar:theme']) {
     assert.ok(html.includes(marker), 'page missing ' + marker)
   }
   // 两个内联 <script> 都必须是可解析的经典脚本（含独立页应用逻辑）。
@@ -157,7 +157,7 @@ test('host plugin: popout page HTML is complete and scripts compile', async () =
 })
 
 test('host plugin: content / listdir / media routes', async () => {
-  const workspace = mkdtempSync(join(os.tmpdir(), 'dsh-popout-'))
+  const workspace = mkdtempSync(join(os.tmpdir(), 'dsh-flyout-'))
   writeFileSync(join(workspace, 'hello.txt'), 'hello world')
   writeFileSync(join(workspace, 'pixel.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]))
   mkdirSync(join(workspace, 'sub'))
@@ -167,14 +167,14 @@ test('host plugin: content / listdir / media routes', async () => {
   plugin.apply(ctx)
 
   const res = makeFakeRes()
-  await ctx.routes.get('/popout-sidebar/content')({ url: '/popout-sidebar/content?path=hello.txt' }, res)
+  await ctx.routes.get('/flyout-sidebar/content')({ url: '/flyout-sidebar/content?path=hello.txt' }, res)
   const body = JSON.parse(res.body)
   assert.equal(body.ok, true)
   assert.equal(body.content, 'hello world')
   assert.equal(body.type, 'text')
 
   const res2 = makeFakeRes()
-  await ctx.routes.get('/popout-sidebar/listdir')({ url: '/popout-sidebar/listdir' }, res2)
+  await ctx.routes.get('/flyout-sidebar/listdir')({ url: '/flyout-sidebar/listdir' }, res2)
   const list = JSON.parse(res2.body)
   assert.equal(list.ok, true)
   assert.equal(list.path, workspace)
@@ -183,17 +183,17 @@ test('host plugin: content / listdir / media routes', async () => {
   assert.equal(list.entries[0].isDir, true)
 
   const res3 = makeFakeRes()
-  await ctx.routes.get('/popout-sidebar/media')({ url: '/popout-sidebar/media?path=pixel.png' }, res3)
+  await ctx.routes.get('/flyout-sidebar/media')({ url: '/flyout-sidebar/media?path=pixel.png' }, res3)
   assert.equal(res3.headers['Content-Type'], 'image/png')
   assert.equal(res3.body, Buffer.from([0x89, 0x50, 0x4e, 0x47]).toString('utf8'))
 
   const res4 = makeFakeRes()
-  await ctx.routes.get('/popout-sidebar/content')({ url: '/popout-sidebar/content?path=missing.txt' }, res4)
+  await ctx.routes.get('/flyout-sidebar/content')({ url: '/flyout-sidebar/content?path=missing.txt' }, res4)
   assert.equal(JSON.parse(res4.body).ok, false)
 })
 
 test('host plugin: git status and diff against a real repo', async () => {
-  const workspace = mkdtempSync(join(os.tmpdir(), 'dsh-popout-git-'))
+  const workspace = mkdtempSync(join(os.tmpdir(), 'dsh-flyout-git-'))
   git(workspace, 'init')
   git(workspace, 'checkout', '-b', 'main')
   writeFileSync(join(workspace, 'tracked.txt'), 'base\n')
@@ -207,7 +207,7 @@ test('host plugin: git status and diff against a real repo', async () => {
   plugin.apply(ctx)
 
   const res = makeFakeRes()
-  await ctx.routes.get('/popout-sidebar/gitstatus')({ url: '/popout-sidebar/gitstatus?sessionId=s1' }, res)
+  await ctx.routes.get('/flyout-sidebar/gitstatus')({ url: '/flyout-sidebar/gitstatus?sessionId=s1' }, res)
   const status = JSON.parse(res.body)
   assert.equal(status.ok, true, status.error)
   assert.equal(status.root, workspace)
@@ -218,7 +218,7 @@ test('host plugin: git status and diff against a real repo', async () => {
   assert.equal(tracked.y, 'M')
 
   const res2 = makeFakeRes()
-  await ctx.routes.get('/popout-sidebar/gitdiff')({ url: '/popout-sidebar/gitdiff?path=tracked.txt&sessionId=s1' }, res2)
+  await ctx.routes.get('/flyout-sidebar/gitdiff')({ url: '/flyout-sidebar/gitdiff?path=tracked.txt&sessionId=s1' }, res2)
   const diff = JSON.parse(res2.body)
   assert.equal(diff.ok, true)
   assert.ok(diff.diff.includes('-base'), 'diff 应包含删除行')
@@ -226,7 +226,7 @@ test('host plugin: git status and diff against a real repo', async () => {
 
   // 未跟踪文件 → 合成 new-file diff
   const res3 = makeFakeRes()
-  await ctx.routes.get('/popout-sidebar/gitdiff')({ url: '/popout-sidebar/gitdiff?path=untracked.txt&sessionId=s1' }, res3)
+  await ctx.routes.get('/flyout-sidebar/gitdiff')({ url: '/flyout-sidebar/gitdiff?path=untracked.txt&sessionId=s1' }, res3)
   const synth = JSON.parse(res3.body)
   assert.equal(synth.ok, true)
   assert.ok(synth.diff.includes('new file mode 100644'))
@@ -234,7 +234,7 @@ test('host plugin: git status and diff against a real repo', async () => {
 })
 
 test('host plugin: artifact tracking via tools/result and tools/execute', async () => {
-  const workspace = mkdtempSync(join(os.tmpdir(), 'dsh-popout-art-'))
+  const workspace = mkdtempSync(join(os.tmpdir(), 'dsh-flyout-art-'))
   const plugin = await import('../dist/index.js')
   const ctx = makeCtx(workspace)
   plugin.apply(ctx)
@@ -247,7 +247,7 @@ test('host plugin: artifact tracking via tools/result and tools/execute', async 
     )
   }
   const res = makeFakeRes()
-  await ctx.routes.get('/popout-sidebar/data')({ url: '/popout-sidebar/data' }, res)
+  await ctx.routes.get('/flyout-sidebar/data')({ url: '/flyout-sidebar/data' }, res)
   const data = JSON.parse(res.body)
   assert.equal(data.artifacts.length, 1)
   assert.equal(data.artifacts[0].path, join(workspace, 'out.txt'))
@@ -264,7 +264,7 @@ test('host plugin: artifact tracking via tools/result and tools/execute', async 
   }
   assert.deepEqual(captured, { isError: false })
   const res2 = makeFakeRes()
-  await ctx.routes.get('/popout-sidebar/data')({ url: '/popout-sidebar/data' }, res2)
+  await ctx.routes.get('/flyout-sidebar/data')({ url: '/flyout-sidebar/data' }, res2)
   const data2 = JSON.parse(res2.body)
   assert.ok(data2.artifacts.some((a) => a.path === join(workspace, 'side-effect.txt')), 'shell 副作用应被快照 diff 捕获')
   // cwd 被记录，git 轮询定时器已注册
@@ -272,7 +272,7 @@ test('host plugin: artifact tracking via tools/result and tools/execute', async 
 })
 
 test('host plugin: edit tool records diff snippet', async () => {
-  const workspace = mkdtempSync(join(os.tmpdir(), 'dsh-popout-edit-'))
+  const workspace = mkdtempSync(join(os.tmpdir(), 'dsh-flyout-edit-'))
   const plugin = await import('../dist/index.js')
   const ctx = makeCtx(workspace)
   plugin.apply(ctx)
@@ -287,7 +287,7 @@ test('host plugin: edit tool records diff snippet', async () => {
     )
   }
   const res = makeFakeRes()
-  await ctx.routes.get('/popout-sidebar/data')({ url: '/popout-sidebar/data' }, res)
+  await ctx.routes.get('/flyout-sidebar/data')({ url: '/flyout-sidebar/data' }, res)
   const data = JSON.parse(res.body)
   assert.equal(data.artifacts[0].kind, 'edit')
   assert.deepEqual(data.artifacts[0].diff, { before: 'old', after: 'new' })

@@ -61,7 +61,7 @@ export const RefreshIcon = ({ size }: IconProps) => (
 )
 
 /** 弹出（↗）箭头：新标签页打开链接 */
-export const PopoutIcon = ({ size }: IconProps) => (
+export const FlyoutIcon = ({ size }: IconProps) => (
   <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true">
     <path d="M3.5 12.5 L12.5 3.5 M6.2 3.5 H12.5 V9.8" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" fill="none" />
   </svg>

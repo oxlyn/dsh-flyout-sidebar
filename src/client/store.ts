@@ -123,7 +123,7 @@ export interface Settings {
   defaultOpen: boolean
 }
 
-const SETTINGS_KEY = 'dsh-popout-sidebar:settings'
+const SETTINGS_KEY = 'dsh-flyout-sidebar:settings'
 const DEFAULT_SETTINGS: Settings = {
   autoRefresh: true, // 面板打开时轮询刷新
   minPanelWidth: 20, // 面板最小宽度（占窗口宽度百分比）

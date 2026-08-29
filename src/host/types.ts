@@ -92,7 +92,7 @@ export interface HarnessLike {
   handle(method: string, handler: (args: { path?: string; sessionId?: string } | undefined) => unknown): void
 }
 
-/** 所有 /popout-sidebar/* JSON 路由共用的返回包 */
+/** 所有 /flyout-sidebar/* JSON 路由共用的返回包 */
 export interface ApiResult {
   ok: boolean
   error?: string

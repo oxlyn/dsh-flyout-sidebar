@@ -10,7 +10,7 @@
 	* React.Fragment。类型标注为 ExoticComponent，让 tsc 接受 <Fragment> 作为
 	* JSX 元素类型；运行时值始终是 Symbol 哨兵。
 	*/
-	const Fragment = Symbol("dsh-popout-sidebar.Fragment");
+	const Fragment = Symbol("dsh-flyout-sidebar.Fragment");
 	/** JSX 工厂：转发 React.createElement，并处理 Fragment 哨兵 */
 	function h(type, props, ...children) {
 		const resolved = type === Fragment ? React.Fragment : type;
@@ -30,19 +30,19 @@
 		const q = pairs.filter(([, v]) => v !== "").map(([k, v]) => k + "=" + encodeURIComponent(v));
 		return q.length ? "?" + q.join("&") : "";
 	}
-	/** host RPC 桥：与 host 侧 /popout-sidebar/* 路由一一对应 */
+	/** host RPC 桥：与 host 侧 /flyout-sidebar/* 路由一一对应 */
 	const host = {
 		gitStatus(sessionId) {
-			return getJson("/popout-sidebar/gitstatus" + qs(["sessionId", sessionId]));
+			return getJson("/flyout-sidebar/gitstatus" + qs(["sessionId", sessionId]));
 		},
 		gitDiff(path, sessionId) {
-			return getJson("/popout-sidebar/gitdiff" + qs(["path", path], ["sessionId", sessionId]));
+			return getJson("/flyout-sidebar/gitdiff" + qs(["path", path], ["sessionId", sessionId]));
 		},
 		readArtifact(path) {
-			return getJson("/popout-sidebar/content" + qs(["path", path]));
+			return getJson("/flyout-sidebar/content" + qs(["path", path]));
 		},
 		listDir(path, sessionId) {
-			return getJson("/popout-sidebar/listdir" + qs(["path", path], ["sessionId", sessionId]));
+			return getJson("/flyout-sidebar/listdir" + qs(["path", path], ["sessionId", sessionId]));
 		}
 	};
 	//#endregion
@@ -50,19 +50,19 @@
 	/**
 	* Client 侧：注入的样式表。
 	*
-	* 一次性插入 <style id="dsh-popout-sidebar-styles">；CSS 变量遵循 DSH 的
+	* 一次性插入 <style id="dsh-flyout-sidebar-styles">；CSS 变量遵循 DSH 的
 	* --dsw-alias-* 设计令牌，深浅主题自动跟随。
 	*/
 	const styleCss = `
 html #root {
-  margin-right: calc(var(--dsh-sidebar-width, 0px) + var(--dsh-popout-sidebar-width, 0px));
+  margin-right: calc(var(--dsh-sidebar-width, 0px) + var(--dsh-flyout-sidebar-width, 0px));
   transition: margin-right var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease);
 }
-body[data-dsh-popout-dragging] #root {
+body[data-dsh-flyout-dragging] #root {
   transition: none;
 }
 header:has([data-slot="conversation.session.header.utilities"]) {
-  padding-right: max(28px, calc(60px - var(--dsh-popout-sidebar-width, 0px)));
+  padding-right: max(28px, calc(60px - var(--dsh-flyout-sidebar-width, 0px)));
   transition: padding-right var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease);
 }
 @media (prefers-reduced-motion: reduce) {
@@ -71,7 +71,7 @@ header:has([data-slot="conversation.session.header.utilities"]) {
 }
 .artifacts-preview-overlay {
   position: fixed; top: 0; bottom: 0; left: 0;
-  right: calc(var(--dsh-sidebar-width, 0px) + var(--dsh-popout-sidebar-width, 0px));
+  right: calc(var(--dsh-sidebar-width, 0px) + var(--dsh-flyout-sidebar-width, 0px));
   z-index: 9998;
   display: flex; flex-direction: column; min-width: 0;
   background: var(--dsw-alias-bg-base);
@@ -83,7 +83,7 @@ header:has([data-slot="conversation.session.header.utilities"]) {
   font-size: 13px; line-height: 1.5;
   transition: right var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease);
 }
-body[data-dsh-popout-dragging] .artifacts-preview-overlay { transition: none; }
+body[data-dsh-flyout-dragging] .artifacts-preview-overlay { transition: none; }
 .artifacts-preview-overlay-tabs {
   flex: none; display: flex; align-items: stretch; height: 28px;
   background: var(--dsw-alias-bg-layer-1);
@@ -176,7 +176,7 @@ body[data-dsh-popout-dragging] .artifacts-preview-overlay { transition: none; }
 .artifacts-hint { padding: 24px 16px; color: var(--dsw-alias-label-tertiary); text-align: center; }
 .artifacts-error { padding: 16px; color: var(--dsw-alias-state-error-primary); font-family: var(--dsh-font-mono, monospace); word-break: break-all; }
 .artifacts-corner-btn {
-  position: fixed; top: 10px; right: calc(var(--dsh-sidebar-width, 0px) + var(--dsh-popout-sidebar-width, 0px) + 12px);
+  position: fixed; top: 10px; right: calc(var(--dsh-sidebar-width, 0px) + var(--dsh-flyout-sidebar-width, 0px) + 12px);
   z-index: 10000; width: 36px; height: 36px; padding: 0;
   border: none; background: transparent; color: var(--dsw-alias-label-secondary);
   cursor: pointer; align-items: center; justify-content: center; display: inline-flex;
@@ -296,7 +296,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 	/** 注入样式（幂等：已存在则跳过） */
 	function insertStyles() {
 		if (typeof document === "undefined") return;
-		const id = "dsh-popout-sidebar-styles";
+		const id = "dsh-flyout-sidebar-styles";
 		if (document.getElementById(id)) return;
 		const el = document.createElement("style");
 		el.id = id;
@@ -312,7 +312,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 	* 1. tsdown 打包进 host 侧（Node）；
 	* 2. tsdown 打包进 client 侧（浏览器 React bundle）；
 	* 3. tsdown 构建期经 `?raw` 读入原始文本，剥离 import/export 后内联进独立
-	*    弹出页 /popout-sidebar 的经典 <script>（见 src/host/page.ts）。
+	*    弹出页 /flyout-sidebar 的经典 <script>（见 src/host/page.ts）。
 	*
 	* 因此这些文件只能使用 JSDoc 标注类型（不得出现 TS 语法注记），且不得引入
 	* 本目录之外的依赖。highlight/markdown 同理。
@@ -447,7 +447,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		React.useEffect(() => store.subscribe(setOpen), []);
 		return open;
 	};
-	const SETTINGS_KEY = "dsh-popout-sidebar:settings";
+	const SETTINGS_KEY = "dsh-flyout-sidebar:settings";
 	const DEFAULT_SETTINGS = {
 		autoRefresh: true,
 		minPanelWidth: 20,
@@ -887,19 +887,19 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		if (typeof window === "undefined") return Promise.reject(/* @__PURE__ */ new Error("no window"));
 		if (window.pdfjsLib) {
 			try {
-				window.pdfjsLib.GlobalWorkerOptions.workerSrc = "/popout-sidebar/pdfjs/pdf.worker.min.js";
+				window.pdfjsLib.GlobalWorkerOptions.workerSrc = "/flyout-sidebar/pdfjs/pdf.worker.min.js";
 			} catch {}
 			return Promise.resolve(window.pdfjsLib);
 		}
 		if (pdfjsPromise) return pdfjsPromise;
 		pdfjsPromise = new Promise((resolve, reject) => {
 			const s = document.createElement("script");
-			s.src = "/popout-sidebar/pdfjs/pdf.min.js";
+			s.src = "/flyout-sidebar/pdfjs/pdf.min.js";
 			s.async = true;
 			s.onload = () => {
 				try {
 					if (!window.pdfjsLib) throw new Error("pdf.js 加载失败");
-					window.pdfjsLib.GlobalWorkerOptions.workerSrc = "/popout-sidebar/pdfjs/pdf.worker.min.js";
+					window.pdfjsLib.GlobalWorkerOptions.workerSrc = "/flyout-sidebar/pdfjs/pdf.worker.min.js";
 					resolve(window.pdfjsLib);
 				} catch (e) {
 					reject(e);
@@ -933,7 +933,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			setZoom(1);
 			setFitScale(null);
 			loadPdfjs().then((lib) => {
-				const url = "/popout-sidebar/media?path=" + encodeURIComponent(path);
+				const url = "/flyout-sidebar/media?path=" + encodeURIComponent(path);
 				return lib.getDocument({ url }).promise;
 			}).then((doc) => {
 				if (!alive) {
@@ -1028,7 +1028,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		if (phase === "loading") return /* @__PURE__ */ h("div", { className: "artifacts-pdfview" }, /* @__PURE__ */ h("div", { className: "artifacts-hint" }, "加载 PDF…"));
 		if (phase === "error") return /* @__PURE__ */ h("embed", {
 			className: "artifacts-pdf",
-			src: "/popout-sidebar/media?path=" + encodeURIComponent(path),
+			src: "/flyout-sidebar/media?path=" + encodeURIComponent(path),
 			type: "application/pdf",
 			title: path
 		});
@@ -1089,7 +1089,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		let view;
 		if (type === "image") view = /* @__PURE__ */ h("img", {
 			className: "artifacts-img",
-			src: "/popout-sidebar/media?path=" + encodeURIComponent(p.path || ""),
+			src: "/flyout-sidebar/media?path=" + encodeURIComponent(p.path || ""),
 			alt: p.path || ""
 		});
 		else if (type === "html") view = /* @__PURE__ */ h("iframe", {
@@ -1186,7 +1186,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		fill: "currentColor"
 	}));
 	/** 弹出（↗）箭头：新标签页打开链接 */
-	const PopoutIcon = ({ size }) => /* @__PURE__ */ h("svg", {
+	const FlyoutIcon = ({ size }) => /* @__PURE__ */ h("svg", {
 		width: size,
 		height: size,
 		viewBox: "0 0 16 16",
@@ -1466,7 +1466,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			sessionId
 		]);
 		React.useEffect(() => {
-			const KEY = "dsh-popout-sidebar:session";
+			const KEY = "dsh-flyout-sidebar:session";
 			const write = () => {
 				try {
 					const sid = currentSessionId();
@@ -1484,7 +1484,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			return list.subscribe(write);
 		}, []);
 		React.useEffect(() => {
-			const KEY = "dsh-popout-sidebar:theme";
+			const KEY = "dsh-flyout-sidebar:theme";
 			const isDark = () => {
 				if (document.documentElement.hasAttribute("data-ds-dark-theme")) return true;
 				if (document.body && document.body.hasAttribute("data-ds-dark-theme")) return true;
@@ -1511,20 +1511,20 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		const widthPx = panelWidth != null ? Math.max(panelWidth, minWidthPx) : minWidthPx;
 		React.useEffect(() => {
 			const root = document.documentElement;
-			root.style.setProperty("--dsh-popout-sidebar-width", open ? widthPx + "px" : "0px");
+			root.style.setProperty("--dsh-flyout-sidebar-width", open ? widthPx + "px" : "0px");
 			return () => {
-				root.style.setProperty("--dsh-popout-sidebar-width", "0px");
+				root.style.setProperty("--dsh-flyout-sidebar-width", "0px");
 			};
 		}, [open, widthPx]);
 		React.useEffect(() => {
-			if (resizing) document.body.setAttribute("data-dsh-popout-dragging", "");
-			else document.body.removeAttribute("data-dsh-popout-dragging");
+			if (resizing) document.body.setAttribute("data-dsh-flyout-dragging", "");
+			else document.body.removeAttribute("data-dsh-flyout-dragging");
 			return () => {
-				document.body.removeAttribute("data-dsh-popout-dragging");
+				document.body.removeAttribute("data-dsh-flyout-dragging");
 			};
 		}, [resizing]);
 		if (!open) return null;
-		const popoutHref = "/popout-sidebar" + (sessionId ? "?sessionId=" + encodeURIComponent(sessionId) : "");
+		const flyoutHref = "/flyout-sidebar" + (sessionId ? "?sessionId=" + encodeURIComponent(sessionId) : "");
 		const startResize = (e) => {
 			e.preventDefault();
 			setResizing(true);
@@ -1733,11 +1733,11 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			onClick: () => store.setOpen(false)
 		}, /* @__PURE__ */ h(PanelIcon, { size: 16 })), /* @__PURE__ */ h("a", {
 			className: "artifacts-link",
-			href: popoutHref,
+			href: flyoutHref,
 			target: "_blank",
 			rel: "noreferrer noopener",
 			title: "弹出式侧边栏 — 在新标签页打开（可拖到另一块显示器）"
-		}, /* @__PURE__ */ h(PopoutIcon, { size: 16 }))), /* @__PURE__ */ h("span", { className: "artifacts-spacer" }), notice ? /* @__PURE__ */ h("span", { className: "artifacts-notice" }, notice) : null, /* @__PURE__ */ h("button", {
+		}, /* @__PURE__ */ h(FlyoutIcon, { size: 16 }))), /* @__PURE__ */ h("span", { className: "artifacts-spacer" }), notice ? /* @__PURE__ */ h("span", { className: "artifacts-notice" }, notice) : null, /* @__PURE__ */ h("button", {
 			type: "button",
 			className: "artifacts-toggle",
 			title: activeView === "tree" ? "刷新文件树" : "刷新变更列表",
@@ -1785,7 +1785,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 	function SettingsSection() {
 		const settings = useSettings();
 		const set = (key, value) => settingsStore.set(key, value);
-		return /* @__PURE__ */ h("div", { className: "artifacts-settings" }, /* @__PURE__ */ h("p", { className: "artifacts-setintro" }, "管理「Popout Sidebar」的显示与行为。"), /* @__PURE__ */ h("div", { className: "artifacts-setgroup" }, /* @__PURE__ */ h(SettingsToggle, {
+		return /* @__PURE__ */ h("div", { className: "artifacts-settings" }, /* @__PURE__ */ h("p", { className: "artifacts-setintro" }, "管理「Flyout Sidebar」的显示与行为。"), /* @__PURE__ */ h("div", { className: "artifacts-setgroup" }, /* @__PURE__ */ h(SettingsToggle, {
 			label: "默认展开",
 			desc: "页面加载后侧边栏默认展开；关闭则默认收起，点右上角图标再打开。",
 			value: settings.defaultOpen,
@@ -1816,7 +1816,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 	//#endregion
 	//#region src/client/index.tsx
 	window.__ModuleLoader__.load({
-		id: "dsh-popout-sidebar",
+		id: "dsh-flyout-sidebar",
 		factory: (require) => {
 			initReact(require("react"));
 			return {
@@ -1842,7 +1842,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 						name: "settings.section",
 						id: "artifacts-sidebar",
 						order: 90,
-						label: "Popout Sidebar"
+						label: "Flyout Sidebar"
 					}, SettingsSection));
 				}
 			};

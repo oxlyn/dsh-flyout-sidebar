@@ -1,5 +1,5 @@
 /**
- * 可弹出侧边栏 · Popout Sidebar — Host 入口（Node 侧）
+ * 可弹出侧边栏 · Flyout Sidebar — Host 入口（Node 侧）
  *
  * DSH 的 Cordis 加载器从这里导入 { name, inject, apply }。旧版经
  * `new Function(code.host)` 求值的动态插件路径仍被 harness.handle 分支
@@ -11,7 +11,7 @@ import { attachGitTracking, gitDiff, gitStatus } from './host/git'
 import { registerRoutes } from './host/routes'
 import type { DshWebServer, HostContext } from './host/types'
 
-export const name = 'dsh-popout-sidebar'
+export const name = 'dsh-flyout-sidebar'
 
 // 硬依赖：等 webServer 就绪再注册路由（loader 各挂载点并发启动，不注入的话
 // apply 可能先于 webServer 执行而静默漏掉全部路由）。sessionQuery 用于文件
@@ -25,7 +25,7 @@ export function apply(ctx: HostContext): void {
   attachGitTracking(ctx)
 
   // Package-private RPC（动态插件传输通道）。静态 bundle 没有 harness 全局，
-  // 由 typeof 守卫；静态 client 走下面的 /popout-sidebar/* HTTP 路由。
+  // 由 typeof 守卫；静态 client 走下面的 /flyout-sidebar/* HTTP 路由。
   if (typeof harness !== 'undefined' && harness) {
     harness.handle('artifacts.list', () => ({ artifacts: snapshotArtifacts() }))
     harness.handle('artifacts.remove', (args) => removeFile(args?.path))

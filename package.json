@@ -1,5 +1,5 @@
 {
-  "name": "dsh-popout-sidebar",
+  "name": "dsh-flyout-sidebar",
   "version": "1.0.1",
   "description": "可弹出侧边栏 · A DeepSeek Harness sidebar that shows artifacts and pops out into a larger web tab.",
   "license": "MIT",
@@ -15,7 +15,7 @@
   "main": "dist/index.js",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/e2mcc/dsh-popout-sidebar.git"
+    "url": "git+https://github.com/oxlyn/dsh-flyout-sidebar.git"
   },
   "scripts": {
     "build": "tsdown",

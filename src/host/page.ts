@@ -1,5 +1,5 @@
 /**
- * Host 侧：独立弹出页 /popout-sidebar 的 HTML。
+ * Host 侧：独立弹出页 /flyout-sidebar 的 HTML。
  *
  * 页面内联脚本由三部分拼成：shared 源码（构建期经 `?raw` 读入、剥离
  * import/export 后在此插值）+ 本文件中的页面逻辑。HTML 骨架用 String.raw
@@ -26,7 +26,7 @@ if (/<\/script/i.test(sharedScript)) {
   throw new Error('shared inline script must not contain a literal </script> sequence')
 }
 
-export function buildPopoutPage(): string {
+export function buildFlyoutPage(): string {
   return String.raw`<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -37,7 +37,7 @@ export function buildPopoutPage(): string {
   (function () {
     // Follow DSH's light/dark setting: the main tab publishes the theme to
     // localStorage (THEME_KEY); the ?scheme= query is the fallback.
-    var THEME_KEY = 'dsh-popout-sidebar:theme';
+    var THEME_KEY = 'dsh-flyout-sidebar:theme';
     var v = null;
     try { v = localStorage.getItem(THEME_KEY); } catch (e) {}
     if (v !== 'dark' && v !== 'light') {
@@ -102,7 +102,7 @@ export function buildPopoutPage(): string {
      in-app layout where the preview covers the area left of the sidebar.
      Panel width is adjustable via an invisible handle straddling the panel's
      left border (same pattern as the in-app panel, no visible gap). */
-  .sidebar { width: var(--popout-panel-w, 240px); flex: none; display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--p-border-l2); position: relative; }
+  .sidebar { width: var(--flyout-panel-w, 240px); flex: none; display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--p-border-l2); position: relative; }
   .divider { position: absolute; left: -4px; top: 0; bottom: 0; width: 8px; cursor: col-resize; z-index: 5; touch-action: none; }
   .divider::after { content: ''; position: absolute; left: 3px; top: 0; bottom: 0; width: 2px; background: transparent; transition: background .15s; }
   .divider:hover::after, .divider.dragging::after { background: var(--p-accent); }
@@ -257,15 +257,15 @@ export function buildPopoutPage(): string {
   <div class="toast" id="toast"></div>
   <script>
 ${sharedScript}
-    var DATA_URL = '/popout-sidebar/data';
-    var CONTENT_URL = '/popout-sidebar/content';
-    var MEDIA_URL = '/popout-sidebar/media';
-    var LISTDIR_URL = '/popout-sidebar/listdir';
-    var GITSTATUS_URL = '/popout-sidebar/gitstatus';
-    var GITDIFF_URL = '/popout-sidebar/gitdiff';
+    var DATA_URL = '/flyout-sidebar/data';
+    var CONTENT_URL = '/flyout-sidebar/content';
+    var MEDIA_URL = '/flyout-sidebar/media';
+    var LISTDIR_URL = '/flyout-sidebar/listdir';
+    var GITSTATUS_URL = '/flyout-sidebar/gitstatus';
+    var GITDIFF_URL = '/flyout-sidebar/gitdiff';
     var _sm = /[?&]sessionId=([^&]+)/.exec(location.search);
     var _urlSessionId = _sm ? decodeURIComponent(_sm[1]) : '';
-    var SESSION_KEY = 'dsh-popout-sidebar:session';
+    var SESSION_KEY = 'dsh-flyout-sidebar:session';
     function currentSessionId() {
       try {
         var v = localStorage.getItem(SESSION_KEY);
@@ -775,7 +775,7 @@ ${sharedScript}
     renderTabs();
     renderActive();
     // ── Panel side: file panel on the right (default) or the left ─────────
-    var PANEL_SIDE_KEY = 'dsh-popout-sidebar:panelLeft';
+    var PANEL_SIDE_KEY = 'dsh-flyout-sidebar:panelLeft';
     var panelLeft = false;
     try { panelLeft = localStorage.getItem(PANEL_SIDE_KEY) === '1'; } catch (e) {}
     function panelSideIcon() {
@@ -821,7 +821,7 @@ ${sharedScript}
     }
     applyPanelSide();
     // ── Panel width: draggable divider; default = minimum ─────────────────
-    var PANEL_W_KEY = 'dsh-popout-sidebar:panelw';
+    var PANEL_W_KEY = 'dsh-flyout-sidebar:panelw';
     var PANEL_MIN = 240;
     var PANEL_MAX_RATIO = 0.6;
     var panelW = PANEL_MIN;
@@ -858,7 +858,7 @@ ${sharedScript}
     setInterval(function () { if (currentView === 'git') loadGit(); }, 2000);
     // Follow the app's light/dark theme live: the main tab writes the theme to
     // localStorage (THEME_KEY) whenever DSH's theme changes.
-    var THEME_KEY = 'dsh-popout-sidebar:theme';
+    var THEME_KEY = 'dsh-flyout-sidebar:theme';
     function applyTheme() {
       var v = null;
       try { v = localStorage.getItem(THEME_KEY); } catch (e) {}

@@ -1,19 +1,19 @@
 /**
  * Client 侧：注入的样式表。
  *
- * 一次性插入 <style id="dsh-popout-sidebar-styles">；CSS 变量遵循 DSH 的
+ * 一次性插入 <style id="dsh-flyout-sidebar-styles">；CSS 变量遵循 DSH 的
  * --dsw-alias-* 设计令牌，深浅主题自动跟随。
  */
 export const styleCss = `
 html #root {
-  margin-right: calc(var(--dsh-sidebar-width, 0px) + var(--dsh-popout-sidebar-width, 0px));
+  margin-right: calc(var(--dsh-sidebar-width, 0px) + var(--dsh-flyout-sidebar-width, 0px));
   transition: margin-right var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease);
 }
-body[data-dsh-popout-dragging] #root {
+body[data-dsh-flyout-dragging] #root {
   transition: none;
 }
 header:has([data-slot="conversation.session.header.utilities"]) {
-  padding-right: max(28px, calc(60px - var(--dsh-popout-sidebar-width, 0px)));
+  padding-right: max(28px, calc(60px - var(--dsh-flyout-sidebar-width, 0px)));
   transition: padding-right var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease);
 }
 @media (prefers-reduced-motion: reduce) {
@@ -22,7 +22,7 @@ header:has([data-slot="conversation.session.header.utilities"]) {
 }
 .artifacts-preview-overlay {
   position: fixed; top: 0; bottom: 0; left: 0;
-  right: calc(var(--dsh-sidebar-width, 0px) + var(--dsh-popout-sidebar-width, 0px));
+  right: calc(var(--dsh-sidebar-width, 0px) + var(--dsh-flyout-sidebar-width, 0px));
   z-index: 9998;
   display: flex; flex-direction: column; min-width: 0;
   background: var(--dsw-alias-bg-base);
@@ -34,7 +34,7 @@ header:has([data-slot="conversation.session.header.utilities"]) {
   font-size: 13px; line-height: 1.5;
   transition: right var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease);
 }
-body[data-dsh-popout-dragging] .artifacts-preview-overlay { transition: none; }
+body[data-dsh-flyout-dragging] .artifacts-preview-overlay { transition: none; }
 .artifacts-preview-overlay-tabs {
   flex: none; display: flex; align-items: stretch; height: 28px;
   background: var(--dsw-alias-bg-layer-1);
@@ -127,7 +127,7 @@ body[data-dsh-popout-dragging] .artifacts-preview-overlay { transition: none; }
 .artifacts-hint { padding: 24px 16px; color: var(--dsw-alias-label-tertiary); text-align: center; }
 .artifacts-error { padding: 16px; color: var(--dsw-alias-state-error-primary); font-family: var(--dsh-font-mono, monospace); word-break: break-all; }
 .artifacts-corner-btn {
-  position: fixed; top: 10px; right: calc(var(--dsh-sidebar-width, 0px) + var(--dsh-popout-sidebar-width, 0px) + 12px);
+  position: fixed; top: 10px; right: calc(var(--dsh-sidebar-width, 0px) + var(--dsh-flyout-sidebar-width, 0px) + 12px);
   z-index: 10000; width: 36px; height: 36px; padding: 0;
   border: none; background: transparent; color: var(--dsw-alias-label-secondary);
   cursor: pointer; align-items: center; justify-content: center; display: inline-flex;
@@ -248,7 +248,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 /** 注入样式（幂等：已存在则跳过） */
 export function insertStyles(): void {
   if (typeof document === 'undefined') return
-  const id = 'dsh-popout-sidebar-styles'
+  const id = 'dsh-flyout-sidebar-styles'
   if (document.getElementById(id)) return
   const el = document.createElement('style')
   el.id = id

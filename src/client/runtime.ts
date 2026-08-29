@@ -2,7 +2,7 @@
  * Client 侧：客户端上下文（ctx）与 host RPC 桥。
  *
  * ctx 由入口 apply 注入（initClient），host 桥是纯 fetch 的静态映射 ——
- * 与 host 侧 /popout-sidebar/* 路由一一对应。
+ * 与 host 侧 /flyout-sidebar/* 路由一一对应。
  */
 
 /** 客户端插件上下文（cordis client 注入的最小面） */
@@ -79,18 +79,18 @@ function qs(...pairs: Array<[string, string]>): string {
   return q.length ? '?' + q.join('&') : ''
 }
 
-/** host RPC 桥：与 host 侧 /popout-sidebar/* 路由一一对应 */
+/** host RPC 桥：与 host 侧 /flyout-sidebar/* 路由一一对应 */
 export const host = {
   gitStatus(sessionId: string): Promise<GitStatusResponse> {
-    return getJson('/popout-sidebar/gitstatus' + qs(['sessionId', sessionId])) as Promise<GitStatusResponse>
+    return getJson('/flyout-sidebar/gitstatus' + qs(['sessionId', sessionId])) as Promise<GitStatusResponse>
   },
   gitDiff(path: string, sessionId: string): Promise<GitDiffResponse> {
-    return getJson('/popout-sidebar/gitdiff' + qs(['path', path], ['sessionId', sessionId])) as Promise<GitDiffResponse>
+    return getJson('/flyout-sidebar/gitdiff' + qs(['path', path], ['sessionId', sessionId])) as Promise<GitDiffResponse>
   },
   readArtifact(path: string): Promise<ReadResponse> {
-    return getJson('/popout-sidebar/content' + qs(['path', path])) as Promise<ReadResponse>
+    return getJson('/flyout-sidebar/content' + qs(['path', path])) as Promise<ReadResponse>
   },
   listDir(path: string, sessionId: string): Promise<ListDirResponse> {
-    return getJson('/popout-sidebar/listdir' + qs(['path', path], ['sessionId', sessionId])) as Promise<ListDirResponse>
+    return getJson('/flyout-sidebar/listdir' + qs(['path', path], ['sessionId', sessionId])) as Promise<ListDirResponse>
   },
 }

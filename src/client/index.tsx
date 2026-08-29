@@ -1,5 +1,5 @@
 /**
- * 可弹出侧边栏 · Popout Sidebar — Client 入口（浏览器侧）
+ * 可弹出侧边栏 · Flyout Sidebar — Client 入口（浏览器侧）
  *
  * 经 DSH 的 window.__ModuleLoader__ 注册：factory(require) 在运行时拿到
  * React（bundle 内不 import react），然后返回 { inject, apply } 供宿主调用。
@@ -34,7 +34,7 @@ interface Slots {
 }
 
 window.__ModuleLoader__.load({
-  id: 'dsh-popout-sidebar',
+  id: 'dsh-flyout-sidebar',
   factory: (require) => {
     initReact(require('react'))
 
@@ -65,7 +65,7 @@ window.__ModuleLoader__.load({
 
         slots.inject('settings.section', () =>
           slots.register(
-            { name: 'settings.section', id: 'artifacts-sidebar', order: 90, label: 'Popout Sidebar' },
+            { name: 'settings.section', id: 'artifacts-sidebar', order: 90, label: 'Flyout Sidebar' },
             SettingsSection,
           ),
         )

@@ -5,7 +5,7 @@
  * 1. tsdown 打包进 host 侧（Node）；
  * 2. tsdown 打包进 client 侧（浏览器 React bundle）；
  * 3. tsdown 构建期经 `?raw` 读入原始文本，剥离 import/export 后内联进独立
- *    弹出页 /popout-sidebar 的经典 <script>（见 src/host/page.ts）。
+ *    弹出页 /flyout-sidebar 的经典 <script>（见 src/host/page.ts）。
  *
  * 因此这些文件只能使用 JSDoc 标注类型（不得出现 TS 语法注记），且不得引入
  * 本目录之外的依赖。highlight/markdown 同理。

@@ -1,5 +1,5 @@
 /**
- * Host 侧：/popout-sidebar/* HTTP 路由注册。
+ * Host 侧：/flyout-sidebar/* HTTP 路由注册。
  */
 import { Buffer } from 'node:buffer'
 import type { ServerResponse } from 'node:http'
@@ -11,7 +11,7 @@ import type { DshFs, DshWebServer, HostContext } from './types'
 import { readFile, listDir } from './files'
 import { gitDiff, gitStatus } from './git'
 import { removeFile, snapshotArtifacts } from './artifacts'
-import { buildPopoutPage } from './page'
+import { buildFlyoutPage } from './page'
 
 const MIME: Record<string, string> = {
   png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif',
@@ -40,7 +40,7 @@ function sendText(res: ServerResponse, status: number, body: string): void {
 }
 
 export function registerRoutes(ctx: HostContext, webServer: DshWebServer): void {
-  const page = buildPopoutPage()
+  const page = buildFlyoutPage()
 
   const register = (route: Parameters<DshWebServer['register']>[0], label: string): void => {
     ctx.effect(() => webServer.register(route), label)
@@ -48,7 +48,7 @@ export function registerRoutes(ctx: HostContext, webServer: DshWebServer): void 
 
   register({
     kind: 'exact',
-    path: '/popout-sidebar',
+    path: '/flyout-sidebar',
     handler(req, res) {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' })
       res.end(page)
@@ -57,7 +57,7 @@ export function registerRoutes(ctx: HostContext, webServer: DshWebServer): void 
 
   register({
     kind: 'exact',
-    path: '/popout-sidebar/data',
+    path: '/flyout-sidebar/data',
     handler(req, res) {
       sendJson(res, { artifacts: snapshotArtifacts() }, true)
     },
@@ -65,7 +65,7 @@ export function registerRoutes(ctx: HostContext, webServer: DshWebServer): void 
 
   register({
     kind: 'exact',
-    path: '/popout-sidebar/content',
+    path: '/flyout-sidebar/content',
     handler: async (req, res) => {
       const out = await readFile(ctx, queryParams(req.url).get('path') ?? undefined)
       sendJson(res, out)
@@ -74,7 +74,7 @@ export function registerRoutes(ctx: HostContext, webServer: DshWebServer): void 
 
   register({
     kind: 'exact',
-    path: '/popout-sidebar/media',
+    path: '/flyout-sidebar/media',
     handler: async (req, res) => {
       const path = queryParams(req.url).get('path') || ''
       const fs = ctx.get<DshFs>('fs')
@@ -106,7 +106,7 @@ export function registerRoutes(ctx: HostContext, webServer: DshWebServer): void 
 
   register({
     kind: 'exact',
-    path: '/popout-sidebar/remove',
+    path: '/flyout-sidebar/remove',
     handler(req, res) {
       sendJson(res, removeFile(queryParams(req.url).get('path') ?? undefined))
     },
@@ -114,7 +114,7 @@ export function registerRoutes(ctx: HostContext, webServer: DshWebServer): void 
 
   register({
     kind: 'exact',
-    path: '/popout-sidebar/listdir',
+    path: '/flyout-sidebar/listdir',
     handler: async (req, res) => {
       const q = queryParams(req.url)
       const out = await listDir(ctx, q.get('path') || undefined, q.get('sessionId') || undefined)
@@ -124,7 +124,7 @@ export function registerRoutes(ctx: HostContext, webServer: DshWebServer): void 
 
   register({
     kind: 'exact',
-    path: '/popout-sidebar/gitstatus',
+    path: '/flyout-sidebar/gitstatus',
     handler: async (req, res) => {
       const out = await gitStatus(ctx, queryParams(req.url).get('sessionId') || undefined)
       sendJson(res, out, true)
@@ -133,7 +133,7 @@ export function registerRoutes(ctx: HostContext, webServer: DshWebServer): void 
 
   register({
     kind: 'exact',
-    path: '/popout-sidebar/gitdiff',
+    path: '/flyout-sidebar/gitdiff',
     handler: async (req, res) => {
       const q = queryParams(req.url)
       const out = await gitDiff(ctx, q.get('path'), q.get('sessionId') || undefined)
@@ -145,7 +145,7 @@ export function registerRoutes(ctx: HostContext, webServer: DshWebServer): void 
   // 版本走。
   register({
     kind: 'exact',
-    path: '/popout-sidebar/pdfjs/pdf.min.js',
+    path: '/flyout-sidebar/pdfjs/pdf.min.js',
     handler(req, res) {
       res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'public, max-age=31536000' })
       res.end(pdfjsLibSource)
@@ -154,7 +154,7 @@ export function registerRoutes(ctx: HostContext, webServer: DshWebServer): void 
 
   register({
     kind: 'exact',
-    path: '/popout-sidebar/pdfjs/pdf.worker.min.js',
+    path: '/flyout-sidebar/pdfjs/pdf.worker.min.js',
     handler(req, res) {
       res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'public, max-age=31536000' })
       res.end(pdfjsWorkerSource)
