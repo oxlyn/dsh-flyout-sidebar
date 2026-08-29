@@ -16,6 +16,7 @@ import {
   useOpen,
   useSessionId,
   useSettings,
+  useSlide,
   type Settings,
 } from './store'
 import { renderPreview, type PreviewTab } from './preview'
@@ -378,7 +379,12 @@ export function ArtifactsPanel(): ReactElement | null {
     }
   }, [resizing])
 
-  if (!open) return null
+  // 推拉动画：面板和角落触发按钮共用 slide 状态（见 store），关闭时滑出屏
+  // 右侧、动画结束后才卸载，打开时先挂在屏外一帧再滑入，与 #root 让位过渡
+  // 同时进行。
+  const { visible, slidOut } = useSlide()
+
+  if (!visible) return null
 
   const flyoutHref = '/flyout-sidebar' + (sessionId ? '?sessionId=' + encodeURIComponent(sessionId) : '')
 
@@ -544,7 +550,11 @@ export function ArtifactsPanel(): ReactElement | null {
   // 何文件恢复。
   const previewOverlay =
     tabs.length && !previewHidden ? (
-      <div className="artifacts-preview-overlay" role="region" aria-label="文件预览">
+      <div
+        className={'artifacts-preview-overlay' + (slidOut ? ' artifacts-slid-out' : '')}
+        role="region"
+        aria-label="文件预览"
+      >
         <div className="artifacts-preview-overlay-tabs">
           <div className="artifacts-ptabs-scroll">
             {tabs.map((t) => (
@@ -581,7 +591,9 @@ export function ArtifactsPanel(): ReactElement | null {
     <Fragment>
       {previewOverlay}
       <div
-        className={'artifacts-panel' + (resizing ? ' artifacts-resizing' : '')}
+        className={
+          'artifacts-panel' + (slidOut ? ' artifacts-slid-out' : '') + (resizing ? ' artifacts-resizing' : '')
+        }
         style={{ width: widthPx }}
         role="dialog"
         aria-label="Artifacts"
@@ -647,11 +659,19 @@ export function ArtifactsPanel(): ReactElement | null {
 
 // 常驻触发按钮，钉在右上角。注册进根作用域的 shell.overlay 列表，因此无会
 // 话时也可见；固定 CSS 定位在角落，被右侧边栏宽度向左让位。刻意只显示图标。
-export function CornerButton(): ReactElement | null {
+export function CornerButton(): ReactElement {
   const open = useOpen()
-  if (open) return null
+  // 常驻挂载：面板打开时滑出屏右缘（随面板滑入的推力），关闭时滑回角落。
+  // 直接跟随 open，而不是面板的 slidOut —— 后者在关闭动画结束时会停在
+  // true，按钮就会被留在屏外。
   return (
-    <button type="button" className="artifacts-corner-btn" title="弹出式侧边栏" aria-expanded={open} onClick={() => store.toggle()}>
+    <button
+      type="button"
+      className={'artifacts-corner-btn' + (open ? ' artifacts-slid-out' : '')}
+      title="弹出式侧边栏"
+      aria-expanded={open}
+      onClick={() => store.toggle()}
+    >
       <PanelIcon size={18} />
     </button>
   )

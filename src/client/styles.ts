@@ -19,6 +19,7 @@ header:has([data-slot="conversation.session.header.utilities"]) {
 @media (prefers-reduced-motion: reduce) {
   html #root { transition: none; }
   header:has([data-slot="conversation.session.header.utilities"]) { transition: none; }
+  .artifacts-preview-overlay, .artifacts-panel, .artifacts-corner-btn { transition: none; }
 }
 .artifacts-preview-overlay {
   position: fixed; top: 0; bottom: 0; left: 0;
@@ -32,7 +33,13 @@ header:has([data-slot="conversation.session.header.utilities"]) {
   pointer-events: auto;
   font-family: var(--dsw-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif);
   font-size: 13px; line-height: 1.5;
-  transition: right var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease);
+  transition: right var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease),
+    transform var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease);
+}
+.artifacts-preview-overlay.artifacts-slid-out,
+.artifacts-panel.artifacts-slid-out {
+  transform: translateX(105%);
+  pointer-events: none;
 }
 body[data-dsh-flyout-dragging] .artifacts-preview-overlay { transition: none; }
 .artifacts-preview-overlay-tabs {
@@ -83,7 +90,8 @@ body[data-dsh-flyout-dragging] .artifacts-preview-overlay { transition: none; }
   font-size: 13px; line-height: 1.5;
   --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
   --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
-  transition: right var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease);
+  transition: right var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease),
+    transform var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease);
 }
 .artifacts-panel.artifacts-resizing { transition: none; user-select: none; }
 .artifacts-head {
@@ -127,11 +135,17 @@ body[data-dsh-flyout-dragging] .artifacts-preview-overlay { transition: none; }
 .artifacts-hint { padding: 24px 16px; color: var(--dsw-alias-label-tertiary); text-align: center; }
 .artifacts-error { padding: 16px; color: var(--dsw-alias-state-error-primary); font-family: var(--dsh-font-mono, monospace); word-break: break-all; }
 .artifacts-corner-btn {
-  position: fixed; top: 10px; right: calc(var(--dsh-sidebar-width, 0px) + var(--dsh-flyout-sidebar-width, 0px) + 12px);
-  z-index: 10000; width: 36px; height: 36px; padding: 0;
+  position: fixed; top: 0; right: calc(var(--dsh-sidebar-width, 0px) + 12px);
+  z-index: 10000; width: 36px; height: 28px; padding: 0;
   border: none; background: transparent; color: var(--dsw-alias-label-secondary);
   cursor: pointer; align-items: center; justify-content: center; display: inline-flex;
-  transition: right var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease), color .15s;
+  transition: transform var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease),
+    right var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease), color .15s;
+}
+/* 面板打开时随面板一起滑出屏右缘（推拉动画的另一半） */
+.artifacts-corner-btn.artifacts-slid-out {
+  transform: translateX(calc(100% + 24px));
+  pointer-events: none;
 }
 .artifacts-corner-btn:hover { color: var(--dsw-alias-label-primary); }
 .artifacts-preview-body { flex: 1; min-height: 0; overflow-y: auto; position: relative; }

@@ -115,6 +115,16 @@ export const useOpen = (): boolean => {
   return open
 }
 
+/**
+ * 推拉动画共享状态：面板与角落触发按钮共用，保证两个图标像同一个元素一样
+ * 滑动。visible 表示面板是否应挂载（关闭动画结束后才卸载）；slidOut 表示当
+ * 前是否处于「滑出屏外」一帧（打开时先保持一帧再翻回，产生滑入过渡）。
+ */
+export interface SlideState {
+  visible: boolean
+  slidOut: boolean
+}
+
 /** 功能设置，localStorage 持久化，刷新后仍生效 */
 export interface Settings {
   autoRefresh: boolean
@@ -178,6 +188,58 @@ export const settingsStore = {
 
 // 在任何组件挂载前应用「默认展开」偏好，使初始开合状态与持久化设置一致。
 store.open = !!settingsStore.get().defaultOpen
+
+const slideState: SlideState = { visible: store.open, slidOut: !store.open }
+const slideListeners: Array<(s: SlideState) => void> = []
+const setSlide = (patch: Partial<SlideState>): void => {
+  let changed = false
+  for (const key of ['visible', 'slidOut'] as const) {
+    const v = patch[key]
+    if (v !== undefined && v !== slideState[key]) {
+      slideState[key] = v
+      changed = true
+    }
+  }
+  if (!changed) return
+  const next: SlideState = { ...slideState }
+  for (const fn of slideListeners) {
+    try {
+      fn(next)
+    } catch {
+      // 单个订阅者异常不阻断其余
+    }
+  }
+}
+
+let slideTimer: ReturnType<typeof setTimeout> | null = null
+store.subscribe((open) => {
+  if (open) {
+    if (slideTimer) {
+      clearTimeout(slideTimer)
+      slideTimer = null
+    }
+    setSlide({ visible: true })
+    requestAnimationFrame(() => requestAnimationFrame(() => setSlide({ slidOut: false })))
+  } else {
+    setSlide({ slidOut: true })
+    slideTimer = setTimeout(() => {
+      slideTimer = null
+      setSlide({ visible: false })
+    }, 240)
+  }
+})
+
+export const useSlide = (): SlideState => {
+  const [s, setS] = React.useState<SlideState>({ ...slideState })
+  React.useEffect(() => {
+    slideListeners.push(setS)
+    return () => {
+      const i = slideListeners.indexOf(setS)
+      if (i >= 0) slideListeners.splice(i, 1)
+    }
+  }, [])
+  return s
+}
 
 export const useSettings = (): Settings => {
   const [s, setS] = React.useState(settingsStore.get())

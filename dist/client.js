@@ -68,6 +68,7 @@ header:has([data-slot="conversation.session.header.utilities"]) {
 @media (prefers-reduced-motion: reduce) {
   html #root { transition: none; }
   header:has([data-slot="conversation.session.header.utilities"]) { transition: none; }
+  .artifacts-preview-overlay, .artifacts-panel, .artifacts-corner-btn { transition: none; }
 }
 .artifacts-preview-overlay {
   position: fixed; top: 0; bottom: 0; left: 0;
@@ -81,7 +82,13 @@ header:has([data-slot="conversation.session.header.utilities"]) {
   pointer-events: auto;
   font-family: var(--dsw-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif);
   font-size: 13px; line-height: 1.5;
-  transition: right var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease);
+  transition: right var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease),
+    transform var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease);
+}
+.artifacts-preview-overlay.artifacts-slid-out,
+.artifacts-panel.artifacts-slid-out {
+  transform: translateX(105%);
+  pointer-events: none;
 }
 body[data-dsh-flyout-dragging] .artifacts-preview-overlay { transition: none; }
 .artifacts-preview-overlay-tabs {
@@ -132,7 +139,8 @@ body[data-dsh-flyout-dragging] .artifacts-preview-overlay { transition: none; }
   font-size: 13px; line-height: 1.5;
   --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
   --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
-  transition: right var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease);
+  transition: right var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease),
+    transform var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease);
 }
 .artifacts-panel.artifacts-resizing { transition: none; user-select: none; }
 .artifacts-head {
@@ -176,11 +184,17 @@ body[data-dsh-flyout-dragging] .artifacts-preview-overlay { transition: none; }
 .artifacts-hint { padding: 24px 16px; color: var(--dsw-alias-label-tertiary); text-align: center; }
 .artifacts-error { padding: 16px; color: var(--dsw-alias-state-error-primary); font-family: var(--dsh-font-mono, monospace); word-break: break-all; }
 .artifacts-corner-btn {
-  position: fixed; top: 10px; right: calc(var(--dsh-sidebar-width, 0px) + var(--dsh-flyout-sidebar-width, 0px) + 12px);
-  z-index: 10000; width: 36px; height: 36px; padding: 0;
+  position: fixed; top: 0; right: calc(var(--dsh-sidebar-width, 0px) + 12px);
+  z-index: 10000; width: 36px; height: 28px; padding: 0;
   border: none; background: transparent; color: var(--dsw-alias-label-secondary);
   cursor: pointer; align-items: center; justify-content: center; display: inline-flex;
-  transition: right var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease), color .15s;
+  transition: transform var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease),
+    right var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease), color .15s;
+}
+/* 面板打开时随面板一起滑出屏右缘（推拉动画的另一半） */
+.artifacts-corner-btn.artifacts-slid-out {
+  transform: translateX(calc(100% + 24px));
+  pointer-events: none;
 }
 .artifacts-corner-btn:hover { color: var(--dsw-alias-label-primary); }
 .artifacts-preview-body { flex: 1; min-height: 0; overflow-y: auto; position: relative; }
@@ -494,6 +508,54 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		}
 	};
 	store.open = !!settingsStore.get().defaultOpen;
+	const slideState = {
+		visible: store.open,
+		slidOut: !store.open
+	};
+	const slideListeners = [];
+	const setSlide = (patch) => {
+		let changed = false;
+		for (const key of ["visible", "slidOut"]) {
+			const v = patch[key];
+			if (v !== void 0 && v !== slideState[key]) {
+				slideState[key] = v;
+				changed = true;
+			}
+		}
+		if (!changed) return;
+		const next = { ...slideState };
+		for (const fn of slideListeners) try {
+			fn(next);
+		} catch {}
+	};
+	let slideTimer = null;
+	store.subscribe((open) => {
+		if (open) {
+			if (slideTimer) {
+				clearTimeout(slideTimer);
+				slideTimer = null;
+			}
+			setSlide({ visible: true });
+			requestAnimationFrame(() => requestAnimationFrame(() => setSlide({ slidOut: false })));
+		} else {
+			setSlide({ slidOut: true });
+			slideTimer = setTimeout(() => {
+				slideTimer = null;
+				setSlide({ visible: false });
+			}, 240);
+		}
+	});
+	const useSlide = () => {
+		const [s, setS] = React.useState({ ...slideState });
+		React.useEffect(() => {
+			slideListeners.push(setS);
+			return () => {
+				const i = slideListeners.indexOf(setS);
+				if (i >= 0) slideListeners.splice(i, 1);
+			};
+		}, []);
+		return s;
+	};
 	const useSettings = () => {
 		const [s, setS] = React.useState(settingsStore.get());
 		React.useEffect(() => settingsStore.subscribe(setS), []);
@@ -1523,7 +1585,8 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 				document.body.removeAttribute("data-dsh-flyout-dragging");
 			};
 		}, [resizing]);
-		if (!open) return null;
+		const { visible, slidOut } = useSlide();
+		if (!visible) return null;
 		const flyoutHref = "/flyout-sidebar" + (sessionId ? "?sessionId=" + encodeURIComponent(sessionId) : "");
 		const startResize = (e) => {
 			e.preventDefault();
@@ -1695,7 +1758,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			}, "@"))));
 		});
 		const previewOverlay = tabs.length && !previewHidden ? /* @__PURE__ */ h("div", {
-			className: "artifacts-preview-overlay",
+			className: "artifacts-preview-overlay" + (slidOut ? " artifacts-slid-out" : ""),
 			role: "region",
 			"aria-label": "文件预览"
 		}, /* @__PURE__ */ h("div", { className: "artifacts-preview-overlay-tabs" }, /* @__PURE__ */ h("div", { className: "artifacts-ptabs-scroll" }, tabs.map((t) => /* @__PURE__ */ h("div", {
@@ -1718,7 +1781,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			onClick: () => setPreviewHidden(true)
 		}, /* @__PURE__ */ h(PanelCollapseIcon, { size: 16 }))), activeTab ? renderPreview(activeTab) : null) : null;
 		return /* @__PURE__ */ h(Fragment, null, previewOverlay, /* @__PURE__ */ h("div", {
-			className: "artifacts-panel" + (resizing ? " artifacts-resizing" : ""),
+			className: "artifacts-panel" + (slidOut ? " artifacts-slid-out" : "") + (resizing ? " artifacts-resizing" : ""),
 			style: { width: widthPx },
 			role: "dialog",
 			"aria-label": "Artifacts"
@@ -1762,10 +1825,9 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 	}
 	function CornerButton() {
 		const open = useOpen();
-		if (open) return null;
 		return /* @__PURE__ */ h("button", {
 			type: "button",
-			className: "artifacts-corner-btn",
+			className: "artifacts-corner-btn" + (open ? " artifacts-slid-out" : ""),
 			title: "弹出式侧边栏",
 			"aria-expanded": open,
 			onClick: () => store.toggle()
