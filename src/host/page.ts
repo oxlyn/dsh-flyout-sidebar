@@ -171,7 +171,7 @@ export function buildFlyoutPage(): string {
   .diff-block.add .diff-pre { background: rgba(34,197,94,0.06); }
   .toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--p-bg-layer-1); border: 1px solid var(--p-border-l2); color: var(--p-text); padding: 6px 14px; border-radius: 8px; font-size: 12px; opacity: 0; transition: opacity .18s; pointer-events: none; box-shadow: var(--p-shadow); z-index: 10; }
   .gtoggle { flex: none; display: flex; align-items: center; gap: 4px; height: 28px; padding: 0 6px; border-bottom: 1px solid var(--p-border-l2); background: var(--p-bg-layer-1); }
-  .gtoggle-status { flex: none; font-size: 11px; color: var(--p-text-tertiary); margin-right: 2px; }
+  .gtoggle-status { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--p-text-tertiary); }
   /* Panel on the left side: preview and panel swap via flex-direction */
   main.side-left { flex-direction: row-reverse; }
   main.side-left .sidebar { border-left: none; border-right: 1px solid var(--p-border-l2); }
@@ -181,7 +181,6 @@ export function buildFlyoutPage(): string {
   .gtoggle-btn { width: 26px; height: 24px; flex: none; display: inline-flex; align-items: center; justify-content: center; border: none; background: transparent; color: var(--p-text-secondary); cursor: pointer; border-radius: 6px; padding: 0; }
   .gtoggle-btn:hover { background: var(--p-hover); color: var(--p-text); }
   .gtoggle-btn.is-active { color: var(--p-accent); }
-  .gtoggle-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--p-text-secondary); font-size: 13px; }
   .git-badge { font-size: 10px; font-weight: 700; width: 16px; height: 16px; flex: none; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
   .git-badge-M { background: var(--p-warn-bg); color: var(--p-warn-fg); }
   .git-badge-A { background: var(--p-success-bg); color: var(--p-success-fg); }
@@ -246,9 +245,8 @@ export function buildFlyoutPage(): string {
     <div class="sidebar">
       <div class="divider" id="divider" title="拖动调整面板宽度"></div>
       <div class="gtoggle">
-        <span class="gtoggle-label" id="viewLabel">文件列表</span>
-        <span class="gtoggle-status" id="status">connecting…</span>
         <button class="gtoggle-btn" id="sideBtn" type="button" title="将文件面板移到左侧"></button>
+        <span class="gtoggle-status" id="status">connecting…</span>
         <button class="gtoggle-btn" id="refreshBtn" type="button" title="刷新"></button>
         <button class="gtoggle-btn" id="viewBtn" type="button" title="查看 Git 变更（未提交）"></button>
       </div>
@@ -618,14 +616,12 @@ ${sharedScript}
     function setView(view) {
       currentView = view;
       var btn = document.getElementById('viewBtn');
-      var label = document.getElementById('viewLabel');
       btn.classList.toggle('is-active', view === 'git');
       btn.title = view === 'tree' ? '查看 Git 变更（未提交）' : '返回文件列表';
       btn.textContent = '';
       btn.appendChild(view === 'tree' ? gitBranchIcon() : folderClosedIcon());
       var rb = document.getElementById('refreshBtn');
       if (rb) rb.title = view === 'tree' ? '刷新文件树' : '刷新变更列表';
-      label.textContent = view === 'tree' ? '文件列表' : 'Git 变更（未提交）';
       document.getElementById('list').classList.toggle('is-hidden', view !== 'git');
       document.getElementById('tree').classList.toggle('is-active', view === 'tree');
       if (view === 'tree' && !treeRoot) loadTreeRoot();
