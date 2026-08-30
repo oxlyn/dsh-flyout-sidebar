@@ -41,114 +41,16 @@ export function renderDiff(diff: { before: string; after: string } | null | unde
   )
 }
 
-/** 代码预览：逐行渲染（行号 + 语法高亮同行内对齐，软换行也不串行）+ 查找条 */
+/** 代码预览：逐行渲染（行号 + 语法高亮同行内对齐，软换行也不串行）。
+ *  文内查找直接用浏览器原生 Ctrl/Cmd+F（真实 DOM 文本可搜）。 */
 export function CodeView({ code, path, wrap }: { code?: string; path?: string; wrap?: boolean }): ReactElement {
   const src = String(code || '').replace(/\n$/, '')
-  const [query, setQuery] = React.useState('')
-  const [matchIdx, setMatchIdx] = React.useState(0)
-  const scrollRef = React.useRef<HTMLDivElement | null>(null)
-  const inputRef = React.useRef<HTMLInputElement | null>(null)
-  const rowRefs = React.useRef<Array<HTMLDivElement | null>>([])
-
   const hlLines = React.useMemo(() => splitHlLines(highlightCode(src, fileExt(path || ''))), [src, path])
-  const matchLines = React.useMemo(() => {
-    const q = query.trim().toLowerCase()
-    if (!q) return [] as number[]
-    const out: number[] = []
-    const lines = src.split('\n')
-    for (let i = 0; i < lines.length; i += 1) {
-      const line = lines[i]
-      if (line != null && line.toLowerCase().includes(q)) out.push(i)
-    }
-    return out
-  }, [query, src])
-
-  // 查询变化后归零当前位置；若有匹配则跳到第一处
-  React.useEffect(() => {
-    setMatchIdx(0)
-    if (matchLines.length) jumpTo(0)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, matchLines])
-
-  const jumpTo = (idx: number): void => {
-    if (!matchLines.length) return
-    const n = ((idx % matchLines.length) + matchLines.length) % matchLines.length
-    setMatchIdx(n)
-    const row = rowRefs.current[matchLines[n] ?? -1]
-    const scroll = scrollRef.current
-    if (row && scroll) scroll.scrollTop = row.offsetTop - scroll.clientHeight / 3
-  }
-
-  // Cmd/Ctrl+F 聚焦查找条（代码标签激活时接管浏览器默认查找）
-  React.useEffect(() => {
-    const onKey = (ev: KeyboardEvent): void => {
-      if ((ev.metaKey || ev.ctrlKey) && (ev.key === 'f' || ev.key === 'F')) {
-        ev.preventDefault()
-        ev.stopPropagation()
-        inputRef.current?.focus()
-        inputRef.current?.select()
-      }
-    }
-    document.addEventListener('keydown', onKey, true)
-    return () => document.removeEventListener('keydown', onKey, true)
-  }, [])
-
-  const matchSet = matchLines.length ? new Set(matchLines) : null
-  // 换码/重查后裁掉超出行数的陈旧 row 引用（jumpTo 按行号索引）
-  React.useEffect(() => {
-    rowRefs.current.length = hlLines.length
-  }, [hlLines])
   return (
     <div className={'artifacts-code' + (wrap ? ' artifacts-code-wrap' : '')}>
-      <div className="artifacts-findbar">
-        <input
-          ref={inputRef}
-          type="text"
-          className="artifacts-find-input"
-          placeholder={t('findPlaceholder')}
-          value={query}
-          onChange={(e) => setQuery(e.currentTarget.value)}
-          onKeyDown={(ev) => {
-            if (ev.key === 'Escape') {
-              setQuery('')
-              ev.currentTarget.blur()
-            } else if (ev.key === 'Enter') {
-              ev.preventDefault()
-              jumpTo(ev.shiftKey ? matchIdx - 1 : matchIdx + 1)
-            }
-          }}
-        />
-        {query.trim() ? (
-          <span className="artifacts-find-count">{matchLines.length ? matchIdx + 1 + '/' + matchLines.length : '0'}</span>
-        ) : null}
-        <button
-          type="button"
-          className="artifacts-find-btn"
-          title={t('prevMatch')}
-          disabled={!matchLines.length}
-          onClick={() => jumpTo(matchIdx - 1)}
-        >
-          ‹
-        </button>
-        <button
-          type="button"
-          className="artifacts-find-btn"
-          title={t('nextMatch')}
-          disabled={!matchLines.length}
-          onClick={() => jumpTo(matchIdx + 1)}
-        >
-          ›
-        </button>
-      </div>
-      <div className="artifacts-code-scroll" ref={scrollRef}>
+      <div className="artifacts-code-scroll">
         {hlLines.map((line, i) => (
-          <div
-            key={i}
-            ref={(el) => {
-              rowRefs.current[i] = el
-            }}
-            className={'artifacts-code-line' + (matchSet && matchSet.has(i) ? ' is-match' : '')}
-          >
+          <div key={i} className="artifacts-code-line">
             <div className="artifacts-code-gutter" aria-hidden="true">
               {i + 1}
             </div>

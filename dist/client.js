@@ -313,19 +313,10 @@ body[data-ds-dark-theme] .gd-del { color: #faa2c1; }
 /* 代码视图：逐行渲染（行 = 行号 + 代码），软换行时行号仍对齐 */
 .artifacts-code-scroll { flex: 1; min-height: 0; overflow: auto; padding: 12px 0; background: var(--shiki-background, var(--dsw-alias-markdown-code-block, var(--dsw-alias-bg-layer-1))); }
 .artifacts-code-line { display: flex; align-items: flex-start; min-width: fit-content; }
-.artifacts-code-line.is-match { background: rgba(65, 118, 230, 0.1); }
 .artifacts-code-gutter { flex: none; min-width: 2.2em; padding: 0 6px 0 8px; text-align: right; color: var(--dsw-alias-label-tertiary); border-right: 1px solid var(--dsw-alias-border-l1); position: sticky; left: 0; user-select: none; background: var(--shiki-background, var(--dsw-alias-markdown-code-block, var(--dsw-alias-bg-layer-1))); font: 12px/1.6 var(--dsh-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); }
-.artifacts-code-line.is-match .artifacts-code-gutter { color: var(--dsw-alias-state-business-primary); font-weight: 600; }
 .artifacts-code-pre { flex: 1 0 auto; margin: 0; padding: 0 12px; color: var(--shiki-foreground, var(--dsw-alias-label-primary)); font: 12px/1.6 var(--dsh-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); white-space: pre; }
 .artifacts-code-pre code { font: inherit; color: inherit; }
 .artifacts-code-wrap .artifacts-code-pre { white-space: pre-wrap; word-break: break-all; }
-.artifacts-findbar { flex: none; display: flex; align-items: center; gap: 4px; padding: 6px 10px; border-bottom: 1px solid var(--dsw-alias-border-l1); background: var(--dsw-alias-bg-layer-1); }
-.artifacts-find-input { flex: 1; min-width: 0; border: 1px solid var(--dsw-alias-border-l2); background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); font: inherit; font-size: 12px; border-radius: 6px; padding: 3px 8px; outline: none; }
-.artifacts-find-input:focus { border-color: var(--dsw-alias-button-primary-fill); }
-.artifacts-find-count { flex: none; color: var(--dsw-alias-label-tertiary); font: 11px/1 var(--dsh-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); padding: 0 2px; }
-.artifacts-find-btn { width: 22px; height: 22px; flex: none; display: inline-flex; align-items: center; justify-content: center; border: none; background: transparent; color: var(--dsw-alias-label-secondary); cursor: pointer; border-radius: 6px; padding: 0; font-size: 14px; }
-.artifacts-find-btn:hover:not(:disabled) { background: var(--dsw-alias-fill-hover, var(--dsw-alias-bg-layer-3)); color: var(--dsw-alias-label-primary); }
-.artifacts-find-btn:disabled { opacity: 0.4; cursor: default; }
 .artifacts-imgview { flex: 1; min-height: 0; overflow: auto; display: flex; align-items: center; justify-content: center; cursor: grab; user-select: none; }
 .artifacts-imgview.is-dragging { cursor: grabbing; }
 .artifacts-imgview .artifacts-img { flex: none; margin: 16px; transform-origin: center; will-change: transform; }
@@ -505,9 +496,6 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		setCodeWrap: "代码换行",
 		setCodeWrapDesc: "代码预览长行软换行；关闭则横向滚动。",
 		wordWrap: "自动换行",
-		findPlaceholder: "查找…",
-		prevMatch: "上一个匹配",
-		nextMatch: "下一个匹配",
 		openInEditor: "在系统编辑器打开",
 		openedInEditor: "已在编辑器打开",
 		openFailed: "打开失败",
@@ -592,9 +580,6 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		setCodeWrap: "Code wrap",
 		setCodeWrapDesc: "Soft-wrap long lines in code previews; when off they scroll horizontally.",
 		wordWrap: "Word wrap",
-		findPlaceholder: "Find…",
-		prevMatch: "Previous match",
-		nextMatch: "Next match",
 		openInEditor: "Open in system editor",
 		openedInEditor: "Opened in editor",
 		openFailed: "Failed to open",
@@ -1399,91 +1384,14 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 	function renderDiff(diff) {
 		return /* @__PURE__ */ h("div", { className: "artifacts-diff" }, diff && diff.before != null && diff.before !== "" ? /* @__PURE__ */ h("div", { className: "artifacts-diff-block artifacts-diff-del" }, /* @__PURE__ */ h("div", { className: "artifacts-diff-label" }, t("diffDeleted")), /* @__PURE__ */ h("pre", { className: "artifacts-diff-pre" }, diff.before)) : null, /* @__PURE__ */ h("div", { className: "artifacts-diff-block artifacts-diff-add" }, /* @__PURE__ */ h("div", { className: "artifacts-diff-label" }, t("diffAdded")), /* @__PURE__ */ h("pre", { className: "artifacts-diff-pre" }, diff && diff.after != null ? diff.after : "")));
 	}
-	/** 代码预览：逐行渲染（行号 + 语法高亮同行内对齐，软换行也不串行）+ 查找条 */
+	/** 代码预览：逐行渲染（行号 + 语法高亮同行内对齐，软换行也不串行）。
+	*  文内查找直接用浏览器原生 Ctrl/Cmd+F（真实 DOM 文本可搜）。 */
 	function CodeView({ code, path, wrap }) {
 		const src = String(code || "").replace(/\n$/, "");
-		const [query, setQuery] = React.useState("");
-		const [matchIdx, setMatchIdx] = React.useState(0);
-		const scrollRef = React.useRef(null);
-		const inputRef = React.useRef(null);
-		const rowRefs = React.useRef([]);
 		const hlLines = React.useMemo(() => splitHlLines(highlightCode(src, fileExt(path || ""))), [src, path]);
-		const matchLines = React.useMemo(() => {
-			const q = query.trim().toLowerCase();
-			if (!q) return [];
-			const out = [];
-			const lines = src.split("\n");
-			for (let i = 0; i < lines.length; i += 1) {
-				const line = lines[i];
-				if (line != null && line.toLowerCase().includes(q)) out.push(i);
-			}
-			return out;
-		}, [query, src]);
-		React.useEffect(() => {
-			setMatchIdx(0);
-			if (matchLines.length) jumpTo(0);
-		}, [query, matchLines]);
-		const jumpTo = (idx) => {
-			if (!matchLines.length) return;
-			const n = (idx % matchLines.length + matchLines.length) % matchLines.length;
-			setMatchIdx(n);
-			const row = rowRefs.current[matchLines[n] ?? -1];
-			const scroll = scrollRef.current;
-			if (row && scroll) scroll.scrollTop = row.offsetTop - scroll.clientHeight / 3;
-		};
-		React.useEffect(() => {
-			const onKey = (ev) => {
-				if ((ev.metaKey || ev.ctrlKey) && (ev.key === "f" || ev.key === "F")) {
-					ev.preventDefault();
-					ev.stopPropagation();
-					inputRef.current?.focus();
-					inputRef.current?.select();
-				}
-			};
-			document.addEventListener("keydown", onKey, true);
-			return () => document.removeEventListener("keydown", onKey, true);
-		}, []);
-		const matchSet = matchLines.length ? new Set(matchLines) : null;
-		React.useEffect(() => {
-			rowRefs.current.length = hlLines.length;
-		}, [hlLines]);
-		return /* @__PURE__ */ h("div", { className: "artifacts-code" + (wrap ? " artifacts-code-wrap" : "") }, /* @__PURE__ */ h("div", { className: "artifacts-findbar" }, /* @__PURE__ */ h("input", {
-			ref: inputRef,
-			type: "text",
-			className: "artifacts-find-input",
-			placeholder: t("findPlaceholder"),
-			value: query,
-			onChange: (e) => setQuery(e.currentTarget.value),
-			onKeyDown: (ev) => {
-				if (ev.key === "Escape") {
-					setQuery("");
-					ev.currentTarget.blur();
-				} else if (ev.key === "Enter") {
-					ev.preventDefault();
-					jumpTo(ev.shiftKey ? matchIdx - 1 : matchIdx + 1);
-				}
-			}
-		}), query.trim() ? /* @__PURE__ */ h("span", { className: "artifacts-find-count" }, matchLines.length ? matchIdx + 1 + "/" + matchLines.length : "0") : null, /* @__PURE__ */ h("button", {
-			type: "button",
-			className: "artifacts-find-btn",
-			title: t("prevMatch"),
-			disabled: !matchLines.length,
-			onClick: () => jumpTo(matchIdx - 1)
-		}, "‹"), /* @__PURE__ */ h("button", {
-			type: "button",
-			className: "artifacts-find-btn",
-			title: t("nextMatch"),
-			disabled: !matchLines.length,
-			onClick: () => jumpTo(matchIdx + 1)
-		}, "›")), /* @__PURE__ */ h("div", {
-			className: "artifacts-code-scroll",
-			ref: scrollRef
-		}, hlLines.map((line, i) => /* @__PURE__ */ h("div", {
+		return /* @__PURE__ */ h("div", { className: "artifacts-code" + (wrap ? " artifacts-code-wrap" : "") }, /* @__PURE__ */ h("div", { className: "artifacts-code-scroll" }, hlLines.map((line, i) => /* @__PURE__ */ h("div", {
 			key: i,
-			ref: (el) => {
-				rowRefs.current[i] = el;
-			},
-			className: "artifacts-code-line" + (matchSet && matchSet.has(i) ? " is-match" : "")
+			className: "artifacts-code-line"
 		}, /* @__PURE__ */ h("div", {
 			className: "artifacts-code-gutter",
 			"aria-hidden": "true"
