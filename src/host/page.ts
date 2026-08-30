@@ -193,6 +193,12 @@ export function buildFlyoutPage(): string {
   .gtoggle-btn { width: 26px; height: 24px; flex: none; display: inline-flex; align-items: center; justify-content: center; border: none; background: transparent; color: var(--p-text-secondary); cursor: pointer; border-radius: 6px; padding: 0; }
   .gtoggle-btn:hover { background: var(--p-hover); color: var(--p-text); }
   .gtoggle-btn.is-active { color: var(--p-accent); }
+  /* 文件搜索：默认隐藏，头部搜索按钮切换 */
+  .searchbar { flex: none; padding: 6px 8px; border-bottom: 1px solid var(--p-border-l1); }
+  .searchbar input { width: 100%; box-sizing: border-box; border: 1px solid var(--p-border-l2); background: var(--p-bg-layer-1); color: var(--p-text); font: inherit; font-size: 12px; border-radius: 6px; padding: 3px 8px; outline: none; }
+  .searchbar input:focus { border-color: var(--p-accent); }
+  .tree-sub { color: var(--p-text-tertiary); font-size: 11px; margin-left: 6px; }
+  .gtoggle-btn.is-active { color: var(--p-accent); }
   .git-badge { font-size: 10px; font-weight: 700; width: 16px; height: 16px; flex: none; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
   .git-badge-M { background: var(--p-warn-bg); color: var(--p-warn-fg); }
   .git-badge-A { background: var(--p-success-bg); color: var(--p-success-fg); }
@@ -262,11 +268,15 @@ export function buildFlyoutPage(): string {
       <div class="gtoggle">
         <button class="gtoggle-btn" id="sideBtn" type="button" title="将文件面板移到左侧"></button>
         <span class="gtoggle-status" id="status">connecting…</span>
+        <button class="gtoggle-btn" id="searchBtn" type="button" title="搜索文件"></button>
         <button class="gtoggle-btn" id="refreshBtn" type="button" title="刷新"></button>
         <button class="gtoggle-btn" id="viewBtn" type="button" title="查看 Git 变更（未提交）"></button>
       </div>
       <div class="list is-hidden" id="list"></div>
       <div class="tree is-active" id="tree">
+        <div class="searchbar" id="searchBar" style="display: none;">
+          <input id="searchInput" type="text" autocomplete="off" spellcheck="false" />
+        </div>
         <div class="tree-body" id="treeBody"></div>
       </div>
     </div>
@@ -283,6 +293,7 @@ ${sharedScript}
     var LISTDIR_URL = '/flyout-sidebar/listdir';
     var GITSTATUS_URL = '/flyout-sidebar/gitstatus';
     var GITDIFF_URL = '/flyout-sidebar/gitdiff';
+    var SEARCH_URL = '/flyout-sidebar/search';
     var _sm = /[?&]sessionId=([^&]+)/.exec(location.search);
     var _urlSessionId = _sm ? decodeURIComponent(_sm[1]) : '';
     var SESSION_KEY = 'dsh-flyout-sidebar:session';
@@ -341,6 +352,23 @@ ${sharedScript}
     function folderOpenIcon() { return svgIcon([{ d: FOLDER_OPEN_D1 }, { d: FOLDER_OPEN_D2, opacity: '0.2' }]); }
     function fileCodeIcon() { return svgIcon([{ d: CODE_D, fillRule: 'evenodd', clipRule: 'evenodd' }]); }
     function refreshIcon() { return svgIcon([{ d: REFRESH_D }]); }
+    // 放大镜（描边圆 + 柄），与 git 分支图标同风格
+    function searchIcon() {
+      var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('width', 16); svg.setAttribute('height', 16);
+      svg.setAttribute('viewBox', '0 0 16 16'); svg.setAttribute('fill', 'none');
+      var circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      circle.setAttribute('cx', '7'); circle.setAttribute('cy', '7'); circle.setAttribute('r', '4.4');
+      circle.setAttribute('stroke', 'currentColor'); circle.setAttribute('stroke-width', '1.4');
+      svg.appendChild(circle);
+      var line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('x1', '10.4'); line.setAttribute('y1', '10.4');
+      line.setAttribute('x2', '13.5'); line.setAttribute('y2', '13.5');
+      line.setAttribute('stroke', 'currentColor'); line.setAttribute('stroke-width', '1.4');
+      line.setAttribute('stroke-linecap', 'round');
+      svg.appendChild(line);
+      return svg;
+    }
     // Git-branch glyph drawn with strokes (matches the sidebar's toggle icon).
     function gitBranchIcon() {
       var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -666,7 +694,69 @@ ${sharedScript}
       });
     }
 
+    // ── 文件搜索（文件树视图内）：搜索框默认隐藏，头部搜索按钮切换 ──────
+    var searchOpen = false;
+    var searchQuery = '';
+    var searchState = null; // { loading } | { error } | { entries }
+    var searchTimer = null;
+
+    // 搜索结果：平铺的匹配文件行（点击打开预览标签），目录前缀弱化显示
+    function renderSearchResults() {
+      var bodyEl = document.getElementById('treeBody');
+      bodyEl.textContent = '';
+      if (searchState && searchState.loading) {
+        bodyEl.appendChild(el('div', 'tree-loading', tr('searching')));
+        return;
+      }
+      if (searchState && searchState.error) {
+        bodyEl.appendChild(el('div', 'tree-error', searchState.error));
+        return;
+      }
+      var entries = (searchState && searchState.entries) || [];
+      if (!entries.length) {
+        bodyEl.appendChild(el('div', 'empty', tr('noResults')));
+        return;
+      }
+      entries.forEach(function (p) {
+        var row = el('div', 'tree-row');
+        row.title = p;
+        row.appendChild(fileCodeIcon());
+        var name = el('span', 'tree-name', basename(p));
+        var slash = p.lastIndexOf('/');
+        if (slash >= 0) name.appendChild(el('span', 'tree-sub', p.slice(0, slash)));
+        row.appendChild(name);
+        row.addEventListener('click', function () { openFileTab(p); });
+        bodyEl.appendChild(row);
+      });
+    }
+
+    function runSearch() {
+      var q = searchQuery.trim();
+      if (!q) { searchState = null; renderTree(); return; }
+      searchState = { loading: true };
+      renderTree();
+      var sid = currentSessionId();
+      fetch(SEARCH_URL + '?q=' + encodeURIComponent(q) + (sid ? '&sessionId=' + encodeURIComponent(sid) : ''), { cache: 'no-store' })
+        .then(function (r) { return r.json(); })
+        .then(function (res) {
+          if (q !== searchQuery.trim()) return; // 已被更新的查询取代
+          searchState = res && res.ok ? { entries: res.entries || [] } : { error: (res && res.error) || tr('searchFailed') };
+          renderTree();
+        })
+        .catch(function () {
+          if (q !== searchQuery.trim()) return;
+          searchState = { error: tr('searchFailed') };
+          renderTree();
+        });
+    }
+
+    // 搜索激活时树体显示匹配结果，否则显示目录树
     function renderTree() {
+      if (searchOpen && searchQuery.trim()) { renderSearchResults(); return; }
+      renderTreeBase();
+    }
+
+    function renderTreeBase() {
       var bodyEl = document.getElementById('treeBody');
       bodyEl.textContent = '';
       if (!treeRoot) return;
@@ -754,8 +844,52 @@ ${sharedScript}
     if (refreshBtn) {
       refreshBtn.appendChild(refreshIcon());
       refreshBtn.addEventListener('click', function () {
-        if (currentView === 'tree') loadTreeRoot();
+        // 搜索激活时刷新 = 重跑搜索；否则重取目录树 / 变更列表
+        if (currentView === 'tree') {
+          if (searchOpen && searchQuery.trim()) runSearch();
+          else loadTreeRoot();
+        }
         else loadGit(true);
+      });
+    }
+    var searchBtn = document.getElementById('searchBtn');
+    if (searchBtn) {
+      searchBtn.appendChild(searchIcon());
+      searchBtn.title = tr('searchToggle');
+      searchBtn.addEventListener('click', function () {
+        searchOpen = !searchOpen;
+        searchBtn.classList.toggle('is-active', searchOpen);
+        var bar = document.getElementById('searchBar');
+        bar.style.display = searchOpen ? 'block' : 'none';
+        var input = document.getElementById('searchInput');
+        if (searchOpen) {
+          input.focus();
+        } else {
+          input.value = '';
+          searchQuery = '';
+          searchState = null;
+          renderTree();
+        }
+      });
+    }
+    var searchInput = document.getElementById('searchInput');
+    if (searchInput) {
+      searchInput.addEventListener('input', function () {
+        searchQuery = searchInput.value;
+        if (searchTimer) clearTimeout(searchTimer);
+        searchTimer = setTimeout(runSearch, 250);
+      });
+      searchInput.addEventListener('keydown', function (ev) {
+        if (ev.key !== 'Escape') return;
+        ev.stopPropagation();
+        if (searchQuery.trim()) {
+          searchInput.value = '';
+          searchQuery = '';
+          searchState = null;
+          renderTree();
+        } else if (searchBtn) {
+          searchBtn.click(); // 收起搜索框
+        }
       });
     }
     // Poll git status for the changed-files view (and the live/offline badge).
