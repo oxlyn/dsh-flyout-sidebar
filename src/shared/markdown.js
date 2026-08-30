@@ -9,7 +9,7 @@ import { highlightCode } from './highlight.js'
 
 /** @param {string} s @returns {string} */
 function mdEscape(s) {
-  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+  return String(s).replace(/[\u0000\u0001]/g, '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
 /**
@@ -28,11 +28,19 @@ function mdSafeUrl(u) {
 
 /** @param {string} s @returns {string} */
 function mdInline(s) {
-  s = s.replace(/`([^`]+)`/g, (m, c) => '<code>' + c + '</code>')
+  // code span 先摘出为占位符再跑后续规则：反引号内的 `[x](url)`、`**b**`
+  // 应原样输出，不被行内链接/强调规则二次渲染（占位符字符已在 mdEscape 剥除）。
+  /** @type {string[]} */
+  const codes = []
+  s = s.replace(/`([^`]+)`/g, (m, c) => {
+    codes.push('<code>' + c + '</code>')
+    return '\u0000' + (codes.length - 1) + '\u0000'
+  })
   s = s.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (m, alt, u) => '<img alt="' + alt + '" src="' + mdSafeUrl(u) + '">')
   s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (m, text, u) => '<a href="' + mdSafeUrl(u) + '" target="_blank" rel="noopener noreferrer">' + text + '</a>')
   s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
   s = s.replace(/\*([^*\n]+)\*/g, '<em>$1</em>')
+  s = s.replace(/\u0000(\d+)\u0000/g, (m, i) => codes[Number(i)] ?? '')
   return s
 }
 

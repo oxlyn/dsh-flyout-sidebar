@@ -23,7 +23,9 @@
 		ctx = context;
 	}
 	async function getJson(url) {
-		return (await fetch(url)).json();
+		const res = await fetch(url);
+		if (!res.ok) throw new Error("HTTP " + res.status + " " + url);
+		return res.json();
 	}
 	/** 组装查询串：空值参数不下发（与旧版 URL 形态一致） */
 	function qs(...pairs) {
@@ -126,7 +128,6 @@ body[data-dsh-flyout-dragging] .artifacts-preview-overlay { transition: none; }
 }
 .artifacts-ptab-close:hover { background: var(--dsw-alias-interactive-bg-hover-accent, rgba(0, 0, 0, 0.08)); }
 .artifacts-preview-hide {
-.artifacts-preview-hide.is-active { color: var(--dsw-alias-state-business-primary); }
   flex: none; width: 32px; display: inline-flex; align-items: center; justify-content: center;
   border: none; border-right: 1px solid var(--dsw-alias-border-l1); background: transparent;
   color: var(--dsw-alias-label-secondary); cursor: pointer; padding: 0;
@@ -288,6 +289,14 @@ body[data-ds-dark-theme] .gd-del { color: #faa2c1; }
 .artifacts-tree-copied { font: var(--dsw-font-xxxs-11); color: var(--dsw-alias-label-tertiary); flex: none; }
 .artifacts-tree-loading { cursor: default; color: var(--dsw-alias-label-tertiary); font-size: 12px; }
 .artifacts-tree-error { cursor: default; color: var(--dsw-alias-state-error-primary); font-size: 12px; }
+.artifacts-tree-fail { padding: 24px 16px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.artifacts-tree-fail .artifacts-tree-error { text-align: center; word-break: break-all; }
+.artifacts-retry {
+  padding: 4px 16px; font-size: 12px; cursor: pointer; border-radius: 6px;
+  border: 1px solid var(--dsw-alias-border-l1); background: var(--dsw-alias-bg-base);
+  color: var(--dsw-alias-label-primary);
+}
+.artifacts-retry:hover { background: var(--dsw-alias-interactive-bg-hover); }
 @keyframes artifacts-row-in { 0% { opacity: 0 } }
 .artifacts-settings { display: flex; flex-direction: column; gap: 14px; width: 100%; height: 100%; min-height: 0; overflow-y: auto; padding-bottom: 24px; }
 .artifacts-setintro { color: var(--dsw-alias-label-tertiary); margin: 0; padding: 0 2px; font-size: 13px; line-height: 20px; }
@@ -433,6 +442,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		noChangesHead: "没有未提交的变更（相对于 HEAD）",
 		noResults: "没有匹配的文件",
 		readFailed: "读取失败",
+		retry: "重试",
 		gitStatusFailed: "git status 失败",
 		imageLoadFailed: "图片加载失败",
 		pdfLoadFailed: "pdf.js 加载失败",
@@ -517,6 +527,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		noChangesHead: "No uncommitted changes (relative to HEAD)",
 		noResults: "No matching files",
 		readFailed: "Failed to read",
+		retry: "Retry",
 		gitStatusFailed: "git status failed",
 		imageLoadFailed: "Failed to load image",
 		pdfLoadFailed: "Failed to load pdf.js",
@@ -867,7 +878,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 	};
 	store.open = !!settingsStore.get().defaultOpen;
 	const slideState = {
-		visible: store.open,
+		visible: true,
 		slidOut: !store.open
 	};
 	const slideListeners = [];
@@ -886,22 +897,8 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			fn(next);
 		} catch {}
 	};
-	let slideTimer = null;
 	store.subscribe((open) => {
-		if (open) {
-			if (slideTimer) {
-				clearTimeout(slideTimer);
-				slideTimer = null;
-			}
-			setSlide({ visible: true });
-			requestAnimationFrame(() => requestAnimationFrame(() => setSlide({ slidOut: false })));
-		} else {
-			setSlide({ slidOut: true });
-			slideTimer = setTimeout(() => {
-				slideTimer = null;
-				setSlide({ visible: false });
-			}, 240);
-		}
+		setSlide({ slidOut: !open });
 	});
 	const useSlide = () => {
 		const [s, setS] = React.useState({ ...slideState });
@@ -1278,7 +1275,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 	*/
 	/** @param {string} s @returns {string} */
 	function mdEscape(s) {
-		return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+		return String(s).replace(/[\u0000\u0001]/g, "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 	}
 	/**
 	* URL 白名单：只放行 http(s)、站内相对路径、页内锚点与 data:image/*，
@@ -1295,11 +1292,17 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 	}
 	/** @param {string} s @returns {string} */
 	function mdInline(s) {
-		s = s.replace(/`([^`]+)`/g, (m, c) => "<code>" + c + "</code>");
+		/** @type {string[]} */
+		const codes = [];
+		s = s.replace(/`([^`]+)`/g, (m, c) => {
+			codes.push("<code>" + c + "</code>");
+			return "\0" + (codes.length - 1) + "\0";
+		});
 		s = s.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (m, alt, u) => "<img alt=\"" + alt + "\" src=\"" + mdSafeUrl(u) + "\">");
 		s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (m, text, u) => "<a href=\"" + mdSafeUrl(u) + "\" target=\"_blank\" rel=\"noopener noreferrer\">" + text + "</a>");
 		s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
 		s = s.replace(/\*([^*\n]+)\*/g, "<em>$1</em>");
+		s = s.replace(/\u0000(\d+)\u0000/g, (m, i) => codes[Number(i)] ?? "");
 		return s;
 	}
 	/** @param {string} src @returns {string} HTML */
@@ -1906,41 +1909,61 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			refreshToken
 		]);
 		const fetchDir = (path) => {
+			const sid = currentSessionId();
 			setChildren((prev) => ({
 				...prev,
 				[path]: { loading: true }
 			}));
-			host.listDir(path, currentSessionId()).then((res) => {
+			host.listDir(path, sid).then((res) => {
+				if (currentSessionId() !== sid) return;
 				setChildren((prev) => ({
 					...prev,
 					[path]: res && res.ok ? { entries: res.entries || [] } : { error: res && res.error || t("readFailed") }
 				}));
 			}).catch(() => {
+				if (currentSessionId() !== sid) return;
 				setChildren((prev) => ({
 					...prev,
 					[path]: { error: t("readFailed") }
 				}));
 			});
 		};
+		const [rootError, setRootError] = React.useState(null);
 		const loadRoot = (keepState = false) => {
 			if (!keepState) {
 				setChildren({});
 				setExpanded({});
-			} else for (const p of Object.keys(expanded)) if (expanded[p]) fetchDir(p);
-			setRoot(null);
+				setRoot(null);
+			}
+			setRootError(null);
+			if (keepState) {
+				for (const p of Object.keys(expanded)) if (expanded[p]) fetchDir(p);
+			}
 			if (rootTimer.current) clearTimeout(rootTimer.current);
-			const attempt = (tries) => {
+			const delays = [
+				400,
+				800,
+				1600,
+				3200,
+				3200
+			];
+			const sid = currentSessionId();
+			const attempt = (i) => {
 				host.listDir("", currentSessionId()).then((res) => {
+					if (currentSessionId() !== sid) return;
 					if (res && res.ok) setRoot({
 						path: res.path || "",
 						entries: res.entries || []
 					});
-					else if (tries > 0) rootTimer.current = setTimeout(() => attempt(tries - 1), 400);
+					else if (i < delays.length) rootTimer.current = setTimeout(() => attempt(i + 1), delays[i]);
+					else if (!keepState) setRootError(res && res.error || t("treeLoadFailed"));
 				}).catch(() => {
-					if (tries > 0) rootTimer.current = setTimeout(() => attempt(tries - 1), 400);
+					if (currentSessionId() !== sid) return;
+					if (i < delays.length) rootTimer.current = setTimeout(() => attempt(i + 1), delays[i]);
+					else if (!keepState) setRootError(t("treeLoadFailed"));
 				});
 			};
-			attempt(3);
+			attempt(0);
 		};
 		const firstTreeRender = React.useRef(true);
 		React.useEffect(() => {
@@ -1951,10 +1974,11 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 				firstTreeRender.current = false;
 				return;
 			}
-			loadRoot(true);
+			loadRoot(root != null);
 		}, [refreshToken]);
 		React.useEffect(() => () => {
 			if (rootTimer.current) clearTimeout(rootTimer.current);
+			if (copyTimer.current) clearTimeout(copyTimer.current);
 		}, []);
 		const toggle = (path) => {
 			const nextExpanded = {
@@ -2091,7 +2115,14 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 					else setQuery("");
 				}
 			}
-		})) : null, /* @__PURE__ */ h("div", { className: "artifacts-tree-body" }, query.trim() ? search && search.loading ? /* @__PURE__ */ h("div", { className: "artifacts-hint" }, t("searching")) : search && search.error ? /* @__PURE__ */ h("div", { className: "artifacts-tree-error artifacts-git-error" }, search.error) : search && search.entries && search.entries.length ? search.entries.map((p, i) => renderSearchRow(p, i)) : /* @__PURE__ */ h("div", { className: "artifacts-hint" }, t("noResults")) : !root ? /* @__PURE__ */ h("div", { className: "artifacts-hint" }, t("loadingTree")) : !root.entries || !root.entries.length ? /* @__PURE__ */ h("div", { className: "artifacts-hint" }, t("emptyDir")) : root.entries.map((e, i) => renderNode(e, 0, Math.min(i, 12) * 45))));
+		})) : null, /* @__PURE__ */ h("div", {
+			className: "artifacts-tree-body",
+			key: refreshToken
+		}, query.trim() ? search && search.loading ? /* @__PURE__ */ h("div", { className: "artifacts-hint" }, t("searching")) : search && search.error ? /* @__PURE__ */ h("div", { className: "artifacts-tree-error artifacts-git-error" }, search.error) : search && search.entries && search.entries.length ? search.entries.map((p, i) => renderSearchRow(p, i)) : /* @__PURE__ */ h("div", { className: "artifacts-hint" }, t("noResults")) : !root ? rootError ? /* @__PURE__ */ h("div", { className: "artifacts-tree-fail" }, /* @__PURE__ */ h("div", { className: "artifacts-tree-error artifacts-git-error" }, rootError), /* @__PURE__ */ h("button", {
+			type: "button",
+			className: "artifacts-retry",
+			onClick: () => loadRoot(false)
+		}, t("retry"))) : /* @__PURE__ */ h("div", { className: "artifacts-hint" }, t("loadingTree")) : !root.entries || !root.entries.length ? /* @__PURE__ */ h("div", { className: "artifacts-hint" }, t("emptyDir")) : root.entries.map((e, i) => renderNode(e, 0, Math.min(i, 12) * 45))));
 	}
 	const TABS_KEY = "dsh-flyout-sidebar:tabs";
 	/**
@@ -2115,7 +2146,9 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 				sessionStorage.removeItem(TABS_KEY);
 			} catch {}
 		}, [sessionId]);
+		const restoredSid = React.useRef(null);
 		React.useEffect(() => {
+			if (restoredSid.current !== sessionId) return;
 			try {
 				if (!tabs.length) sessionStorage.removeItem(TABS_KEY);
 				else sessionStorage.setItem(TABS_KEY, JSON.stringify({
@@ -2133,20 +2166,24 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			activeKey,
 			sessionId
 		]);
-		const patchTab = (key, patch) => setTabs((prev) => prev.map((t) => t.key === key ? {
-			...t,
+		const patchTab = (key, patch) => setTabs((prev) => prev.map((tb) => tb.key === key ? {
+			...tb,
 			...patch
-		} : t));
+		} : tb));
+		const reqTokens = React.useRef({});
 		const openTab = (key, path, git, initial) => {
 			setPreviewHidden(false);
+			reqTokens.current[key] = (reqTokens.current[key] || 0) + 1;
 			setTabs((prev) => {
-				const i = prev.findIndex((t) => t.key === key);
+				const i = prev.findIndex((tb) => tb.key === key);
 				if (i >= 0) {
 					const next = prev.slice();
 					const cur = next[i];
 					if (cur) next[i] = {
 						...cur,
-						...initial
+						...initial,
+						ok: void 0,
+						error: void 0
 					};
 					return next;
 				}
@@ -2161,12 +2198,21 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		};
 		const closeTab = (key) => {
 			setTabs((prev) => {
-				const idx = prev.findIndex((t) => t.key === key);
-				const next = prev.filter((t) => t.key !== key);
-				if (activeKey === key) setActiveKey(next.length ? next[Math.min(idx, next.length - 1)]?.key ?? null : null);
-				return next;
+				prev.findIndex((tb) => tb.key === key);
+				return prev.filter((tb) => tb.key !== key);
+			});
+			setActiveKey((cur) => {
+				if (cur !== key) return cur;
+				const remaining = tabsRef.current.filter((tb) => tb.key !== key);
+				if (!remaining.length) return null;
+				const closedIdx = tabsRef.current.findIndex((tb) => tb.key === key);
+				return remaining[Math.min(Math.max(closedIdx, 0), remaining.length - 1)]?.key ?? null;
 			});
 		};
+		const tabsRef = React.useRef([]);
+		React.useEffect(() => {
+			tabsRef.current = tabs;
+		}, [tabs]);
 		const openFile = (path) => {
 			const key = "p:" + path;
 			const type = extType(path);
@@ -2178,12 +2224,15 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			if (type !== "image" && type !== "pdf") initial.loading = true;
 			openTab(key, path, false, initial);
 			if (type === "image" || type === "pdf") return;
+			const myReq = reqTokens.current[key];
 			host.readArtifact(path, sessionId).then((res) => {
+				if (reqTokens.current[key] !== myReq) return;
 				patchTab(key, {
 					loading: false,
 					...res
 				});
 			}).catch((e) => {
+				if (reqTokens.current[key] !== myReq) return;
 				patchTab(key, {
 					loading: false,
 					ok: false,
@@ -2194,12 +2243,15 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		const openGitDiff = (path) => {
 			const key = "g:" + path;
 			openTab(key, path, true, { loading: true });
+			const myReq = reqTokens.current[key];
 			host.gitDiff(path, sessionId).then((res) => {
+				if (reqTokens.current[key] !== myReq) return;
 				patchTab(key, {
 					loading: false,
 					...res
 				});
 			}).catch((e) => {
+				if (reqTokens.current[key] !== myReq) return;
 				patchTab(key, {
 					loading: false,
 					ok: false,
@@ -2207,7 +2259,6 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 				});
 			});
 		};
-		const restoredSid = React.useRef(null);
 		React.useEffect(() => {
 			if (restoredSid.current === sessionId) return;
 			restoredSid.current = sessionId;
@@ -2301,6 +2352,9 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		const [gitRefreshing, setGitRefreshing] = React.useState(false);
 		const [gitFlash, setGitFlash] = React.useState(0);
 		const noticeTimer = React.useRef(null);
+		React.useEffect(() => () => {
+			if (noticeTimer.current) clearTimeout(noticeTimer.current);
+		}, []);
 		const gitForceRef = React.useRef(false);
 		React.useEffect(() => {
 			if (!open || activeView !== "git") return;
@@ -2408,6 +2462,14 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 				document.body.removeAttribute("data-dsh-flyout-dragging");
 			};
 		}, [resizing]);
+		const resizeHandlers = React.useRef(null);
+		React.useEffect(() => () => {
+			const h = resizeHandlers.current;
+			if (h) {
+				document.removeEventListener("mousemove", h.onMove);
+				document.removeEventListener("mouseup", h.onUp);
+			}
+		}, []);
 		const { visible, slidOut } = useSlide();
 		if (!visible) return null;
 		const flyoutHref = "/flyout-sidebar" + (sessionId ? "?sessionId=" + encodeURIComponent(sessionId) : "");
@@ -2422,8 +2484,13 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			};
 			const onUp = () => {
 				setResizing(false);
+				resizeHandlers.current = null;
 				document.removeEventListener("mousemove", onMove);
 				document.removeEventListener("mouseup", onUp);
+			};
+			resizeHandlers.current = {
+				onMove,
+				onUp
 			};
 			document.addEventListener("mousemove", onMove);
 			document.addEventListener("mouseup", onUp);
@@ -2540,7 +2607,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		}, activeView === "tree" ? /* @__PURE__ */ h(GitBranchIcon, { size: 16 }) : /* @__PURE__ */ h(FolderClosedIcon, { size: 16 })) : null), /* @__PURE__ */ h("div", { className: "artifacts-main" }, /* @__PURE__ */ h("div", {
 			className: "artifacts-body" + (activeView === "git" && gitRefreshing ? " artifacts-refreshing" : ""),
 			style: { flex: "1 1 auto" }
-		}, activeView === "tree" && settings.showFileTree ? /* @__PURE__ */ h(FileTree, {
+		}, open ? activeView === "tree" && settings.showFileTree ? /* @__PURE__ */ h(FileTree, {
 			onOpen: openFile,
 			selectedPath: activeTab && !activeTab.git ? activeTab.path : null,
 			refreshToken: treeRefresh,
@@ -2554,7 +2621,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			onOpen: openGitDiff,
 			onCopyPath: (p) => copyText(p, t("copiedPath")),
 			onQuote: quotePath
-		})))));
+		}) : null))));
 	}
 	function CornerButton() {
 		const open = useOpen();

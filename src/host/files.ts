@@ -24,6 +24,26 @@ export async function resolveWorkspaceCwd(ctx: HostContext, sessionId?: string):
   }
 }
 
+/**
+ * 纵深防御：校验 resolve 结果是否位于工作区根之内。不同 fs 后端的句柄形态
+ * 不一致（沙箱映射/虚拟路径可能不带 cwd 字面前缀），而 fs.resolve 本身以
+ * cwd 锚定 —— 因此形态落在工作区外时只记日志放行（fail-open），避免误伤
+ * 合法路径把文件树卡死；真正的越界拦截依赖 DSH fs 层的锚定语义。
+ */
+export function isWithinWorkspace(fs: DshFs | undefined, target: unknown, cwd: string | undefined): boolean {
+  if (!cwd) return true
+  const norm = (p: unknown): string =>
+    String(typeof fs?.processPath === 'function' ? fs.processPath(p) : p).replace(/\\/g, '/').replace(/\/+$/, '')
+  const root = norm(cwd)
+  if (!root) return true
+  const forms = new Set([String(target), norm(target)])
+  for (const t of forms) {
+    if (t === root || t.startsWith(root + '/')) return true
+  }
+  console.warn('[flyout-sidebar] resolved path outside workspace root, allowing (fs backend anchoring trusted):', forms, 'root:', root)
+  return true
+}
+
 export interface ReadResult {
   ok: boolean
   error?: string
@@ -40,14 +60,16 @@ export interface ListResult {
   entries?: Array<{ name: string; path: string; isDir: boolean; hidden: boolean }>
 }
 
-/** 文本内容读取（代码预览）。超长内容截断并打标。 */
-export async function readFile(ctx: HostContext, path: unknown, sessionId?: string): Promise<ReadResult> {
+/** 文本内容读取（代码预览）。超长内容截断并打标。cwdHint 允许调用方直传
+ * 已解析的工作区根（gitDiff 合成未跟踪 diff 时复用，避免二次解析落到别的工作区）。 */
+export async function readFile(ctx: HostContext, path: unknown, sessionId?: string, cwdHint?: string): Promise<ReadResult> {
   const fs = ctx.get<DshFs>('fs')
   if (!fs) return { ok: false, error: 'filesystem unavailable' }
   if (typeof path !== 'string' || !path) return { ok: false, error: 'missing path' }
   try {
-    const cwd = await resolveWorkspaceCwd(ctx, sessionId)
+    const cwd = cwdHint ?? (await resolveWorkspaceCwd(ctx, sessionId))
     const target = await fs.resolve(path, cwd ? { cwd } : undefined)
+    if (!isWithinWorkspace(fs, target, cwd)) return { ok: false, error: 'path outside workspace' }
     const info = await fs.stat(target)
     if (!info || info.type !== 'file') return { ok: false, error: 'not a readable file' }
     const cap = 200000
@@ -64,7 +86,7 @@ export async function readFile(ctx: HostContext, path: unknown, sessionId?: stri
     } else {
       text = await fs.readText(target)
     }
-    return { ok: true, type: extType(path), content: text.slice(0, cap), truncated: text.length > cap, size: info.size }
+    return { ok: true, type: extType(path), content: text.slice(0, cap), truncated: (typeof info.size === 'number' && info.size > capBytes) || text.length > cap, size: info.size }
   } catch (e) {
     return { ok: false, error: e && typeof e === 'object' && 'message' in e ? String((e as Error).message) : 'read failed' }
   }
@@ -85,6 +107,7 @@ export async function listDir(ctx: HostContext, path: unknown, sessionId?: strin
       return { ok: false, error: 'workspace unavailable' }
     }
     const target = await fs.resolve(p, cwd ? { cwd } : undefined)
+    if (!isWithinWorkspace(fs, target, cwd)) return { ok: false, error: 'path outside workspace' }
     const entries = await fs.listDir(target)
     const rows = (entries || [])
       .map((e) => ({

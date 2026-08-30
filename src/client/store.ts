@@ -113,8 +113,12 @@ export const useOpen = (): boolean => {
 
 /**
  * 推拉动画共享状态：面板与角落触发按钮共用，保证两个图标像同一个元素一样
- * 滑动。visible 表示面板是否应挂载（关闭动画结束后才卸载）；slidOut 表示当
- * 前是否处于「滑出屏外」一帧（打开时先保持一帧再翻回，产生滑入过渡）。
+ * 滑动。面板首次挂载后常驻 DOM，开合只同步切换 slidOut（= !open）：
+ * 可见性是 open 的纯同步函数，没有卸载定时器 / rAF 翻转时序 —— 旧实现
+ * （关闭 240ms 后卸载、重开靠双重 rAF 把面板从屏外拉回）一旦丢失那个异步
+ * 翻转，面板就永远停在屏外，而角落图标已按 open 滑出 —— 表现为「点击图标
+ * 不展开、图标也消失」。隐藏的面板平移到屏外且 pointer-events: none，
+ * 不拦截交互；git 轮询等副作用各自以 open 为门控。
  */
 export interface SlideState {
   visible: boolean
@@ -187,7 +191,7 @@ export const settingsStore = {
 // 在任何组件挂载前应用「默认展开」偏好，使初始开合状态与持久化设置一致。
 store.open = !!settingsStore.get().defaultOpen
 
-const slideState: SlideState = { visible: store.open, slidOut: !store.open }
+const slideState: SlideState = { visible: true, slidOut: !store.open }
 const slideListeners: Array<(s: SlideState) => void> = []
 const setSlide = (patch: Partial<SlideState>): void => {
   let changed = false
@@ -209,22 +213,8 @@ const setSlide = (patch: Partial<SlideState>): void => {
   }
 }
 
-let slideTimer: ReturnType<typeof setTimeout> | null = null
 store.subscribe((open) => {
-  if (open) {
-    if (slideTimer) {
-      clearTimeout(slideTimer)
-      slideTimer = null
-    }
-    setSlide({ visible: true })
-    requestAnimationFrame(() => requestAnimationFrame(() => setSlide({ slidOut: false })))
-  } else {
-    setSlide({ slidOut: true })
-    slideTimer = setTimeout(() => {
-      slideTimer = null
-      setSlide({ visible: false })
-    }, 240)
-  }
+  setSlide({ slidOut: !open })
 })
 
 export const useSlide = (): SlideState => {

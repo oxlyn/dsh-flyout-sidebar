@@ -73,9 +73,10 @@ dsh --profile web --dump-config | grep dsh-flyout-sidebar   # 配置层含本行
 - 中英双语界面：默认跟随浏览器语言，可在设置中固定；独立弹出页经 `localStorage` 同步语言选择
 - 代码预览支持软换行（预览栏 ⇋ 图标或设置项），默认横向滚动
 - `Esc` 逐级退出：先关活动预览标签，再收起面板；浏览器刷新后按会话恢复打开的预览标签（sessionStorage）
-- 代码预览内置查找条（⌘/Ctrl+F 或点击输入框）：行号标记匹配行、Enter/⇧Enter 上下跳转；逐行渲染使行号在软换行下也对齐
+- 代码预览使用浏览器原生查找（⌘/Ctrl+F）：逐行渲染使行号在软换行下也对齐
 - 图片预览支持滚轮缩放、拖拽平移、双击复位
-- 预览栏 ↗（外开图标）可在系统默认编辑器/IDE 中打开当前文件（host 侧经 `open`/`xdg-open`/`cmd start`，路径锚定工作区）
+- 预览栏 ↗（外开图标）可在系统默认编辑器/IDE 中打开当前文件（host 侧经 `open`/`xdg-open`/Windows `rundll32`，路径锚定工作区）
+- 文件树健壮加载：工作区在 host 侧尚未解析完成时按指数退避自动重试（约 9s 窗口），仍失败则显示错误与「重试」按钮；点刷新重放自上而下的逐条浮现动画
 
 ![弹出页——独立窗口全屏预览](snapshots/flyout-file-preview.png)
 
@@ -112,7 +113,10 @@ DSH 设置面板（左下角 ⚙️）新增「**Flyout Sidebar**」选项卡：
 │      GET /flyout-sidebar/gitdiff    单文件 diff JSON            │
 │      GET /flyout-sidebar/listdir    文件树目录列表              │
 │      GET /flyout-sidebar/content    文本内容（代码预览）        │
+│      GET /flyout-sidebar/search     文件名搜索                  │
 │      GET /flyout-sidebar/media      图片 / PDF 二进制           │
+│      （media 响应带 CSP sandbox / nosniff，阻断内联 SVG XSS；     │
+│        所有读路径均锚定工作区，无 /remove 等状态变更路由）        │
 │  - tools/result 事件 → 700ms 去抖刷新对应工作区的状态缓存        │
 └──────────────────────────────────────────────────────────────────┘
                           │ fetch
@@ -139,10 +143,10 @@ DSH 设置面板（左下角 ⚙️）新增「**Flyout Sidebar**」选项卡：
 ```sh
 npm run build         # tsdown 重新生成 dist/index.js 与 dist/client.js
 npm run check         # tsc --noEmit 类型检查（strict）
-npm test              # node:test smoke：host 路由/事件 + client 组件渲染 + 弹出页脚本
+npm test              # node:test smoke：host 路由/事件 + client 组件渲染 + 弹出页脚本 + markdown/highlight 回归
 ```
 
-> 建议安装提交前守护（一次即可）：`ln -sf ../../scripts/precommit.sh .git/hooks/pre-commit`。每次 `git commit` 自动重建 bundle，产物与源码不同步会直接拦截提交。
+> 建议安装提交前守护（一次即可）：`ln -sf ../../scripts/precommit.sh .git/hooks/pre-commit`。每次 `git commit` 自动重建 bundle 并执行类型检查与测试，产物与源码不同步或测试失败会直接拦截提交。
 
 项目结构：
 

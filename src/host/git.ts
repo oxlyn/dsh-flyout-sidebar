@@ -46,7 +46,8 @@ interface StatusCache {
   seen: number
 }
 
-/** 执行 git 子命令；files.ts 的文件搜索复用（git ls-files） */export function runGit(args: string[], cwd: string | undefined): Promise<{ ok: boolean; out?: string; error?: string }> {
+/** 执行 git 子命令；files.ts 的文件搜索复用（git ls-files） */
+export function runGit(args: string[], cwd: string | undefined): Promise<{ ok: boolean; out?: string; error?: string }> {
   return new Promise((resolve) => {
     try {
       execFile('git', args, { cwd, maxBuffer: 20 * 1024 * 1024, timeout: 15000, windowsHide: true }, (err, stdout, stderr) => {
@@ -65,7 +66,7 @@ interface StatusCache {
 
 /** 首次同步等待真实结果，之后即时响应 + 后台刷新（stale-while-revalidate） */
 const statusCache = new Map<string, StatusCache>()
-const statusInFlight = new Set<string>()
+const statusInFlight = new Map<string, Promise<void>>()
 const statusTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const STATUS_MIN_INTERVAL = 1500
 /** 兜底轮询忽略「最近 10 分钟无人查看」的工作区；缓存条目超上限时按 seen 驱逐 */
@@ -184,15 +185,27 @@ async function untrackedLineCount(cwd: string, relPath: string): Promise<number 
 }
 
 async function refreshStatus(cwd: string, force: boolean): Promise<void> {
-  if (!cwd || statusInFlight.has(cwd)) return
+  if (!cwd) return
+  // 并发去重：已有刷新在跑就等它，调用方读到的缓存必然是最新结果，
+  // 不会把进行中的刷新误报成失败（多标签页同时轮询新会话时常见）。
+  const running = statusInFlight.get(cwd)
+  if (running) {
+    await running
+    return
+  }
   const cached = statusCache.get(cwd)
   if (!force && cached && Date.now() - cached.at < STATUS_MIN_INTERVAL) return
-  statusInFlight.add(cwd)
+  const task = (async () => {
+    try {
+      const res = await gitStatusRemote(cwd)
+      writeStatusCache(cwd, { ok: res.ok, error: res.error || null, entries: res.entries || [], at: Date.now() })
+    } catch (e) {
+      writeStatusCache(cwd, { ok: false, error: e instanceof Error && e.message ? e.message : 'git failed', entries: [], at: Date.now() })
+    }
+  })()
+  statusInFlight.set(cwd, task)
   try {
-    const res = await gitStatusRemote(cwd)
-    writeStatusCache(cwd, { ok: res.ok, error: res.error || null, entries: res.entries || [], at: Date.now() })
-  } catch (e) {
-    writeStatusCache(cwd, { ok: false, error: e instanceof Error && e.message ? e.message : 'git failed', entries: [], at: Date.now() })
+    await task
   } finally {
     statusInFlight.delete(cwd)
   }
@@ -265,7 +278,8 @@ export async function gitDiff(ctx: HostContext, path: unknown, sessionId?: strin
   if (!r.ok) return { ok: false, error: r.error }
   if (r.out) return { ok: true, root: cwd, diff: r.out }
   // diff 为空但文件在变更列表里 → 未跟踪。用当前内容合成 new-file diff。
-  const read = await readFile(ctx, path)
+  // cwd 直传给 readFile：path 是相对 cwd 的路径，二次解析工作区可能落到别处。
+  const read = await readFile(ctx, path, sessionId, cwd)
   if (read.ok && typeof read.content === 'string') {
     const lines = read.content.split('\n')
     if (lines.length && lines[lines.length - 1] === '') lines.pop()

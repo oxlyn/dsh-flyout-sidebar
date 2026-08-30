@@ -121,7 +121,6 @@ test('host plugin: apply registers routes, events and intervals', async () => {
     '/flyout-sidebar/data',
     '/flyout-sidebar/content',
     '/flyout-sidebar/media',
-    '/flyout-sidebar/remove',
     '/flyout-sidebar/listdir',
     '/flyout-sidebar/search',
     '/flyout-sidebar/open',

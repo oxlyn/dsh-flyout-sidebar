@@ -20,8 +20,7 @@
   "scripts": {
     "build": "tsdown",
     "check": "tsc --noEmit",
-    "test": "node --test \"test/*.test.mjs\"",
-    "precommit": "npm run -s build && npm run -s check && npm run -s test"
+    "test": "node --test test/*.test.mjs"
   },
   "exports": {
     ".": "./dist/index.js",

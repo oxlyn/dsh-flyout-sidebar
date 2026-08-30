@@ -99,50 +99,70 @@ export function FileTree({ onOpen, selectedPath, refreshToken, searchOpen = fals
     }
   }, [query, sessionId, refreshToken])
 
-  // 拉取单个目录（展开 / 刷新重取共用）
+  // 拉取单个目录（展开 / 刷新重取共用）。响应返回时校验会话未切换：
+  // 否则旧工作区的目录内容会混进新工作区的树。
   const fetchDir = (path: string): void => {
+    const sid = currentSessionId()
     setChildren((prev) => ({ ...prev, [path]: { loading: true } }))
     host
-      .listDir(path, currentSessionId())
+      .listDir(path, sid)
       .then((res) => {
+        if (currentSessionId() !== sid) return
         setChildren((prev) => ({
           ...prev,
           [path]: res && res.ok ? { entries: res.entries || [] } : { error: (res && res.error) || t('readFailed') },
         }))
       })
       .catch(() => {
+        if (currentSessionId() !== sid) return
         setChildren((prev) => ({ ...prev, [path]: { error: t('readFailed') } }))
       })
   }
 
-  // keepState：手动刷新时保留展开状态，只重取已展开目录的数据；会话切换
-  // （keepState=false）仍全部重置，避免把上一个工作区的树带过来。
+  // keepState：手动刷新时保留展开状态与现有树（不闪回加载态），只重取已
+  // 展开目录的数据；会话切换（keepState=false）仍全部重置，避免把上一个
+  // 工作区的树带过来。
+  const [rootError, setRootError] = React.useState<string | null>(null)
   const loadRoot = (keepState = false): void => {
     if (!keepState) {
       setChildren({})
       setExpanded({})
-    } else {
+      setRoot(null)
+    }
+    setRootError(null)
+    if (keepState) {
       for (const p of Object.keys(expanded)) if (expanded[p]) fetchDir(p)
     }
-    setRoot(null)
     if (rootTimer.current) clearTimeout(rootTimer.current)
-    // 刚切换的工作区短时间内可能还无法在 host 侧解析（会话仍在加载/持久化
-    // 中）。短暂重试让文件树自我纠正，而不是停在陈旧或空状态上。
-    const attempt = (tries: number): void => {
+    // 指数退避重试：刚切换的会话/工作区在 host 侧解析完成（活动会话库、
+    // 持久化库）可能明显慢于固定重试窗口，总窗口约 9 秒。
+    const delays = [400, 800, 1600, 3200, 3200]
+    const sid = currentSessionId()
+    const attempt = (i: number): void => {
       host
         .listDir('', currentSessionId())
         .then((res) => {
+          if (currentSessionId() !== sid) return
           if (res && res.ok) {
             setRoot({ path: res.path || '', entries: res.entries || [] })
-          } else if (tries > 0) {
-            rootTimer.current = setTimeout(() => attempt(tries - 1), 400)
+          } else if (i < delays.length) {
+            rootTimer.current = setTimeout(() => attempt(i + 1), delays[i])
+          } else if (!keepState) {
+            // 根加载失败要给出明确错误态而不是停在「加载文件树…」；已有树
+            // 时（keepState 刷新）保留旧树不打扰。
+            setRootError((res && res.error) || t('treeLoadFailed'))
           }
         })
         .catch(() => {
-          if (tries > 0) rootTimer.current = setTimeout(() => attempt(tries - 1), 400)
+          if (currentSessionId() !== sid) return
+          if (i < delays.length) {
+            rootTimer.current = setTimeout(() => attempt(i + 1), delays[i])
+          } else if (!keepState) {
+            setRootError(t('treeLoadFailed'))
+          }
         })
     }
-    attempt(3)
+    attempt(0)
   }
 
   // 工作区切换与显式刷新（头部刷新按钮递增 refreshToken）时重新取根。
@@ -155,10 +175,13 @@ export function FileTree({ onOpen, selectedPath, refreshToken, searchOpen = fals
       firstTreeRender.current = false
       return
     }
-    loadRoot(true)
+    // 有树时保留展开状态只重取数据；卡在加载/错误态时全量重来（含错误态复位）
+    loadRoot(root != null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshToken])
   React.useEffect(() => () => {
     if (rootTimer.current) clearTimeout(rootTimer.current)
+    if (copyTimer.current) clearTimeout(copyTimer.current)
   }, [])
 
   const toggle = (path: string): void => {
@@ -345,7 +368,10 @@ export function FileTree({ onOpen, selectedPath, refreshToken, searchOpen = fals
           />
         </div>
       ) : null}
-      <div className="artifacts-tree-body">
+      {/* key 带 refreshToken：刷新后树体整体重挂载，重放自上而下的逐条
+          浮现动画（renderNode 对根层条目恒传 flashDelay），否则同 key 复用
+          DOM，刷新在视觉上毫无反馈。 */}
+      <div className="artifacts-tree-body" key={refreshToken}>
         {query.trim() ? (
           search && search.loading ? (
             <div className="artifacts-hint">{t('searching')}</div>
@@ -357,7 +383,16 @@ export function FileTree({ onOpen, selectedPath, refreshToken, searchOpen = fals
             <div className="artifacts-hint">{t('noResults')}</div>
           )
         ) : !root ? (
-          <div className="artifacts-hint">{t('loadingTree')}</div>
+          rootError ? (
+            <div className="artifacts-tree-fail">
+              <div className="artifacts-tree-error artifacts-git-error">{rootError}</div>
+              <button type="button" className="artifacts-retry" onClick={() => loadRoot(false)}>
+                {t('retry')}
+              </button>
+            </div>
+          ) : (
+            <div className="artifacts-hint">{t('loadingTree')}</div>
+          )
         ) : !root.entries || !root.entries.length ? (
           <div className="artifacts-hint">{t('emptyDir')}</div>
         ) : (
@@ -407,9 +442,14 @@ function usePreviewTabs(sessionId: string): {
     }
   }, [sessionId])
 
+  // 每个会话只恢复一次持久化标签的门闩：恢复完成前，持久化 effect 不得写入
+  // 或清空 sessionStorage（否则挂载时 tabs 为空会把待恢复的存档删掉）。
+  const restoredSid = React.useRef<string | null>(null)
+
   // 标签持久化（sessionStorage，按会话归属）：浏览器刷新后恢复打开的标签
   //（只存元数据，内容恢复时重新拉取）。会话切换时由上面的清空逻辑移除。
   React.useEffect(() => {
+    if (restoredSid.current !== sessionId) return
     try {
       if (!tabs.length) sessionStorage.removeItem(TABS_KEY)
       else
@@ -423,17 +463,21 @@ function usePreviewTabs(sessionId: string): {
   }, [tabs, activeKey, sessionId])
 
   const patchTab = (key: string, patch: Partial<PreviewTab>): void =>
-    setTabs((prev) => prev.map((t) => (t.key === key ? { ...t, ...patch } : t)))
+    setTabs((prev) => prev.map((tb) => (tb.key === key ? { ...tb, ...patch } : tb)))
+
+  // 加载中的请求令牌：快速重复打开同一文件/ diff 时，晚到的旧响应作废
+  const reqTokens = React.useRef<Record<string, number>>({})
 
   const openTab = (key: string, path: string, git: boolean, initial: Partial<PreviewTab>): void => {
     setPreviewHidden(false)
+    reqTokens.current[key] = (reqTokens.current[key] || 0) + 1
     setTabs((prev) => {
-      const i = prev.findIndex((t) => t.key === key)
+      const i = prev.findIndex((tb) => tb.key === key)
       if (i >= 0) {
-        // 重复打开 = 重新加载并聚焦该标签。
+        // 重复打开 = 重新加载并聚焦该标签；同时清掉上一轮的失败状态
         const next = prev.slice()
         const cur = next[i]
-        if (cur) next[i] = { ...cur, ...initial }
+        if (cur) next[i] = { ...cur, ...initial, ok: undefined, error: undefined }
         return next
       }
       return prev.concat([{ key, path, git, ...initial }])
@@ -443,12 +487,25 @@ function usePreviewTabs(sessionId: string): {
 
   const closeTab = (key: string): void => {
     setTabs((prev) => {
-      const idx = prev.findIndex((t) => t.key === key)
-      const next = prev.filter((t) => t.key !== key)
-      if (activeKey === key) setActiveKey(next.length ? (next[Math.min(idx, next.length - 1)]?.key ?? null) : null)
-      return next
+      const idx = prev.findIndex((tb) => tb.key === key)
+      return prev.filter((tb) => tb.key !== key)
+    })
+    // 活动标签选择放在 updater 外：updater 可能被双调用，且连续关闭时
+    // 闭包里的 activeKey 会过期。
+    setActiveKey((cur) => {
+      if (cur !== key) return cur
+      const remaining = tabsRef.current.filter((tb) => tb.key !== key)
+      if (!remaining.length) return null
+      const closedIdx = tabsRef.current.findIndex((tb) => tb.key === key)
+      return remaining[Math.min(Math.max(closedIdx, 0), remaining.length - 1)]?.key ?? null
     })
   }
+
+  // closeTab 的 setActiveKey 读取最新 tabs 的镜像
+  const tabsRef = React.useRef<PreviewTab[]>([])
+  React.useEffect(() => {
+    tabsRef.current = tabs
+  }, [tabs])
 
   const openFile = (path: string): void => {
     const key = 'p:' + path
@@ -458,12 +515,15 @@ function usePreviewTabs(sessionId: string): {
     if (type !== 'image' && type !== 'pdf') initial.loading = true
     openTab(key, path, false, initial)
     if (type === 'image' || type === 'pdf') return
+    const myReq = reqTokens.current[key]
     host
       .readArtifact(path, sessionId)
       .then((res) => {
+        if (reqTokens.current[key] !== myReq) return
         patchTab(key, { loading: false, ...res })
       })
       .catch((e: unknown) => {
+        if (reqTokens.current[key] !== myReq) return
         patchTab(key, { loading: false, ok: false, error: String(e instanceof Error && e.message ? e.message : e) })
       })
   }
@@ -472,19 +532,21 @@ function usePreviewTabs(sessionId: string): {
   const openGitDiff = (path: string): void => {
     const key = 'g:' + path
     openTab(key, path, true, { loading: true })
+    const myReq = reqTokens.current[key]
     host
       .gitDiff(path, sessionId)
       .then((res) => {
+        if (reqTokens.current[key] !== myReq) return
         patchTab(key, { loading: false, ...res })
       })
       .catch((e: unknown) => {
+        if (reqTokens.current[key] !== myReq) return
         patchTab(key, { loading: false, ok: false, error: String(e instanceof Error && e.message ? e.message : e) })
       })
   }
 
   // 恢复持久化的标签：同一会话内浏览器刷新后，把打开的标签重新拉起
   //（openFile / openGitDiff 自带重新取数）。每个会话只恢复一次。
-  const restoredSid = React.useRef<string | null>(null)
   React.useEffect(() => {
     if (restoredSid.current === sessionId) return
     restoredSid.current = sessionId
@@ -614,6 +676,10 @@ export function ArtifactsPanel(): ReactElement | null {
   const [gitRefreshing, setGitRefreshing] = React.useState(false)
   const [gitFlash, setGitFlash] = React.useState(0)
   const noticeTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  // 卸载时清掉提示定时器，避免回调在卸载后 setState
+  React.useEffect(() => () => {
+    if (noticeTimer.current) clearTimeout(noticeTimer.current)
+  }, [])
 
   // git 视图可见时轮询「已变更未提交」文件。gitForceRef 标记下一次加载
   // （由刷新按钮触发）需绕过 host 缓存强制取真实状态。
@@ -739,9 +805,19 @@ export function ArtifactsPanel(): ReactElement | null {
     }
   }, [resizing])
 
-  // 推拉动画：面板和角落触发按钮共用 slide 状态（见 store），关闭时滑出屏
-  // 右侧、动画结束后才卸载，打开时先挂在屏外一帧再滑入，与 #root 让位过渡
-  // 同时进行。
+  // 拖拽监听器登记在 ref 里：面板在拖拽中途被关闭（卸载）时也能移除
+  const resizeHandlers = React.useRef<{ onMove: (ev: MouseEvent) => void; onUp: () => void } | null>(null)
+  React.useEffect(() => () => {
+    const h = resizeHandlers.current
+    if (h) {
+      document.removeEventListener('mousemove', h.onMove)
+      document.removeEventListener('mouseup', h.onUp)
+    }
+  }, [])
+
+  // 推拉动画：面板和角落触发按钮共用 slide 状态（见 store）。面板常驻 DOM，
+  // 开合只切换 slid-out class（= !open，同步无时序），隐藏时平移到屏外且
+  // pointer-events: none，与 #root 让位过渡同时进行。
   const { visible, slidOut } = useSlide()
 
   if (!visible) return null
@@ -759,9 +835,11 @@ export function ArtifactsPanel(): ReactElement | null {
     }
     const onUp = (): void => {
       setResizing(false)
+      resizeHandlers.current = null
       document.removeEventListener('mousemove', onMove)
       document.removeEventListener('mouseup', onUp)
     }
+    resizeHandlers.current = { onMove, onUp }
     document.addEventListener('mousemove', onMove)
     document.addEventListener('mouseup', onUp)
   }
@@ -924,7 +1002,9 @@ export function ArtifactsPanel(): ReactElement | null {
             className={'artifacts-body' + (activeView === 'git' && gitRefreshing ? ' artifacts-refreshing' : '')}
             style={{ flex: '1 1 auto' }}
           >
-            {activeView === 'tree' && settings.showFileTree ? (
+            {/* 面板常驻 DOM，但树/列表内容仅打开时挂载：隐藏期间不发请求，
+                行为与旧版「关闭即卸载」一致 */}
+            {open ? (activeView === 'tree' && settings.showFileTree ? (
               <FileTree
                 onOpen={openFile}
                 selectedPath={activeTab && !activeTab.git ? activeTab.path : null}
@@ -942,7 +1022,8 @@ export function ArtifactsPanel(): ReactElement | null {
                 onCopyPath={(p) => copyText(p, t('copiedPath'))}
                 onQuote={quotePath}
               />
-            )}
+            ))
+            : null}
           </div>
         </div>
       </div>
@@ -956,8 +1037,7 @@ export function CornerButton(): ReactElement {
   const open = useOpen()
   useLang()
   // 常驻挂载：面板打开时滑出屏右缘（随面板滑入的推力），关闭时滑回角落。
-  // 直接跟随 open，而不是面板的 slidOut —— 后者在关闭动画结束时会停在
-  // true，按钮就会被留在屏外。
+  // 直接跟随 open（slidOut 现与 open 同步取反），面板隐藏时按钮始终可见可点。
   return (
     <button
       type="button"

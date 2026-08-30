@@ -13,6 +13,12 @@ cd "$ROOT"
 echo "[pre-commit] tsdown 重新构建 dist/ …"
 npm run -s build
 
+echo "[pre-commit] 类型检查 …"
+npm run -s check
+
+echo "[pre-commit] 测试 …"
+npm run -s test
+
 if ! git diff --quiet -- dist; then
   echo "" >&2
   echo "[pre-commit] ✗ 构建产物与源码不同步，已取消本次提交。" >&2

@@ -80,6 +80,11 @@ export interface ListDirResponse {
 
 async function getJson(url: string): Promise<unknown> {
   const res = await fetch(url)
+  if (!res.ok) {
+    // 非 2xx（500/401/代理错误页）给出带状态码的明确错误，而不是 json()
+    // 解析 HTML 错误页时抛出的无上下文 SyntaxError
+    throw new Error('HTTP ' + res.status + ' ' + url)
+  }
   return res.json()
 }
 

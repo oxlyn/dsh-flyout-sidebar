@@ -235,6 +235,12 @@ export function buildFlyoutPage(): string {
   .tree-copied { font-size: 11px; color: var(--p-text-tertiary); flex: none; }
   .tree-loading { color: var(--p-text-tertiary); cursor: default; font-size: 12px; }
   .tree-error { color: var(--p-error); cursor: default; font-size: 12px; }
+  .tree-retry {
+    display: block; margin: 10px auto 0; padding: 4px 16px; font-size: 12px; cursor: pointer;
+    border: 1px solid var(--p-border-l2); border-radius: 6px; background: var(--p-bg);
+    color: var(--p-text);
+  }
+  .tree-retry:hover { filter: brightness(1.1); }
   /* Code preview (syntax-highlighted): gutter + code, no banner chrome */
   .codeview { display: flex; flex-direction: column; height: 100%; min-height: 0; }
   .codeview-scroll { flex: 1; min-height: 0; overflow: auto; display: flex; align-items: flex-start; background: var(--p-code-bg); }
@@ -322,6 +328,7 @@ ${sharedScript}
     var treeRoot = null;
     var treeChildren = {};
     var treeExpanded = {};
+    var treeError = null;
     var currentView = 'tree';
 
     var FOLDER_CLOSE_D = 'M5.05582 0.518756L4.50669 0.86654L5.05582 0.518756ZM13 9.4837L13.65 9.4837L13.65 3.53962L13 3.53962L12.35 3.53962L12.35 9.4837L13 9.4837ZM11.3264 1.86603L11.3264 1.21603L6.52313 1.21603L6.52313 1.86603L6.52313 2.51603L11.3264 2.51603L11.3264 1.86603ZM5.58054 1.34727L6.12968 0.999489L5.60495 0.170972L5.05582 0.518756L4.50669 0.86654L5.03141 1.69506L5.58054 1.34727ZM4.11323 1.23058e-13L4.11323 -0.65L1.67359 -0.65L1.67359 5.00699e-14L1.67359 0.65L4.11323 0.65L4.11323 1.23058e-13ZM0 1.67359L-0.65 1.67359L-0.65 9.4837L0 9.4837L0.65 9.4837L0.65 1.67359L0 1.67359ZM11.3264 11.1573L11.3264 10.5073L1.67359 10.5073L1.67359 11.1573L1.67359 11.8073L11.3264 11.8073L11.3264 11.1573ZM0 9.4837L-0.65 9.4837C-0.65 10.767 0.390308 11.8073 1.67359 11.8073L1.67359 11.1573L1.67359 10.5073C1.10828 10.5073 0.65 10.049 0.65 9.4837L0 9.4837ZM1.67359 5.00699e-14L1.67359 -0.65C0.390307 -0.65 -0.65 0.390309 -0.65 1.67359L0 1.67359L0.65 1.67359C0.65 1.10828 1.10828 0.65 1.67359 0.65L1.67359 5.00699e-14ZM5.05582 0.518756L5.60495 0.170972C5.28121 -0.340193 4.71829 -0.65 4.11323 -0.65L4.11323 1.23058e-13L4.11323 0.65C4.27282 0.65 4.4213 0.731715 4.50669 0.86654L5.05582 0.518756ZM6.52313 1.86603L6.52313 1.21603C6.36354 1.21603 6.21507 1.13431 6.12968 0.999489L5.58054 1.34727L5.03141 1.69506C5.35515 2.20622 5.91808 2.51603 6.52313 2.51603L6.52313 1.86603ZM13 3.53962L13.65 3.53962C13.65 2.25634 12.6097 1.21603 11.3264 1.21603L11.3264 1.86603L11.3264 2.51603C11.8917 2.51603 12.35 2.97431 12.35 3.53962L13 3.53962ZM13 9.4837L12.35 9.4837C12.35 10.049 11.8917 10.5073 11.3264 10.5073L11.3264 11.1573L11.3264 11.8073C12.6097 11.8073 13.65 10.767 13.65 9.4837L13 9.4837Z';
@@ -664,34 +671,53 @@ ${sharedScript}
       if (view === 'git') { loadGit(); }
     }
 
-    function loadTreeRoot(retries) {
+    function loadTreeRoot(retries, delay) {
       treeRoot = null;
+      treeError = null;
       treeChildren = {};
       treeExpanded = {};
       var bodyEl = document.getElementById('treeBody');
       bodyEl.textContent = '';
       bodyEl.appendChild(el('div', 'tree-loading', tr('loadingTree')));
       // A freshly switched-to workspace may not be resolvable on the host yet
-      // (its session is still loading/persisting); retry briefly so the tree
-      // self-corrects instead of sitting on an error/empty state.
-      var left = typeof retries === 'number' ? retries : 3;
+      // (its session is still loading/persisting); retry with exponential
+      // backoff (~9s total) so the tree self-corrects instead of sitting on
+      // an error/empty state.
+      var left = typeof retries === 'number' ? retries : 5;
+      delay = typeof delay === 'number' ? delay : 400;
       fetch(listdirUrl(), { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (res) {
         if (res && res.ok) {
           treeRoot = { path: res.path, entries: res.entries };
+          treeError = null;
         } else if (left > 0) {
-          setTimeout(function () { loadTreeRoot(left - 1); }, 400);
+          setTimeout(function () { loadTreeRoot(left - 1, delay * 2); }, delay);
           return;
         } else {
-          treeRoot = { path: null, entries: [] };
+          // 明确错误态 + 重试按钮：不再停在「加载文件树…」，treeRoot 保持
+          // null，点重试或切换视图都会重新拉取。
+          treeError = (res && res.error) || tr('treeLoadFailed');
+          renderTreeError();
+          return;
         }
         renderTree();
         staggerList(document.getElementById('treeBody'), '.tree-row');
       }).catch(function () {
-        if (left > 0) { setTimeout(function () { loadTreeRoot(left - 1); }, 400); return; }
-        treeRoot = { path: null, entries: [] };
-        renderTree();
-        document.getElementById('treeBody').appendChild(el('div', 'tree-error', tr('treeLoadFailed')));
+        if (left > 0) { setTimeout(function () { loadTreeRoot(left - 1, delay * 2); }, delay); return; }
+        treeError = tr('treeLoadFailed');
+        renderTreeError();
       });
+    }
+
+    // 树根加载失败：错误文案 + 重试按钮（treeRoot 仍为 null，随时可重新获取）
+    function renderTreeError() {
+      var bodyEl = document.getElementById('treeBody');
+      bodyEl.textContent = '';
+      var err = el('div', 'tree-error', treeError || tr('treeLoadFailed'));
+      bodyEl.appendChild(err);
+      var btn = el('button', 'tree-retry', tr('retry'));
+      btn.type = 'button';
+      btn.addEventListener('click', function () { loadTreeRoot(); });
+      bodyEl.appendChild(btn);
     }
 
     // ── 文件搜索（文件树视图内）：搜索框默认隐藏，头部搜索按钮切换 ──────
@@ -759,7 +785,11 @@ ${sharedScript}
     function renderTreeBase() {
       var bodyEl = document.getElementById('treeBody');
       bodyEl.textContent = '';
-      if (!treeRoot) return;
+      if (!treeRoot) {
+        // 根加载失败后 renderTree 的后续调用不得抹掉错误态；重试按钮随时可重新拉取
+        if (treeError) renderTreeError();
+        return;
+      }
       if (!treeRoot.entries || !treeRoot.entries.length) {
         bodyEl.appendChild(el('div', 'empty', tr('emptyDir')));
         return;

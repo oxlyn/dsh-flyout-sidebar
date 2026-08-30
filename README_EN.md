@@ -73,9 +73,10 @@ dsh --profile web --dump-config | grep dsh-flyout-sidebar   # this line should a
 - Bilingual UI (Chinese / English): follows the browser language by default, pinnable in settings; the flyout syncs the choice via `localStorage`
 - Code previews support soft wrap (⇋ icon in the preview bar or the setting), horizontal scrolling by default
 - `Esc` exits stepwise: closes the active preview tab first, then collapses the panel; open preview tabs are restored per session after a browser reload (sessionStorage)
-- Built-in find bar in code previews (⌘/Ctrl+F or click the input): matching lines are marked in the gutter, Enter/⇧Enter jump between matches; per-line rendering keeps line numbers aligned even with soft wrap
+- Code previews use the browser's native find (⌘/Ctrl+F); per-line rendering keeps line numbers aligned even with soft wrap
 - Image previews support wheel zoom, drag panning and double-click reset
-- The external-link icon in the preview bar opens the current file in the system editor/IDE (host side via `open`/`xdg-open`/`cmd start`, path anchored to the workspace)
+- The external-link icon in the preview bar opens the current file in the system editor/IDE (host side via `open`/`xdg-open`/Windows `rundll32`, path anchored to the workspace)
+- Resilient file tree loading: when the workspace is not yet resolvable on the host, it retries with exponential backoff (~9s window), then shows an error with a Retry button; clicking refresh replays the top-down staggered row animation
 
 ![Flyout tab — full-window preview](snapshots/flyout-file-preview.png)
 
@@ -114,7 +115,11 @@ The plugin splits into a host side and a client side, written in TypeScript + JS
 │      GET /flyout-sidebar/gitdiff    per-file diff JSON          │
 │      GET /flyout-sidebar/listdir    directory listing           │
 │      GET /flyout-sidebar/content    text content (code preview) │
+│      GET /flyout-sidebar/search     filename search             │
 │      GET /flyout-sidebar/media      images / PDF binary         │
+│      (media responses carry CSP sandbox / nosniff to block inline  │
+│       SVG XSS; every read path is anchored to the workspace and   │
+│       there are no state-mutating routes like /remove)            │
 │  - tools/result event → 700ms debounced cache refresh           │
 └──────────────────────────────────────────────────────────────────┘
                           │ fetch
@@ -142,10 +147,10 @@ Technical notes: a single `tsdown.config.ts` bundles both sides (host ESM / clie
 ```sh
 npm run build         # tsdown: regenerate dist/index.js and dist/client.js
 npm run check         # tsc --noEmit strict type checking
-npm test              # node:test smoke tests (host routes/events + client rendering + flyout page)
+npm test              # node:test smoke tests (host routes/events + client rendering + flyout page + markdown/highlight regression)
 ```
 
-> Recommended one-time setup of the pre-commit guard: `ln -sf ../../scripts/precommit.sh .git/hooks/pre-commit`. Every `git commit` rebuilds the bundles automatically and blocks the commit if they are out of sync with the sources.
+> Recommended one-time setup of the pre-commit guard: `ln -sf ../../scripts/precommit.sh .git/hooks/pre-commit`. Every `git commit` rebuilds the bundles and runs the type check and tests, blocking the commit if the bundles are out of sync or any test fails.
 
 Project structure:
 

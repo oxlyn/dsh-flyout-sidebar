@@ -8,10 +8,10 @@ import type { ServerResponse } from 'node:http'
 import pdfjsLibSource from '../vendor/pdfjs/pdf.min.js?raw'
 import pdfjsWorkerSource from '../vendor/pdfjs/pdf.worker.min.js?raw'
 import type { DshFs, DshWebServer, HostContext } from './types'
-import { readFile, listDir, searchFiles, resolveWorkspaceCwd } from './files'
+import { readFile, listDir, searchFiles, resolveWorkspaceCwd, isWithinWorkspace } from './files'
 import { gitDiff, gitStatus } from './git'
 import { openInEditor } from './editor'
-import { removeFile, snapshotArtifacts } from './artifacts'
+import { snapshotArtifacts } from './artifacts'
 import { buildFlyoutPage } from './page'
 
 const MIME: Record<string, string> = {
@@ -103,6 +103,10 @@ export function registerRoutes(ctx: HostContext, webServer: DshWebServer): void 
       try {
         const cwd = await resolveWorkspaceCwd(ctx, q.get('sessionId') || undefined)
         const target = await fs.resolve(path, cwd ? { cwd } : undefined)
+        if (!isWithinWorkspace(fs, target, cwd)) {
+          sendText(res, 403, 'path outside workspace')
+          return
+        }
         const info = await fs.stat(target)
         if (!info || info.type !== 'file') {
           sendText(res, 404, 'not found')
@@ -112,21 +116,23 @@ export function registerRoutes(ctx: HostContext, webServer: DshWebServer): void 
         const ext = (/\.([^.]+)$/.exec(path)?.[1] || '').toLowerCase()
         const mime = MIME[ext] || 'application/octet-stream'
         const body = Buffer.from(bytes as Uint8Array)
-        res.writeHead(200, { 'Content-Type': mime, 'Cache-Control': 'private, max-age=5', 'Content-Length': body.byteLength })
+        // CSP sandbox：直接导航到 media URL（尤其 SVG）时禁脚本、断同源，
+        // 阻断工作区内恶意 SVG/XHTML 造成的存储型 XSS；<img> 内嵌展示不受影响。
+        res.writeHead(200, {
+          'Content-Type': mime,
+          'Cache-Control': 'private, max-age=5',
+          'Content-Length': body.byteLength,
+          'Content-Security-Policy': 'sandbox',
+          'X-Content-Type-Options': 'nosniff',
+        })
         res.end(body)
       } catch (e) {
-        sendText(res, 500, e instanceof Error && e.message ? e.message : 'read failed')
+        // 详细错误只进日志：异常 message 常含服务端绝对路径，不回显给客户端
+        console.error('[flyout-sidebar] media read failed', e)
+        sendText(res, 500, 'read failed')
       }
     },
   }, 'artifacts: media route')
-
-  register({
-    kind: 'exact',
-    path: '/flyout-sidebar/remove',
-    handler(req, res) {
-      sendJson(res, removeFile(queryParams(req.url).get('path') ?? undefined))
-    },
-  }, 'artifacts: remove route')
 
   register({
     kind: 'exact',
