@@ -128,7 +128,7 @@ body[data-dsh-flyout-dragging] .artifacts-preview-overlay { transition: none; }
 .artifacts-preview-hide {
 .artifacts-preview-hide.is-active { color: var(--dsw-alias-state-business-primary); }
   flex: none; width: 32px; display: inline-flex; align-items: center; justify-content: center;
-  border: none; border-left: 1px solid var(--dsw-alias-border-l1); background: transparent;
+  border: none; border-right: 1px solid var(--dsw-alias-border-l1); background: transparent;
   color: var(--dsw-alias-label-secondary); cursor: pointer; padding: 0;
 }
 .artifacts-preview-hide:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
