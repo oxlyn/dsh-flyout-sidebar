@@ -108,6 +108,7 @@ body[data-dsh-flyout-dragging] .artifacts-preview-overlay { transition: none; }
   color: var(--dsw-alias-label-secondary); cursor: pointer;
 }
 .artifacts-toggle:hover { color: var(--dsw-alias-label-primary); }
+.artifacts-toggle.is-active { color: var(--dsw-alias-state-business-primary); }
 .artifacts-link { color: var(--dsw-alias-state-business-primary); text-decoration: none; padding: 4px; border-radius: 6px; display: inline-flex; align-items: center; }
 .artifacts-link:hover { background: var(--dsw-alias-interactive-bg-hover); }
 .artifacts-iconbtn {

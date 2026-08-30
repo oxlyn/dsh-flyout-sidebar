@@ -163,6 +163,7 @@ body[data-dsh-flyout-dragging] .artifacts-preview-overlay { transition: none; }
   color: var(--dsw-alias-label-secondary); cursor: pointer;
 }
 .artifacts-toggle:hover { color: var(--dsw-alias-label-primary); }
+.artifacts-toggle.is-active { color: var(--dsw-alias-state-business-primary); }
 .artifacts-link { color: var(--dsw-alias-state-business-primary); text-decoration: none; padding: 4px; border-radius: 6px; display: inline-flex; align-items: center; }
 .artifacts-link:hover { background: var(--dsw-alias-interactive-bg-hover); }
 .artifacts-iconbtn {
@@ -472,6 +473,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		previewRegion: "文件预览",
 		diffTabPrefix: "[diff] ",
 		searchPlaceholder: "搜索文件…",
+		searchToggle: "搜索文件",
 		hintClickGit: "点击右侧变更文件查看 diff",
 		hintClickTree: "点击右侧文件查看内容",
 		movePanelLeft: "将文件面板移到左侧",
@@ -558,6 +560,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		previewRegion: "File preview",
 		diffTabPrefix: "[diff] ",
 		searchPlaceholder: "Search files…",
+		searchToggle: "Search files",
 		hintClickGit: "Click a changed file to view its diff",
 		hintClickTree: "Click a file to view its content",
 		movePanelLeft: "Move file panel to the left",
@@ -1932,12 +1935,31 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		strokeLinecap: "round",
 		fill: "none"
 	}));
+	/** 搜索图标：放大镜（文件搜索开关） */
+	const SearchIcon = ({ size }) => /* @__PURE__ */ h("svg", {
+		width: size,
+		height: size,
+		viewBox: "0 0 16 16",
+		fill: "none",
+		"aria-hidden": "true"
+	}, /* @__PURE__ */ h("circle", {
+		cx: "7",
+		cy: "7",
+		r: "4.4",
+		stroke: "currentColor",
+		strokeWidth: 1.4
+	}), /* @__PURE__ */ h("path", {
+		d: "m10.4 10.4 3.1 3.1",
+		stroke: "currentColor",
+		strokeWidth: 1.4,
+		strokeLinecap: "round"
+	}));
 	//#endregion
 	//#region src/client/components.tsx
 	/**
 	* Client 侧：UI 组件 —— 文件树、多标签预览侧边面板、角落触发按钮、设置区。
 	*/
-	function FileTree({ onOpen, selectedPath, refreshToken }) {
+	function FileTree({ onOpen, selectedPath, refreshToken, searchOpen = false, onCloseSearch }) {
 		const [root, setRoot] = React.useState(null);
 		const [children, setChildren] = React.useState({});
 		const [expanded, setExpanded] = React.useState({});
@@ -1948,6 +1970,9 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		const copyTimer = React.useRef(null);
 		const rootTimer = React.useRef(null);
 		const sessionId = useSessionId();
+		React.useEffect(() => {
+			if (!searchOpen) setQuery("");
+		}, [searchOpen]);
 		React.useEffect(() => {
 			const q = query.trim();
 			if (!q) {
@@ -2145,16 +2170,20 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 				title: path
 			}, /* @__PURE__ */ h(FileCodeIcon, { size: 14 }), /* @__PURE__ */ h("span", { className: "artifacts-tree-name" }, entry.name, dir ? /* @__PURE__ */ h("span", { className: "artifacts-search-dir" }, dir) : null), rowActions(entry));
 		};
-		return /* @__PURE__ */ h("div", { className: "artifacts-tree" }, /* @__PURE__ */ h("div", { className: "artifacts-searchbar" }, /* @__PURE__ */ h("input", {
+		return /* @__PURE__ */ h("div", { className: "artifacts-tree" }, searchOpen ? /* @__PURE__ */ h("div", { className: "artifacts-searchbar" }, /* @__PURE__ */ h("input", {
 			type: "text",
 			className: "artifacts-search-input",
 			placeholder: t("searchPlaceholder"),
 			value: query,
+			autoFocus: true,
 			onChange: (e) => setQuery(e.currentTarget.value),
 			onKeyDown: (ev) => {
-				if (ev.key === "Escape") setQuery("");
+				if (ev.key === "Escape") {
+					if (onCloseSearch) onCloseSearch();
+					else setQuery("");
+				}
 			}
-		})), /* @__PURE__ */ h("div", { className: "artifacts-tree-body" }, query.trim() ? search && search.loading ? /* @__PURE__ */ h("div", { className: "artifacts-hint" }, t("searching")) : search && search.error ? /* @__PURE__ */ h("div", { className: "artifacts-tree-error artifacts-git-error" }, search.error) : search && search.entries && search.entries.length ? search.entries.map((p, i) => renderSearchRow(p, i)) : /* @__PURE__ */ h("div", { className: "artifacts-hint" }, t("noResults")) : !root ? /* @__PURE__ */ h("div", { className: "artifacts-hint" }, t("loadingTree")) : !root.entries || !root.entries.length ? /* @__PURE__ */ h("div", { className: "artifacts-hint" }, t("emptyDir")) : root.entries.map((e, i) => renderNode(e, 0, Math.min(i, 12) * 45))));
+		})) : null, /* @__PURE__ */ h("div", { className: "artifacts-tree-body" }, query.trim() ? search && search.loading ? /* @__PURE__ */ h("div", { className: "artifacts-hint" }, t("searching")) : search && search.error ? /* @__PURE__ */ h("div", { className: "artifacts-tree-error artifacts-git-error" }, search.error) : search && search.entries && search.entries.length ? search.entries.map((p, i) => renderSearchRow(p, i)) : /* @__PURE__ */ h("div", { className: "artifacts-hint" }, t("noResults")) : !root ? /* @__PURE__ */ h("div", { className: "artifacts-hint" }, t("loadingTree")) : !root.entries || !root.entries.length ? /* @__PURE__ */ h("div", { className: "artifacts-hint" }, t("emptyDir")) : root.entries.map((e, i) => renderNode(e, 0, Math.min(i, 12) * 45))));
 	}
 	const TABS_KEY = "dsh-flyout-sidebar:tabs";
 	/**
@@ -2359,6 +2388,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		const [resizing, setResizing] = React.useState(false);
 		const [activeView, setActiveView] = React.useState(() => settings.showFileTree ? "tree" : "git");
 		const [treeRefresh, setTreeRefresh] = React.useState(0);
+		const [searchOpen, setSearchOpen] = React.useState(false);
 		const [gitRefresh, setGitRefresh] = React.useState(0);
 		const [gitRefreshing, setGitRefreshing] = React.useState(false);
 		const [gitFlash, setGitFlash] = React.useState(0);
@@ -2575,7 +2605,13 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			target: "_blank",
 			rel: "noreferrer noopener",
 			title: t("flyoutOpen")
-		}, /* @__PURE__ */ h(FlyoutIcon, { size: 16 }))), /* @__PURE__ */ h("span", { className: "artifacts-spacer" }), notice ? /* @__PURE__ */ h("span", { className: "artifacts-notice" }, notice) : null, /* @__PURE__ */ h("button", {
+		}, /* @__PURE__ */ h(FlyoutIcon, { size: 16 }))), /* @__PURE__ */ h("span", { className: "artifacts-spacer" }), notice ? /* @__PURE__ */ h("span", { className: "artifacts-notice" }, notice) : null, activeView === "tree" && settings.showFileTree ? /* @__PURE__ */ h("button", {
+			type: "button",
+			className: "artifacts-toggle artifacts-search-toggle" + (searchOpen ? " is-active" : ""),
+			title: t("searchToggle"),
+			"aria-pressed": searchOpen,
+			onClick: () => setSearchOpen((v) => !v)
+		}, /* @__PURE__ */ h(SearchIcon, { size: 16 })) : null, /* @__PURE__ */ h("button", {
 			type: "button",
 			className: "artifacts-toggle",
 			title: activeView === "tree" ? t("refreshTree") : t("refreshChanges"),
@@ -2599,7 +2635,9 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		}, activeView === "tree" && settings.showFileTree ? /* @__PURE__ */ h(FileTree, {
 			onOpen: openFile,
 			selectedPath: activeTab && !activeTab.git ? activeTab.path : null,
-			refreshToken: treeRefresh
+			refreshToken: treeRefresh,
+			searchOpen,
+			onCloseSearch: () => setSearchOpen(false)
 		}) : /* @__PURE__ */ h(GitChangesList, {
 			files: gitFiles,
 			error: gitError,

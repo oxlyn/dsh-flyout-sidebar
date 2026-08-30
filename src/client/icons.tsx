@@ -85,3 +85,11 @@ export const GitBranchIcon = ({ size }: IconProps) => (
     <path d="M11.5 4.7v1.1c0 1.9-1.6 3.1-3.6 3.1-1.9 0-3.4 1.2-3.4 1.2" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" fill="none" />
   </svg>
 )
+
+/** 搜索图标：放大镜（文件搜索开关） */
+export const SearchIcon = ({ size }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true">
+    <circle cx="7" cy="7" r="4.4" stroke="currentColor" strokeWidth={1.4} />
+    <path d="m10.4 10.4 3.1 3.1" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" />
+  </svg>
+)

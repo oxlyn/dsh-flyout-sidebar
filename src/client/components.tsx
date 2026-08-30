@@ -33,6 +33,7 @@ import {
   PanelIcon,
   FlyoutIcon,
   RefreshIcon,
+  SearchIcon,
 } from './icons'
 
 // 文件树（文件树视图）：better-sidebar 风格的资源管理器 —— 圆角行、目录/
@@ -41,6 +42,10 @@ interface FileTreeProps {
   onOpen?: (path: string) => void
   selectedPath?: string | null
   refreshToken: number
+  /** 搜索框显隐（头部搜索按钮控制）；隐藏时清空查询、回到文件树 */
+  searchOpen?: boolean
+  /** 请求关闭搜索框（Esc 在输入框内按下时） */
+  onCloseSearch?: () => void
 }
 
 interface TreeNodeState {
@@ -49,7 +54,7 @@ interface TreeNodeState {
   entries?: ListEntry[]
 }
 
-export function FileTree({ onOpen, selectedPath, refreshToken }: FileTreeProps): ReactElement {
+export function FileTree({ onOpen, selectedPath, refreshToken, searchOpen = false, onCloseSearch }: FileTreeProps): ReactElement {
   const [root, setRoot] = React.useState<{ path: string; entries: ListEntry[] } | null>(null)
   const [children, setChildren] = React.useState<Record<string, TreeNodeState>>({})
   const [expanded, setExpanded] = React.useState<Record<string, boolean>>({})
@@ -64,6 +69,11 @@ export function FileTree({ onOpen, selectedPath, refreshToken }: FileTreeProps):
 
   // 跟随活动会话：工作区变化时自动重新定位根目录（无需手动刷新）。
   const sessionId = useSessionId()
+
+  // 搜索框被隐藏时清空查询，回到完整文件树视图
+  React.useEffect(() => {
+    if (!searchOpen) setQuery('')
+  }, [searchOpen])
 
   React.useEffect(() => {
     const q = query.trim()
@@ -317,18 +327,24 @@ export function FileTree({ onOpen, selectedPath, refreshToken }: FileTreeProps):
 
   return (
     <div className="artifacts-tree">
-      <div className="artifacts-searchbar">
-        <input
-          type="text"
-          className="artifacts-search-input"
-          placeholder={t('searchPlaceholder')}
-          value={query}
-          onChange={(e) => setQuery(e.currentTarget.value)}
-          onKeyDown={(ev) => {
-            if (ev.key === 'Escape') setQuery('')
-          }}
-        />
-      </div>
+      {searchOpen ? (
+        <div className="artifacts-searchbar">
+          <input
+            type="text"
+            className="artifacts-search-input"
+            placeholder={t('searchPlaceholder')}
+            value={query}
+            autoFocus
+            onChange={(e) => setQuery(e.currentTarget.value)}
+            onKeyDown={(ev) => {
+              if (ev.key === 'Escape') {
+                if (onCloseSearch) onCloseSearch()
+                else setQuery('')
+              }
+            }}
+          />
+        </div>
+      ) : null}
       <div className="artifacts-tree-body">
         {query.trim() ? (
           search && search.loading ? (
@@ -590,6 +606,8 @@ export function ArtifactsPanel(): ReactElement | null {
   const [resizing, setResizing] = React.useState(false)
   const [activeView, setActiveView] = React.useState<'tree' | 'git'>(() => (settings.showFileTree ? 'tree' : 'git'))
   const [treeRefresh, setTreeRefresh] = React.useState(0) // 头部刷新按钮递增
+  // 文件搜索框显隐：默认隐藏，由头部刷新按钮左侧的搜索按钮切换
+  const [searchOpen, setSearchOpen] = React.useState(false)
   const [gitRefresh, setGitRefresh] = React.useState(0)
   // 刷新按钮点击后置真：git 列表短暂变暗，强制响应返回后恢复，给出「刷新
   // 过了」的可见反馈。gitFlash 递增使行重新挂载，重放逐行浮现动画。
@@ -863,6 +881,17 @@ export function ArtifactsPanel(): ReactElement | null {
           </div>
           <span className="artifacts-spacer" />
           {notice ? <span className="artifacts-notice">{notice}</span> : null}
+          {activeView === 'tree' && settings.showFileTree ? (
+            <button
+              type="button"
+              className={'artifacts-toggle artifacts-search-toggle' + (searchOpen ? ' is-active' : '')}
+              title={t('searchToggle')}
+              aria-pressed={searchOpen}
+              onClick={() => setSearchOpen((v) => !v)}
+            >
+              <SearchIcon size={16} />
+            </button>
+          ) : null}
           <button
             type="button"
             className="artifacts-toggle"
@@ -900,6 +929,8 @@ export function ArtifactsPanel(): ReactElement | null {
                 onOpen={openFile}
                 selectedPath={activeTab && !activeTab.git ? activeTab.path : null}
                 refreshToken={treeRefresh}
+                searchOpen={searchOpen}
+                onCloseSearch={() => setSearchOpen(false)}
               />
             ) : (
               <GitChangesList
