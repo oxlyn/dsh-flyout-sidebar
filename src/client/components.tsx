@@ -33,6 +33,7 @@ import {
   PanelIcon,
   FlyoutIcon,
   RefreshIcon,
+  WrapIcon,
 } from './icons'
 
 // 文件树（文件树视图）：better-sidebar 风格的资源管理器 —— 圆角行、目录/
@@ -89,9 +90,31 @@ export function FileTree({ onOpen, selectedPath, refreshToken }: FileTreeProps):
     }
   }, [query, sessionId, refreshToken])
 
-  const loadRoot = (): void => {
-    setChildren({})
-    setExpanded({})
+  // 拉取单个目录（展开 / 刷新重取共用）
+  const fetchDir = (path: string): void => {
+    setChildren((prev) => ({ ...prev, [path]: { loading: true } }))
+    host
+      .listDir(path, currentSessionId())
+      .then((res) => {
+        setChildren((prev) => ({
+          ...prev,
+          [path]: res && res.ok ? { entries: res.entries || [] } : { error: (res && res.error) || t('readFailed') },
+        }))
+      })
+      .catch(() => {
+        setChildren((prev) => ({ ...prev, [path]: { error: t('readFailed') } }))
+      })
+  }
+
+  // keepState：手动刷新时保留展开状态，只重取已展开目录的数据；会话切换
+  // （keepState=false）仍全部重置，避免把上一个工作区的树带过来。
+  const loadRoot = (keepState = false): void => {
+    if (!keepState) {
+      setChildren({})
+      setExpanded({})
+    } else {
+      for (const p of Object.keys(expanded)) if (expanded[p]) fetchDir(p)
+    }
     setRoot(null)
     if (rootTimer.current) clearTimeout(rootTimer.current)
     // 刚切换的工作区短时间内可能还无法在 host 侧解析（会话仍在加载/持久化
@@ -114,9 +137,17 @@ export function FileTree({ onOpen, selectedPath, refreshToken }: FileTreeProps):
   }
 
   // 工作区切换与显式刷新（头部刷新按钮递增 refreshToken）时重新取根。
+  const firstTreeRender = React.useRef(true)
   React.useEffect(() => {
     loadRoot()
-  }, [sessionId, refreshToken])
+  }, [sessionId])
+  React.useEffect(() => {
+    if (firstTreeRender.current) {
+      firstTreeRender.current = false
+      return
+    }
+    loadRoot(true)
+  }, [refreshToken])
   React.useEffect(() => () => {
     if (rootTimer.current) clearTimeout(rootTimer.current)
   }, [])
@@ -124,20 +155,7 @@ export function FileTree({ onOpen, selectedPath, refreshToken }: FileTreeProps):
   const toggle = (path: string): void => {
     const nextExpanded = { ...expanded, [path]: !expanded[path] }
     setExpanded(nextExpanded)
-    if (nextExpanded[path] && !children[path]) {
-      setChildren({ ...children, [path]: { loading: true } })
-      host
-        .listDir(path, currentSessionId())
-        .then((res) => {
-          setChildren((prev) => ({
-            ...prev,
-            [path]: res && res.ok ? { entries: res.entries || [] } : { error: (res && res.error) || t('readFailed') },
-          }))
-        })
-        .catch(() => {
-          setChildren((prev) => ({ ...prev, [path]: { error: t('readFailed') } }))
-        })
-    }
+    if (nextExpanded[path] && !children[path]) fetchDir(path)
   }
 
   const copyRef = (path: string): void => {
@@ -358,11 +376,20 @@ export function ArtifactsPanel(): ReactElement | null {
     setTabs([])
     setActiveKey(null)
     setPreviewHidden(false)
+    try {
+      sessionStorage.removeItem(TABS_KEY)
+    } catch {
+      // sessionStorage 不可用时跳过
+    }
   }, [sessionId])
   const [notice, setNotice] = React.useState('')
+  const TABS_KEY = 'dsh-flyout-sidebar:tabs'
+  // 窗口宽度（resize 时更新）：面板宽度以「可用宽度的比例」保存，窗口缩放
+  // 后宽度按比例跟随，而不是停在拖拽时的固定像素。
+  const [winW, setWinW] = React.useState(() => (typeof window !== 'undefined' ? window.innerWidth : 1400))
   const [gitFiles, setGitFiles] = React.useState<GitStatusEntry[] | null>(null) // null = 加载中
   const [gitError, setGitError] = React.useState<string | null>(null)
-  const [panelWidth, setPanelWidth] = React.useState<number | null>(null) // null = 用最小宽度
+  const [panelFrac, setPanelFrac] = React.useState<number | null>(null) // 占可用宽度的比例；null = 用最小宽度
   const [resizing, setResizing] = React.useState(false)
   const [activeView, setActiveView] = React.useState<'tree' | 'git'>(() => (settings.showFileTree ? 'tree' : 'git'))
   const [treeRefresh, setTreeRefresh] = React.useState(0) // 头部刷新按钮递增
@@ -411,6 +438,21 @@ export function ArtifactsPanel(): ReactElement | null {
       if (dispose) dispose()
     }
   }, [open, activeView, settings.autoRefresh, gitRefresh, sessionId])
+
+  // 预览标签持久化（sessionStorage，按会话归属）：浏览器刷新后恢复打开的
+  // 标签（只存元数据，内容恢复时重新拉取）。会话切换时由下方的清空逻辑移除。
+  React.useEffect(() => {
+    try {
+      if (!tabs.length) sessionStorage.removeItem(TABS_KEY)
+      else
+        sessionStorage.setItem(
+          TABS_KEY,
+          JSON.stringify({ sid: sessionId, tabs: tabs.map((tb) => ({ key: tb.key, path: tb.path, git: tb.git })), activeKey }),
+        )
+    } catch {
+      // sessionStorage 不可用时跳过
+    }
+  }, [tabs, activeKey, sessionId])
 
   // 把当前会话 id 发布到 localStorage：独立弹出标签页没有客户端会话库，
   // 靠它把文件树根植到活动工作区并实时跟随切换。
@@ -462,10 +504,21 @@ export function ArtifactsPanel(): ReactElement | null {
     return () => obs.disconnect()
   }, [])
 
-  // 面板宽度（px）：至少 minPanelWidth% 窗口宽，拖左边缘可更宽。panelWidth
-  // 保存拖拽结果（px）；null → 用配置的最小值。
-  const minWidthPx = Math.max(80, Math.round((window.innerWidth * (settings.minPanelWidth || 0)) / 100))
-  const widthPx = panelWidth != null ? Math.max(panelWidth, minWidthPx) : minWidthPx
+  React.useEffect(() => {
+    const onResize = (): void => setWinW(window.innerWidth)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+
+  // 面板宽度（px）：至少 minPanelWidth% 窗口宽，拖左边缘可更宽。panelFrac
+  // 保存拖拽结果（占可用宽度的比例）；null → 用配置的最小值。
+  const rightOffset = (() => {
+    const n = parseFloat(document.documentElement.style.getPropertyValue('--dsh-sidebar-width'))
+    return Number.isFinite(n) ? n : 0
+  })()
+  const avail = Math.max(120, winW - rightOffset)
+  const minWidthPx = Math.max(80, Math.round((winW * (settings.minPanelWidth || 0)) / 100))
+  const widthPx = panelFrac != null ? Math.max(minWidthPx, Math.round(panelFrac * avail)) : minWidthPx
 
   // 打开时为面板预留布局空间：把 app 框架收缩面板实时宽度，会话列让位
   //（见 styles 中 html #root 规则）。
@@ -498,14 +551,11 @@ export function ArtifactsPanel(): ReactElement | null {
   const startResize = (e: React.MouseEvent): void => {
     e.preventDefault()
     setResizing(true)
-    const rightOffset = (() => {
-      const v = document.documentElement.style.getPropertyValue('--dsh-sidebar-width')
-      const n = parseFloat(v)
-      return Number.isFinite(n) ? n : 0
-    })()
+    const availAtStart = avail
     const onMove = (ev: MouseEvent): void => {
       const w = window.innerWidth - ev.clientX - rightOffset
-      setPanelWidth(Math.max(minWidthPx, Math.min(w, window.innerWidth - rightOffset - 24)))
+      const frac = Math.max(minWidthPx / availAtStart, Math.min(w / availAtStart, (availAtStart - 24) / availAtStart))
+      setPanelFrac(frac)
     }
     const onUp = (): void => {
       setResizing(false)
@@ -540,6 +590,25 @@ export function ArtifactsPanel(): ReactElement | null {
     }
     copyText('@' + path, t('copiedRef'))
   }
+
+  // Esc：优先关闭活动预览标签（标签随层隐藏），无预览时收起整个面板。
+  // 输入控件聚焦时（搜索框 / 会话输入框）不抢 Esc。
+  React.useEffect(() => {
+    if (!open) return
+    const onKey = (ev: KeyboardEvent): void => {
+      if (ev.key !== 'Escape') return
+      const target = ev.target as HTMLElement | null
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return
+      if (tabs.length && !previewHidden) {
+        if (activeKey) closeTab(activeKey)
+        else setPreviewHidden(true)
+      } else {
+        store.setOpen(false)
+      }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [open, tabs, previewHidden, activeKey])
 
   // 多标签预览状态：每个打开的文件（或 git diff）一个标签，按路径作键
   //（'g:' 前缀区分 diff 标签）。
@@ -603,6 +672,33 @@ export function ArtifactsPanel(): ReactElement | null {
       })
   }
 
+  // 恢复持久化的标签：同一会话内浏览器刷新后，把打开的标签重新拉起
+  //（openFile / openGitDiff 自带重新取数）。每个会话只恢复一次。
+  const restoredSid = React.useRef<string | null>(null)
+  React.useEffect(() => {
+    if (restoredSid.current === sessionId) return
+    restoredSid.current = sessionId
+    if (sessionId == null) return
+    try {
+      const raw = sessionStorage.getItem(TABS_KEY)
+      if (!raw) return
+      const saved: unknown = JSON.parse(raw)
+      const sid = (saved as { sid?: unknown }).sid
+      const list = (saved as { tabs?: unknown }).tabs
+      if (sid !== sessionId || !Array.isArray(list)) return
+      for (const st of list as Array<{ key?: unknown; path?: unknown; git?: unknown }>) {
+        if (typeof st?.key !== 'string' || typeof st?.path !== 'string') continue
+        if (st.git) openGitDiff(st.path)
+        else openFile(st.path)
+      }
+      const savedActive = (saved as { activeKey?: unknown }).activeKey
+      if (typeof savedActive === 'string') setActiveKey(savedActive)
+    } catch {
+      // 解析失败按无持久化处理
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId])
+
   // 状态字母 → 变更行显示标签。
   const gitLabel = (e: GitStatusEntry): string => {
     if (e.x === '?' || e.y === '?') return 'U'
@@ -646,6 +742,12 @@ export function ArtifactsPanel(): ReactElement | null {
           <div className="artifacts-item-row">
             <span className={'artifacts-git-badge artifacts-git-badge-' + label}>{label}</span>
             <span className="artifacts-item-base">{basename(e.path)}</span>
+            {typeof e.adds === 'number' && (e.adds > 0 || (e.dels ?? 0) > 0) ? (
+              <span className="artifacts-git-stats">
+                <span className="artifacts-git-adds">+{e.adds}</span>
+                <span className="artifacts-git-dels">−{e.dels ?? 0}</span>
+              </span>
+            ) : null}
             {e.origPath ? <span className="artifacts-git-orig">← {basename(e.origPath)}</span> : null}
           </div>
           <div className="artifacts-item-full">{e.path}</div>
@@ -696,11 +798,20 @@ export function ArtifactsPanel(): ReactElement | null {
               </div>
             ))}
           </div>
+          <button
+            type="button"
+            className={'artifacts-preview-hide' + (settings.codeWrap ? ' is-active' : '')}
+            title={t('wordWrap')}
+            aria-pressed={settings.codeWrap}
+            onClick={() => settingsStore.set('codeWrap', !settings.codeWrap)}
+          >
+            <WrapIcon size={16} />
+          </button>
           <button type="button" className="artifacts-preview-hide" title={t('hidePreview')} onClick={() => setPreviewHidden(true)}>
             <PanelCollapseIcon size={16} />
           </button>
         </div>
-        {activeTab ? renderPreview(activeTab) : null}
+        {activeTab ? renderPreview(activeTab, settings.codeWrap) : null}
       </div>
     ) : null
 
@@ -858,6 +969,12 @@ export function SettingsSection(): ReactElement {
           desc={t('setFileTreeDesc')}
           value={settings.showFileTree}
           onToggle={(v) => set('showFileTree', v)}
+        />
+        <SettingsToggle
+          label={t('setCodeWrap')}
+          desc={t('setCodeWrapDesc')}
+          value={settings.codeWrap}
+          onToggle={(v) => set('codeWrap', v)}
         />
         <div className="artifacts-setrow">
           <div className="artifacts-settext">

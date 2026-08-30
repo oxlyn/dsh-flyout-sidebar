@@ -199,6 +199,9 @@ export function buildFlyoutPage(): string {
   .git-badge-R { background: rgba(65,118,230,0.1); color: var(--p-accent); }
   .git-badge-U { background: var(--p-hover); color: var(--p-text-tertiary); }
   .git-orig { color: var(--p-text-tertiary); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .git-stats { flex: none; display: inline-flex; gap: 4px; font: 11px/16px ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .git-adds { color: var(--p-success-fg); }
+  .git-dels { color: var(--p-error); }
   .git-err { padding: 14px 12px; color: var(--p-error); word-break: break-all; }
   .gd { font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; }
   .gd-line { white-space: pre-wrap; word-break: break-all; padding: 0 12px; }
@@ -432,7 +435,13 @@ ${sharedScript}
         var row = el('div', 'row');
         row.appendChild(el('span', 'git-badge git-badge-' + gitLabel(e), gitLabel(e)));
         row.appendChild(el('span', 'base', basename(e.path)));
-        if (e.origPath) row.appendChild(el('span', 'git-orig', '← ' + basename(e.origPath)));
+        if (typeof e.adds === 'number' && (e.adds > 0 || (e.dels || 0) > 0)) {
+          var stats = el('span', 'git-stats');
+          stats.appendChild(el('span', 'git-adds', '+' + e.adds));
+          stats.appendChild(el('span', 'git-dels', '\u2212' + (e.dels || 0)));
+          row.appendChild(stats);
+        }
+        if (e.origPath) row.appendChild(el('span', 'git-orig', '\u2190 ' + basename(e.origPath)));
         main.appendChild(row);
         main.appendChild(el('div', 'full', e.path));
         main.addEventListener('click', function () { openGitDiff(e.path); });

@@ -275,6 +275,12 @@ test('host plugin: git status and diff against a real repo', async () => {
   assert.ok(paths.includes('untracked.txt'))
   const tracked = status.entries.find((e) => e.path === 'tracked.txt')
   assert.equal(tracked.y, 'M')
+  // diff 统计：修改文件 +1 -1；未跟踪文件合成 new-file 行数
+  assert.equal(tracked.adds, 1)
+  assert.equal(tracked.dels, 1)
+  const untracked = status.entries.find((e) => e.path === 'untracked.txt')
+  assert.equal(untracked.adds, 1)
+  assert.equal(untracked.dels, 0)
 
   const res2 = makeFakeRes()
   await ctx.routes.get('/flyout-sidebar/gitdiff')({ url: '/flyout-sidebar/gitdiff?path=tracked.txt&sessionId=s1' }, res2)

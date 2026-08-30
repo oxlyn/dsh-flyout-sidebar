@@ -85,3 +85,16 @@ export const GitBranchIcon = ({ size }: IconProps) => (
     <path d="M11.5 4.7v1.1c0 1.9-1.6 3.1-3.6 3.1-1.9 0-3.4 1.2-3.4 1.2" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" fill="none" />
   </svg>
 )
+
+/** 换行图标：一条折返的长线（代码软换行开关） */
+export const WrapIcon = ({ size }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true">
+    <path
+      d="M2 4h12M2 8h9.5a2.5 2.5 0 0 1 0 5H9"
+      stroke="currentColor"
+      strokeWidth={1.4}
+      strokeLinecap="round"
+    />
+    <path d="M11 10.6 9 13l2 2.4" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" transform="translate(0 -2.4)" />
+  </svg>
+)

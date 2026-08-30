@@ -6,6 +6,8 @@
  * 用文件内容合成一份 new-file diff，让客户端按新增文件渲染。
  */
 import { execFile } from 'node:child_process'
+import { readFile as fsReadFile, stat as fsStat } from 'node:fs/promises'
+import { join } from 'node:path'
 import type { HostContext, ToolExec } from './types'
 import { readFile } from './files'
 import { execCwd, resolveCwdCached } from './workspace'
@@ -15,6 +17,9 @@ export interface GitStatusEntry {
   origPath: string | null
   x: string
   y: string
+  /** 相对 HEAD 的行增删数；未跟踪文件为合成新文件的行数；统计失败时缺省 */
+  adds?: number
+  dels?: number
 }
 
 export interface GitStatusResult {
@@ -87,7 +92,61 @@ async function gitStatusRemote(cwd: string): Promise<{ ok: boolean; error?: stri
     }
     entries.push({ path, origPath, x, y })
   }
+  // 每文件行增删统计（相对 HEAD = 已暂存+未暂存合并）。无提交仓库回退到
+  // 已暂存 numstat；统计失败只影响徽章，不影响列表本身。
+  const stats = await diffStats(cwd)
+  for (const e of entries) {
+    const st = stats.get(e.path)
+    if (st) {
+      e.adds = st.adds
+      e.dels = st.dels
+    } else if (e.x === '?' || e.y === '?') {
+      // 未跟踪文件没有 git diff，按当前内容行数合成 new-file 统计
+      const lines = await untrackedLineCount(cwd, e.path)
+      if (lines != null) {
+        e.adds = lines
+        e.dels = 0
+      }
+    }
+  }
   return { ok: true, entries }
+}
+
+/** `git diff [--cached] --numstat -z` → path → 行增删 */
+async function diffStats(cwd: string): Promise<Map<string, { adds: number; dels: number }>> {
+  const stats = new Map<string, { adds: number; dels: number }>()
+  let numstat = await runGit(['diff', 'HEAD', '-M', '--numstat', '-z'], cwd)
+  if (!numstat.ok) numstat = await runGit(['diff', '--cached', '-M', '--numstat', '-z'], cwd)
+  if (!numstat.ok) return stats
+  const fields = String(numstat.out).split('\0').filter(Boolean)
+  for (let i = 0; i < fields.length; i += 1) {
+    const f = fields[i] || ''
+    const parts = f.split('\t')
+    if (parts.length < 3) continue
+    const adds = parseInt(parts[0] || '', 10)
+    const dels = parseInt(parts[1] || '', 10)
+    const statPath = parts[2] || ''
+    // -z 模式下 rename 条目后跟一个独立的 NUL 字段（旧路径），跳过它
+    const next = fields[i + 1]
+    if (next != null && !/^\d+\t/.test(next)) i += 1
+    if (Number.isFinite(adds) && Number.isFinite(dels) && statPath) stats.set(statPath, { adds, dels })
+  }
+  return stats
+}
+
+/** 未跟踪文件的行数（过大文件跳过，徽章缺失可接受） */
+async function untrackedLineCount(cwd: string, relPath: string): Promise<number | null> {
+  try {
+    const abs = join(cwd, relPath)
+    const st = await fsStat(abs)
+    if (!st.isFile() || st.size > 200000) return null
+    const content = await fsReadFile(abs, 'utf8')
+    const lines = content.split('\n')
+    if (lines.length && lines[lines.length - 1] === '') lines.pop()
+    return lines.length
+  } catch {
+    return null
+  }
 }
 
 async function refreshStatus(cwd: string, force: boolean): Promise<void> {

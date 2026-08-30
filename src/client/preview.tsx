@@ -40,13 +40,13 @@ export function renderDiff(diff: { before: string; after: string } | null | unde
   )
 }
 
-/** 代码预览：行号栏 + 语法高亮代码（共享高亮器，语言取自扩展名） */
-export function CodeView({ code, path }: { code?: string; path?: string }): ReactElement {
+/** 代码预览：行号栏 + 语法高亮代码（共享高亮器，语言取自扩展名）；wrap 为软换行 */
+export function CodeView({ code, path, wrap }: { code?: string; path?: string; wrap?: boolean }): ReactElement {
   const src = String(code || '')
   const srcLines = src.replace(/\n$/, '').split('\n')
   const gutter = srcLines.map((_, i) => String(i + 1)).join('\n')
   return (
-    <div className="artifacts-code">
+    <div className={'artifacts-code' + (wrap ? ' artifacts-code-wrap' : '')}>
       <div className="artifacts-code-scroll">
         <pre className="artifacts-code-gutter" aria-hidden="true">
           {gutter}
@@ -347,7 +347,7 @@ export function GitDiffView({ diff }: { diff?: string }): ReactElement {
   return <div className="artifacts-gitdiff">{rows}</div>
 }
 
-export function renderPreview(p: PreviewTab): ReactElement {
+export function renderPreview(p: PreviewTab, codeWrap = false): ReactElement {
   if (p.loading) return <div className="artifacts-hint">{t('loading')}</div>
   if (p.ok === false) return <div className="artifacts-error">{p.error || t('readFailed')}</div>
   if (p.git) {
@@ -378,7 +378,7 @@ export function renderPreview(p: PreviewTab): ReactElement {
   } else {
     view = (
       <Fragment>
-        <CodeView code={p.content} path={p.path} />
+        <CodeView code={p.content} path={p.path} wrap={codeWrap} />
         {p.truncated ? <div className="artifacts-diff-label">{t('truncated')}</div> : null}
       </Fragment>
     )

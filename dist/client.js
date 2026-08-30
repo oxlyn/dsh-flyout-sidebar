@@ -123,6 +123,7 @@ body[data-dsh-flyout-dragging] .artifacts-preview-overlay { transition: none; }
 }
 .artifacts-ptab-close:hover { background: var(--dsw-alias-interactive-bg-hover-accent, rgba(0, 0, 0, 0.08)); }
 .artifacts-preview-hide {
+.artifacts-preview-hide.is-active { color: var(--dsw-alias-state-business-primary); }
   flex: none; width: 32px; display: inline-flex; align-items: center; justify-content: center;
   border: none; border-left: 1px solid var(--dsw-alias-border-l1); background: transparent;
   color: var(--dsw-alias-label-secondary); cursor: pointer; padding: 0;
@@ -309,6 +310,10 @@ body[data-ds-dark-theme] .gd-del { color: #faa2c1; }
 .artifacts-code-gutter { flex: none; min-width: 2.2em; margin: 0; padding: 12px 6px 12px 8px; text-align: right; color: var(--dsw-alias-label-tertiary); border-right: 1px solid var(--dsw-alias-border-l1); position: sticky; left: 0; user-select: none; background: var(--shiki-background, var(--dsw-alias-markdown-code-block, var(--dsw-alias-bg-layer-1))); font: 12px/1.6 var(--dsh-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); white-space: pre; }
 .artifacts-code-pre { flex: 1; margin: 0; padding: 12px; background: var(--shiki-background, var(--dsw-alias-markdown-code-block, var(--dsw-alias-bg-layer-1))); color: var(--shiki-foreground, var(--dsw-alias-label-primary)); font: 12px/1.6 var(--dsh-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); white-space: pre; }
 .artifacts-code-pre code { font: inherit; color: inherit; }
+.artifacts-code-wrap .artifacts-code-pre { white-space: pre-wrap; word-break: break-all; }
+.artifacts-git-stats { flex: none; display: inline-flex; gap: 4px; font: 11px/16px var(--dsh-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); }
+.artifacts-git-adds { color: var(--p-success-fg, #1a7f37); }
+.artifacts-git-dels { color: var(--p-error, #cf222e); }
 .artifacts-code-line { display: block; }
 .tok-comment { color: #868e96; }
 .tok-string { color: #2f9e44; }
@@ -479,6 +484,9 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		setFileTreeDesc: "在侧边栏显示「文件树」标签页，浏览工作区目录。",
 		setMinWidth: "最短面板宽度",
 		setMinWidthDesc: "面板的最小宽度（占窗口宽度的百分比，20–60）；更宽可通过拖动面板左边缘调整。",
+		setCodeWrap: "代码换行",
+		setCodeWrapDesc: "代码预览长行软换行；关闭则横向滚动。",
+		wordWrap: "自动换行",
 		setLang: "界面语言",
 		setLangDesc: "侧边栏与独立弹出页的显示语言；独立弹出页需刷新后生效。",
 		langAuto: "跟随浏览器",
@@ -556,6 +564,9 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		setFileTreeDesc: "Show the \"File tree\" tab in the sidebar to browse the workspace directory.",
 		setMinWidth: "Minimum panel width",
 		setMinWidthDesc: "Minimum width of the panel (percentage of window width, 20–60); drag the panel edge to go wider.",
+		setCodeWrap: "Code wrap",
+		setCodeWrapDesc: "Soft-wrap long lines in code previews; when off they scroll horizontally.",
+		wordWrap: "Word wrap",
 		setLang: "Interface language",
 		setLangDesc: "Display language for the sidebar and the standalone flyout page (flyout requires a reload).",
 		langAuto: "Auto (browser)",
@@ -744,7 +755,8 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		autoRefresh: true,
 		minPanelWidth: 20,
 		showFileTree: true,
-		defaultOpen: true
+		defaultOpen: true,
+		codeWrap: false
 	};
 	function loadSettings() {
 		try {
@@ -1230,13 +1242,14 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 	function renderDiff(diff) {
 		return /* @__PURE__ */ h("div", { className: "artifacts-diff" }, diff && diff.before != null && diff.before !== "" ? /* @__PURE__ */ h("div", { className: "artifacts-diff-block artifacts-diff-del" }, /* @__PURE__ */ h("div", { className: "artifacts-diff-label" }, t("diffDeleted")), /* @__PURE__ */ h("pre", { className: "artifacts-diff-pre" }, diff.before)) : null, /* @__PURE__ */ h("div", { className: "artifacts-diff-block artifacts-diff-add" }, /* @__PURE__ */ h("div", { className: "artifacts-diff-label" }, t("diffAdded")), /* @__PURE__ */ h("pre", { className: "artifacts-diff-pre" }, diff && diff.after != null ? diff.after : "")));
 	}
-	/** 代码预览：行号栏 + 语法高亮代码（共享高亮器，语言取自扩展名） */
-	function CodeView({ code, path }) {
+	/** 代码预览：行号栏 + 语法高亮代码（共享高亮器，语言取自扩展名）；wrap 为软换行 */
+	function CodeView({ code, path, wrap }) {
 		const src = String(code || "");
-		return /* @__PURE__ */ h("div", { className: "artifacts-code" }, /* @__PURE__ */ h("div", { className: "artifacts-code-scroll" }, /* @__PURE__ */ h("pre", {
+		const gutter = src.replace(/\n$/, "").split("\n").map((_, i) => String(i + 1)).join("\n");
+		return /* @__PURE__ */ h("div", { className: "artifacts-code" + (wrap ? " artifacts-code-wrap" : "") }, /* @__PURE__ */ h("div", { className: "artifacts-code-scroll" }, /* @__PURE__ */ h("pre", {
 			className: "artifacts-code-gutter",
 			"aria-hidden": "true"
-		}, src.replace(/\n$/, "").split("\n").map((_, i) => String(i + 1)).join("\n")), /* @__PURE__ */ h("pre", { className: "artifacts-code-pre" }, /* @__PURE__ */ h("code", { dangerouslySetInnerHTML: { __html: highlightCode(src, fileExt(path || "")) } }))));
+		}, gutter), /* @__PURE__ */ h("pre", { className: "artifacts-code-pre" }, /* @__PURE__ */ h("code", { dangerouslySetInnerHTML: { __html: highlightCode(src, fileExt(path || "")) } }))));
 	}
 	let pdfjsPromise = null;
 	function loadPdfjs() {
@@ -1437,7 +1450,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			}, line);
 		}));
 	}
-	function renderPreview(p) {
+	function renderPreview(p, codeWrap = false) {
 		if (p.loading) return /* @__PURE__ */ h("div", { className: "artifacts-hint" }, t("loading"));
 		if (p.ok === false) return /* @__PURE__ */ h("div", { className: "artifacts-error" }, p.error || t("readFailed"));
 		if (p.git) return /* @__PURE__ */ h("div", { className: "artifacts-preview-body" }, /* @__PURE__ */ h(GitDiffView, { diff: p.diff }));
@@ -1461,7 +1474,8 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		});
 		else view = /* @__PURE__ */ h(Fragment, null, /* @__PURE__ */ h(CodeView, {
 			code: p.content,
-			path: p.path
+			path: p.path,
+			wrap: codeWrap
 		}), p.truncated ? /* @__PURE__ */ h("div", { className: "artifacts-diff-label" }, t("truncated")) : null);
 		return /* @__PURE__ */ h("div", { className: "artifacts-preview-body" }, p.diff && typeof p.diff === "object" ? renderDiff(p.diff) : null, view);
 	}
@@ -1620,6 +1634,26 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		strokeLinecap: "round",
 		fill: "none"
 	}));
+	/** 换行图标：一条折返的长线（代码软换行开关） */
+	const WrapIcon = ({ size }) => /* @__PURE__ */ h("svg", {
+		width: size,
+		height: size,
+		viewBox: "0 0 16 16",
+		fill: "none",
+		"aria-hidden": "true"
+	}, /* @__PURE__ */ h("path", {
+		d: "M2 4h12M2 8h9.5a2.5 2.5 0 0 1 0 5H9",
+		stroke: "currentColor",
+		strokeWidth: 1.4,
+		strokeLinecap: "round"
+	}), /* @__PURE__ */ h("path", {
+		d: "M11 10.6 9 13l2 2.4",
+		stroke: "currentColor",
+		strokeWidth: 1.4,
+		strokeLinecap: "round",
+		strokeLinejoin: "round",
+		transform: "translate(0 -2.4)"
+	}));
 	//#endregion
 	//#region src/client/components.tsx
 	/**
@@ -1660,9 +1694,28 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			sessionId,
 			refreshToken
 		]);
-		const loadRoot = () => {
-			setChildren({});
-			setExpanded({});
+		const fetchDir = (path) => {
+			setChildren((prev) => ({
+				...prev,
+				[path]: { loading: true }
+			}));
+			host.listDir(path, currentSessionId()).then((res) => {
+				setChildren((prev) => ({
+					...prev,
+					[path]: res && res.ok ? { entries: res.entries || [] } : { error: res && res.error || t("readFailed") }
+				}));
+			}).catch(() => {
+				setChildren((prev) => ({
+					...prev,
+					[path]: { error: t("readFailed") }
+				}));
+			});
+		};
+		const loadRoot = (keepState = false) => {
+			if (!keepState) {
+				setChildren({});
+				setExpanded({});
+			} else for (const p of Object.keys(expanded)) if (expanded[p]) fetchDir(p);
 			setRoot(null);
 			if (rootTimer.current) clearTimeout(rootTimer.current);
 			const attempt = (tries) => {
@@ -1678,9 +1731,17 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			};
 			attempt(3);
 		};
+		const firstTreeRender = React.useRef(true);
 		React.useEffect(() => {
 			loadRoot();
-		}, [sessionId, refreshToken]);
+		}, [sessionId]);
+		React.useEffect(() => {
+			if (firstTreeRender.current) {
+				firstTreeRender.current = false;
+				return;
+			}
+			loadRoot(true);
+		}, [refreshToken]);
 		React.useEffect(() => () => {
 			if (rootTimer.current) clearTimeout(rootTimer.current);
 		}, []);
@@ -1690,23 +1751,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 				[path]: !expanded[path]
 			};
 			setExpanded(nextExpanded);
-			if (nextExpanded[path] && !children[path]) {
-				setChildren({
-					...children,
-					[path]: { loading: true }
-				});
-				host.listDir(path, currentSessionId()).then((res) => {
-					setChildren((prev) => ({
-						...prev,
-						[path]: res && res.ok ? { entries: res.entries || [] } : { error: res && res.error || t("readFailed") }
-					}));
-				}).catch(() => {
-					setChildren((prev) => ({
-						...prev,
-						[path]: { error: t("readFailed") }
-					}));
-				});
-			}
+			if (nextExpanded[path] && !children[path]) fetchDir(path);
 		};
 		const copyRef = (path) => {
 			const text = "@" + path;
@@ -1850,11 +1895,16 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			setTabs([]);
 			setActiveKey(null);
 			setPreviewHidden(false);
+			try {
+				sessionStorage.removeItem(TABS_KEY);
+			} catch {}
 		}, [sessionId]);
 		const [notice, setNotice] = React.useState("");
+		const TABS_KEY = "dsh-flyout-sidebar:tabs";
+		const [winW, setWinW] = React.useState(() => typeof window !== "undefined" ? window.innerWidth : 1400);
 		const [gitFiles, setGitFiles] = React.useState(null);
 		const [gitError, setGitError] = React.useState(null);
-		const [panelWidth, setPanelWidth] = React.useState(null);
+		const [panelFrac, setPanelFrac] = React.useState(null);
 		const [resizing, setResizing] = React.useState(false);
 		const [activeView, setActiveView] = React.useState(() => settings.showFileTree ? "tree" : "git");
 		const [treeRefresh, setTreeRefresh] = React.useState(0);
@@ -1902,6 +1952,24 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			sessionId
 		]);
 		React.useEffect(() => {
+			try {
+				if (!tabs.length) sessionStorage.removeItem(TABS_KEY);
+				else sessionStorage.setItem(TABS_KEY, JSON.stringify({
+					sid: sessionId,
+					tabs: tabs.map((tb) => ({
+						key: tb.key,
+						path: tb.path,
+						git: tb.git
+					})),
+					activeKey
+				}));
+			} catch {}
+		}, [
+			tabs,
+			activeKey,
+			sessionId
+		]);
+		React.useEffect(() => {
 			const KEY = "dsh-flyout-sidebar:session";
 			const write = () => {
 				try {
@@ -1943,8 +2011,18 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			if (document.body) obs.observe(document.body, opts);
 			return () => obs.disconnect();
 		}, []);
-		const minWidthPx = Math.max(80, Math.round(window.innerWidth * (settings.minPanelWidth || 0) / 100));
-		const widthPx = panelWidth != null ? Math.max(panelWidth, minWidthPx) : minWidthPx;
+		React.useEffect(() => {
+			const onResize = () => setWinW(window.innerWidth);
+			window.addEventListener("resize", onResize);
+			return () => window.removeEventListener("resize", onResize);
+		}, []);
+		const rightOffset = (() => {
+			const n = parseFloat(document.documentElement.style.getPropertyValue("--dsh-sidebar-width"));
+			return Number.isFinite(n) ? n : 0;
+		})();
+		const avail = Math.max(120, winW - rightOffset);
+		const minWidthPx = Math.max(80, Math.round(winW * (settings.minPanelWidth || 0) / 100));
+		const widthPx = panelFrac != null ? Math.max(minWidthPx, Math.round(panelFrac * avail)) : minWidthPx;
 		React.useEffect(() => {
 			const root = document.documentElement;
 			root.style.setProperty("--dsh-flyout-sidebar-width", open ? widthPx + "px" : "0px");
@@ -1965,14 +2043,11 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		const startResize = (e) => {
 			e.preventDefault();
 			setResizing(true);
-			const rightOffset = (() => {
-				const v = document.documentElement.style.getPropertyValue("--dsh-sidebar-width");
-				const n = parseFloat(v);
-				return Number.isFinite(n) ? n : 0;
-			})();
+			const availAtStart = avail;
 			const onMove = (ev) => {
 				const w = window.innerWidth - ev.clientX - rightOffset;
-				setPanelWidth(Math.max(minWidthPx, Math.min(w, window.innerWidth - rightOffset - 24)));
+				const frac = Math.max(minWidthPx / availAtStart, Math.min(w / availAtStart, (availAtStart - 24) / availAtStart));
+				setPanelFrac(frac);
 			};
 			const onUp = () => {
 				setResizing(false);
@@ -2005,6 +2080,25 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			}
 			copyText("@" + path, t("copiedRef"));
 		};
+		React.useEffect(() => {
+			if (!open) return;
+			const onKey = (ev) => {
+				if (ev.key !== "Escape") return;
+				const target = ev.target;
+				if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
+				if (tabs.length && !previewHidden) {
+					if (activeKey) closeTab(activeKey);
+					else setPreviewHidden(true);
+				} else store.setOpen(false);
+			};
+			document.addEventListener("keydown", onKey);
+			return () => document.removeEventListener("keydown", onKey);
+		}, [
+			open,
+			tabs,
+			previewHidden,
+			activeKey
+		]);
 		const patchTab = (key, patch) => setTabs((prev) => prev.map((t) => t.key === key ? {
 			...t,
 			...patch
@@ -2078,6 +2172,27 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 				});
 			});
 		};
+		const restoredSid = React.useRef(null);
+		React.useEffect(() => {
+			if (restoredSid.current === sessionId) return;
+			restoredSid.current = sessionId;
+			if (sessionId == null) return;
+			try {
+				const raw = sessionStorage.getItem(TABS_KEY);
+				if (!raw) return;
+				const saved = JSON.parse(raw);
+				const sid = saved.sid;
+				const list = saved.tabs;
+				if (sid !== sessionId || !Array.isArray(list)) return;
+				for (const st of list) {
+					if (typeof st?.key !== "string" || typeof st?.path !== "string") continue;
+					if (st.git) openGitDiff(st.path);
+					else openFile(st.path);
+				}
+				const savedActive = saved.activeKey;
+				if (typeof savedActive === "string") setActiveKey(savedActive);
+			} catch {}
+		}, [sessionId]);
 		const gitLabel = (e) => {
 			if (e.x === "?" || e.y === "?") return "U";
 			return (e.y !== " " ? e.y : e.x) || "M";
@@ -2122,7 +2237,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 				className: "artifacts-item-main",
 				title: gitTitle(e),
 				onClick: () => openGitDiff(e.path)
-			}, /* @__PURE__ */ h("div", { className: "artifacts-item-row" }, /* @__PURE__ */ h("span", { className: "artifacts-git-badge artifacts-git-badge-" + label }, label), /* @__PURE__ */ h("span", { className: "artifacts-item-base" }, basename(e.path)), e.origPath ? /* @__PURE__ */ h("span", { className: "artifacts-git-orig" }, "← ", basename(e.origPath)) : null), /* @__PURE__ */ h("div", { className: "artifacts-item-full" }, e.path)), /* @__PURE__ */ h("div", { className: "artifacts-item-actions" }, /* @__PURE__ */ h("button", {
+			}, /* @__PURE__ */ h("div", { className: "artifacts-item-row" }, /* @__PURE__ */ h("span", { className: "artifacts-git-badge artifacts-git-badge-" + label }, label), /* @__PURE__ */ h("span", { className: "artifacts-item-base" }, basename(e.path)), typeof e.adds === "number" && (e.adds > 0 || (e.dels ?? 0) > 0) ? /* @__PURE__ */ h("span", { className: "artifacts-git-stats" }, /* @__PURE__ */ h("span", { className: "artifacts-git-adds" }, "+", e.adds), /* @__PURE__ */ h("span", { className: "artifacts-git-dels" }, "−", e.dels ?? 0)) : null, e.origPath ? /* @__PURE__ */ h("span", { className: "artifacts-git-orig" }, "← ", basename(e.origPath)) : null), /* @__PURE__ */ h("div", { className: "artifacts-item-full" }, e.path)), /* @__PURE__ */ h("div", { className: "artifacts-item-actions" }, /* @__PURE__ */ h("button", {
 				type: "button",
 				className: "artifacts-minibtn",
 				title: t("copyPath"),
@@ -2153,10 +2268,16 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			}
 		}, "×")))), /* @__PURE__ */ h("button", {
 			type: "button",
+			className: "artifacts-preview-hide" + (settings.codeWrap ? " is-active" : ""),
+			title: t("wordWrap"),
+			"aria-pressed": settings.codeWrap,
+			onClick: () => settingsStore.set("codeWrap", !settings.codeWrap)
+		}, /* @__PURE__ */ h(WrapIcon, { size: 16 })), /* @__PURE__ */ h("button", {
+			type: "button",
 			className: "artifacts-preview-hide",
 			title: t("hidePreview"),
 			onClick: () => setPreviewHidden(true)
-		}, /* @__PURE__ */ h(PanelCollapseIcon, { size: 16 }))), activeTab ? renderPreview(activeTab) : null) : null;
+		}, /* @__PURE__ */ h(PanelCollapseIcon, { size: 16 }))), activeTab ? renderPreview(activeTab, settings.codeWrap) : null) : null;
 		return /* @__PURE__ */ h(Fragment, null, previewOverlay, /* @__PURE__ */ h("div", {
 			className: "artifacts-panel" + (slidOut ? " artifacts-slid-out" : "") + (resizing ? " artifacts-resizing" : ""),
 			style: { width: widthPx },
@@ -2245,6 +2366,11 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			desc: t("setFileTreeDesc"),
 			value: settings.showFileTree,
 			onToggle: (v) => set("showFileTree", v)
+		}), /* @__PURE__ */ h(SettingsToggle, {
+			label: t("setCodeWrap"),
+			desc: t("setCodeWrapDesc"),
+			value: settings.codeWrap,
+			onToggle: (v) => set("codeWrap", v)
 		}), /* @__PURE__ */ h("div", { className: "artifacts-setrow" }, /* @__PURE__ */ h("div", { className: "artifacts-settext" }, /* @__PURE__ */ h("div", { className: "artifacts-settitle" }, t("setMinWidth")), /* @__PURE__ */ h("div", { className: "artifacts-setdesc" }, t("setMinWidthDesc"))), /* @__PURE__ */ h("div", { className: "artifacts-setcontrol" }, /* @__PURE__ */ h("input", {
 			type: "number",
 			className: "artifacts-widthinput",

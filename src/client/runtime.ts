@@ -28,6 +28,9 @@ export interface GitStatusEntry {
   origPath: string | null
   x: string
   y: string
+  /** 相对 HEAD 的行增删数（未跟踪文件为合成新文件的行数）；统计不可用时缺省 */
+  adds?: number
+  dels?: number
 }
 
 export interface GitStatusResponse {

@@ -96,7 +96,7 @@ export function registerRoutes(ctx: HostContext, webServer: DshWebServer): void 
         const ext = (/\.([^.]+)$/.exec(path)?.[1] || '').toLowerCase()
         const mime = MIME[ext] || 'application/octet-stream'
         const body = Buffer.from(bytes as Uint8Array)
-        res.writeHead(200, { 'Content-Type': mime, 'Cache-Control': 'no-store', 'Content-Length': body.byteLength })
+        res.writeHead(200, { 'Content-Type': mime, 'Cache-Control': 'private, max-age=5', 'Content-Length': body.byteLength })
         res.end(body)
       } catch (e) {
         sendText(res, 500, e instanceof Error && e.message ? e.message : 'read failed')

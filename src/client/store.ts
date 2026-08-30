@@ -132,6 +132,7 @@ export interface Settings {
   minPanelWidth: number
   showFileTree: boolean
   defaultOpen: boolean
+  codeWrap: boolean
 }
 
 const SETTINGS_KEY = 'dsh-flyout-sidebar:settings'
@@ -140,6 +141,7 @@ const DEFAULT_SETTINGS: Settings = {
   minPanelWidth: 20, // 面板最小宽度（占窗口宽度百分比）
   showFileTree: true, // 面板内显示文件树标签页
   defaultOpen: true, // 页面加载后默认展开
+  codeWrap: false, // 代码预览软换行（默认横向滚动）
 }
 
 function loadSettings(): Settings {
