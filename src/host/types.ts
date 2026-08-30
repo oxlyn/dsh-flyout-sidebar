@@ -89,7 +89,7 @@ export interface HostContext {
 
 /** 动态插件宿主（仅 cordis_define 动态运行时存在，静态 bundle 没有） */
 export interface HarnessLike {
-  handle(method: string, handler: (args: { path?: string; sessionId?: string } | undefined) => unknown): void
+  handle(method: string, handler: (args: { path?: string; sessionId?: string; query?: string } | undefined) => unknown): void
 }
 
 /** 所有 /flyout-sidebar/* JSON 路由共用的返回包 */

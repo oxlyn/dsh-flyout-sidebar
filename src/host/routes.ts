@@ -8,7 +8,7 @@ import type { ServerResponse } from 'node:http'
 import pdfjsLibSource from '../vendor/pdfjs/pdf.min.js?raw'
 import pdfjsWorkerSource from '../vendor/pdfjs/pdf.worker.min.js?raw'
 import type { DshFs, DshWebServer, HostContext } from './types'
-import { readFile, listDir } from './files'
+import { readFile, listDir, searchFiles } from './files'
 import { gitDiff, gitStatus } from './git'
 import { removeFile, snapshotArtifacts } from './artifacts'
 import { buildFlyoutPage } from './page'
@@ -121,6 +121,16 @@ export function registerRoutes(ctx: HostContext, webServer: DshWebServer): void 
       sendJson(res, out, true)
     },
   }, 'artifacts: listdir route')
+
+  register({
+    kind: 'exact',
+    path: '/flyout-sidebar/search',
+    handler: async (req, res) => {
+      const q = queryParams(req.url)
+      const out = await searchFiles(ctx, q.get('q') ?? undefined, q.get('sessionId') || undefined)
+      sendJson(res, out, true)
+    },
+  }, 'artifacts: search route')
 
   register({
     kind: 'exact',

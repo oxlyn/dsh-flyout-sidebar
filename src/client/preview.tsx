@@ -4,6 +4,7 @@
  */
 import { Fragment, h, React } from './jsx'
 import { fileExt, extType } from '../shared/ext.js'
+import { t } from '../shared/i18n.js'
 import { highlightCode } from '../shared/highlight.js'
 import { mdToHtml } from '../shared/markdown.js'
 import type { ReactElement, ReactNode } from 'react'
@@ -27,12 +28,12 @@ export function renderDiff(diff: { before: string; after: string } | null | unde
     <div className="artifacts-diff">
       {diff && diff.before != null && diff.before !== '' ? (
         <div className="artifacts-diff-block artifacts-diff-del">
-          <div className="artifacts-diff-label">- 删除</div>
+          <div className="artifacts-diff-label">{t('diffDeleted')}</div>
           <pre className="artifacts-diff-pre">{diff.before}</pre>
         </div>
       ) : null}
       <div className="artifacts-diff-block artifacts-diff-add">
-        <div className="artifacts-diff-label">+ 新增</div>
+        <div className="artifacts-diff-label">{t('diffAdded')}</div>
         <pre className="artifacts-diff-pre">{diff && diff.after != null ? diff.after : ''}</pre>
       </div>
     </div>
@@ -111,7 +112,7 @@ function loadPdfjs(): Promise<PdfJsLib> {
     s.async = true
     s.onload = () => {
       try {
-        if (!window.pdfjsLib) throw new Error('pdf.js 加载失败')
+        if (!window.pdfjsLib) throw new Error(t('pdfLoadFailed'))
         window.pdfjsLib.GlobalWorkerOptions.workerSrc = '/flyout-sidebar/pdfjs/pdf.worker.min.js'
         resolve(window.pdfjsLib)
       } catch (e) {
@@ -120,7 +121,7 @@ function loadPdfjs(): Promise<PdfJsLib> {
     }
     s.onerror = () => {
       pdfjsPromise = null
-      reject(new Error('pdf.js 加载失败'))
+      reject(new Error(t('pdfLoadFailed')))
     }
     document.head.appendChild(s)
   })
@@ -264,7 +265,7 @@ export function PdfView({ path }: { path: string }): ReactElement | null {
   if (phase === 'loading') {
     return (
       <div className="artifacts-pdfview">
-        <div className="artifacts-hint">加载 PDF…</div>
+        <div className="artifacts-hint">{t('loadingPdf')}</div>
       </div>
     )
   }
@@ -284,18 +285,18 @@ export function PdfView({ path }: { path: string }): ReactElement | null {
   return (
     <div className="artifacts-pdfview">
       <div className="artifacts-pdfview-bar">
-        <button type="button" className="artifacts-pdfview-btn" title="缩小" disabled={disabled} onClick={() => zoomBy(0.8)}>
+        <button type="button" className="artifacts-pdfview-btn" title={t('zoomOut')} disabled={disabled} onClick={() => zoomBy(0.8)}>
           −
         </button>
         <span className="artifacts-pdfview-zoom">{Math.round(zoom * 100) + '%'}</span>
-        <button type="button" className="artifacts-pdfview-btn" title="放大" disabled={disabled} onClick={() => zoomBy(1.25)}>
+        <button type="button" className="artifacts-pdfview-btn" title={t('zoomIn')} disabled={disabled} onClick={() => zoomBy(1.25)}>
           ＋
         </button>
         <span className="artifacts-pdfview-spacer" />
         <button
           type="button"
           className="artifacts-pdfview-btn"
-          title="上一页"
+          title={t('prevPage')}
           disabled={disabled || pageNo <= 1}
           onClick={() => goPage(pageNo - 1)}
         >
@@ -305,7 +306,7 @@ export function PdfView({ path }: { path: string }): ReactElement | null {
         <button
           type="button"
           className="artifacts-pdfview-btn"
-          title="下一页"
+          title={t('nextPage')}
           disabled={disabled || pageNo >= pageCount}
           onClick={() => goPage(pageNo + 1)}
         >
@@ -322,7 +323,7 @@ export function PdfView({ path }: { path: string }): ReactElement | null {
 /** 统一 git diff 渲染：meta/hunk/+/- 行着色，等宽可滚动 */
 export function GitDiffView({ diff }: { diff?: string }): ReactElement {
   const text = String(diff || '')
-  if (!text) return <div className="artifacts-hint">没有未提交的变更（相对于 HEAD）</div>
+  if (!text) return <div className="artifacts-hint">{t('noChangesHead')}</div>
   const lines = text.replace(/\n$/, '').split('\n')
   const rows = lines.map((line, i) => {
     let cls = 'gd-line'
@@ -347,8 +348,8 @@ export function GitDiffView({ diff }: { diff?: string }): ReactElement {
 }
 
 export function renderPreview(p: PreviewTab): ReactElement {
-  if (p.loading) return <div className="artifacts-hint">加载中…</div>
-  if (p.ok === false) return <div className="artifacts-error">{p.error || '读取失败'}</div>
+  if (p.loading) return <div className="artifacts-hint">{t('loading')}</div>
+  if (p.ok === false) return <div className="artifacts-error">{p.error || t('readFailed')}</div>
   if (p.git) {
     return (
       <div className="artifacts-preview-body">
@@ -378,7 +379,7 @@ export function renderPreview(p: PreviewTab): ReactElement {
     view = (
       <Fragment>
         <CodeView code={p.content} path={p.path} />
-        {p.truncated ? <div className="artifacts-diff-label">(truncated preview)</div> : null}
+        {p.truncated ? <div className="artifacts-diff-label">{t('truncated')}</div> : null}
       </Fragment>
     )
   }

@@ -3,6 +3,7 @@
  */
 import { Fragment, h, React } from './jsx'
 import { extType } from '../shared/ext.js'
+import { t } from '../shared/i18n.js'
 import type { ReactElement, ReactNode } from 'react'
 
 import { ctx, host, type GitStatusEntry, type ListEntry } from './runtime'
@@ -10,9 +11,12 @@ import {
   basename,
   currentSessionId,
   fallbackCopy,
+  getLanguageSetting,
   quoteToComposer,
+  setLanguage,
   store,
   settingsStore,
+  useLang,
   useOpen,
   useSessionId,
   useSettings,
@@ -51,11 +55,39 @@ export function FileTree({ onOpen, selectedPath, refreshToken }: FileTreeProps):
   const [expanded, setExpanded] = React.useState<Record<string, boolean>>({})
   const [copiedPath, setCopiedPath] = React.useState<string | null>(null)
   const [copiedLabel, setCopiedLabel] = React.useState('')
+  // 搜索：query 非空时整棵树被平铺的匹配结果列表取代（host 侧 git ls-files，
+  // 忽略 gitignore；git 不可用时回退文件系统遍历）。
+  const [query, setQuery] = React.useState('')
+  const [search, setSearch] = React.useState<{ loading?: boolean; error?: string; entries?: string[] } | null>(null)
   const copyTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   const rootTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // 跟随活动会话：工作区变化时自动重新定位根目录（无需手动刷新）。
   const sessionId = useSessionId()
+
+  React.useEffect(() => {
+    const q = query.trim()
+    if (!q) {
+      setSearch(null)
+      return
+    }
+    let alive = true
+    setSearch({ loading: true })
+    const timer = setTimeout(() => {
+      host
+        .searchFiles(q, currentSessionId())
+        .then((res) => {
+          if (alive) setSearch(res && res.ok ? { entries: res.entries || [] } : { error: (res && res.error) || t('searchFailed') })
+        })
+        .catch(() => {
+          if (alive) setSearch({ error: t('searchFailed') })
+        })
+    }, 250)
+    return () => {
+      alive = false
+      clearTimeout(timer)
+    }
+  }, [query, sessionId, refreshToken])
 
   const loadRoot = (): void => {
     setChildren({})
@@ -99,18 +131,18 @@ export function FileTree({ onOpen, selectedPath, refreshToken }: FileTreeProps):
         .then((res) => {
           setChildren((prev) => ({
             ...prev,
-            [path]: res && res.ok ? { entries: res.entries || [] } : { error: (res && res.error) || '读取失败' },
+            [path]: res && res.ok ? { entries: res.entries || [] } : { error: (res && res.error) || t('readFailed') },
           }))
         })
         .catch(() => {
-          setChildren((prev) => ({ ...prev, [path]: { error: '读取失败' } }))
+          setChildren((prev) => ({ ...prev, [path]: { error: t('readFailed') } }))
         })
     }
   }
 
   const copyRef = (path: string): void => {
     const text = '@' + path
-    let label = '已复制'
+    let label = t('copied')
     const done = (): void => {
       setCopiedPath(path)
       setCopiedLabel(label)
@@ -122,7 +154,7 @@ export function FileTree({ onOpen, selectedPath, refreshToken }: FileTreeProps):
     }
     // 优先写入输入框；失败回退剪贴板复制。
     if (quoteToComposer(path)) {
-      label = '已插入输入框'
+      label = t('insertedInput')
       done()
       return
     }
@@ -139,18 +171,18 @@ export function FileTree({ onOpen, selectedPath, refreshToken }: FileTreeProps):
 
   const rowActions = (entry: ListEntry): ReactNode =>
     copiedPath === entry.path ? (
-      <span className="artifacts-tree-copied">{copiedLabel || '已复制'}</span>
+      <span className="artifacts-tree-copied">{copiedLabel || t('copied')}</span>
     ) : (
       <button
         type="button"
         className="artifacts-tree-ref"
-        title="引用到输入框（失败则复制 @path）"
+        title={t('refTitle')}
         onClick={(e) => {
           e.stopPropagation()
           copyRef(entry.path)
         }}
       >
-        @引用
+        {t('refBtn')}
       </button>
     )
 
@@ -187,15 +219,15 @@ export function FileTree({ onOpen, selectedPath, refreshToken }: FileTreeProps):
             <span className="artifacts-tree-name">{entry.name}</span>
             {rowActions(entry)}
           </div>
-          {isExpanded ? (
-            node && node.loading ? (
-              <div
-                className="artifacts-tree-row artifacts-tree-loading"
-                style={{ paddingLeft: 6 + (depth + 1) * 20 + 20 }}
-              >
-                加载中…
-              </div>
-            ) : node && node.error ? (
+            {isExpanded ? (
+              node && node.loading ? (
+                <div
+                  className="artifacts-tree-row artifacts-tree-loading"
+                  style={{ paddingLeft: 6 + (depth + 1) * 20 + 20 }}
+                >
+                  {t('loading')}
+                </div>
+              ) : node && node.error ? (
               <div
                 className="artifacts-tree-row artifacts-tree-error"
                 style={{ paddingLeft: 6 + (depth + 1) * 20 + 20 }}
@@ -233,13 +265,68 @@ export function FileTree({ onOpen, selectedPath, refreshToken }: FileTreeProps):
     )
   }
 
+  // 搜索结果行：复用文件行的操作按钮（@引用 / 打开预览），目录前缀弱化显示。
+  const renderSearchRow = (path: string, idx: number): ReactElement => {
+    const entry: ListEntry = { name: basename(path), path, isDir: false, hidden: false }
+    const slash = path.lastIndexOf('/')
+    const dir = slash >= 0 ? path.slice(0, slash) : ''
+    return (
+      <div
+        key={path}
+        role="button"
+        tabIndex={0}
+        className={'artifacts-tree-row artifacts-flash-in' + (selectedPath === path ? ' is-selected' : '')}
+        style={{ animationDelay: Math.min(idx, 12) * 30 + 'ms' }}
+        onClick={() => {
+          if (onOpen) onOpen(path)
+        }}
+        onKeyDown={(ev) => {
+          if (ev.key === 'Enter' || ev.key === ' ') {
+            ev.preventDefault()
+            if (onOpen) onOpen(path)
+          }
+        }}
+        title={path}
+      >
+        <FileCodeIcon size={14} />
+        <span className="artifacts-tree-name">
+          {entry.name}
+          {dir ? <span className="artifacts-search-dir">{dir}</span> : null}
+        </span>
+        {rowActions(entry)}
+      </div>
+    )
+  }
+
   return (
     <div className="artifacts-tree">
+      <div className="artifacts-searchbar">
+        <input
+          type="text"
+          className="artifacts-search-input"
+          placeholder={t('searchPlaceholder')}
+          value={query}
+          onChange={(e) => setQuery(e.currentTarget.value)}
+          onKeyDown={(ev) => {
+            if (ev.key === 'Escape') setQuery('')
+          }}
+        />
+      </div>
       <div className="artifacts-tree-body">
-        {!root ? (
-          <div className="artifacts-hint">加载文件树…</div>
+        {query.trim() ? (
+          search && search.loading ? (
+            <div className="artifacts-hint">{t('searching')}</div>
+          ) : search && search.error ? (
+            <div className="artifacts-tree-error artifacts-git-error">{search.error}</div>
+          ) : search && search.entries && search.entries.length ? (
+            search.entries.map((p, i) => renderSearchRow(p, i))
+          ) : (
+            <div className="artifacts-hint">{t('noResults')}</div>
+          )
+        ) : !root ? (
+          <div className="artifacts-hint">{t('loadingTree')}</div>
         ) : !root.entries || !root.entries.length ? (
-          <div className="artifacts-hint">（空目录）</div>
+          <div className="artifacts-hint">{t('emptyDir')}</div>
         ) : (
           root.entries.map((e, i) => renderNode(e, 0, Math.min(i, 12) * 45))
         )}
@@ -251,6 +338,8 @@ export function FileTree({ onOpen, selectedPath, refreshToken }: FileTreeProps):
 export function ArtifactsPanel(): ReactElement | null {
   const open = useOpen()
   const settings = useSettings()
+  // 订阅界面语言：切换语言时本组件（含整棵子树）重渲染，t() 取到新文案。
+  useLang()
   const [tabs, setTabs] = React.useState<PreviewTab[]>([])
   const [activeKey, setActiveKey] = React.useState<string | null>(null)
   // ⇥ 隐藏整个预览覆盖层但保留标签页；从文件树/git 列表打开任何文件都会全部
@@ -306,7 +395,7 @@ export function ArtifactsPanel(): ReactElement | null {
             setGitError(null)
           } else {
             setGitFiles([])
-            setGitError((res && res.error) || 'git status 失败')
+            setGitError((res && res.error) || t('gitStatusFailed'))
           }
         })
         .catch((e: unknown) => {
@@ -446,10 +535,10 @@ export function ArtifactsPanel(): ReactElement | null {
   }
   const quotePath = (path: string): void => {
     if (quoteToComposer(path)) {
-      flash('已插入输入框')
+      flash(t('insertedInput'))
       return
     }
-    copyText('@' + path, '已复制 @引用（未能写入输入框）')
+    copyText('@' + path, t('copiedRef'))
   }
 
   // 多标签预览状态：每个打开的文件（或 git diff）一个标签，按路径作键
@@ -521,9 +610,12 @@ export function ArtifactsPanel(): ReactElement | null {
   }
   const gitTitle = (e: GitStatusEntry): string => {
     const label = gitLabel(e)
-    const map: Record<string, string> = { U: '未跟踪', A: '新增', M: '修改', D: '删除', R: '重命名', C: '复制' }
+    const map: Record<string, string> = {
+      U: t('statusU'), A: t('statusA'), M: t('statusM'),
+      D: t('statusD'), R: t('statusR'), C: t('statusC'), T: t('statusT'),
+    }
     const staged = e.x !== ' ' && e.x !== '?'
-    return (map[label] || label) + (staged ? '（已暂存）' : '（未暂存）')
+    return (map[label] || label) + (staged ? t('staged') : t('unstaged'))
   }
 
   const gitListRows: ReactNode[] = []
@@ -534,9 +626,9 @@ export function ArtifactsPanel(): ReactElement | null {
       </div>,
     )
   } else if (gitFiles == null) {
-    gitListRows.push(<div key="load" className="artifacts-empty">加载变更列表…</div>)
+    gitListRows.push(<div key="load" className="artifacts-empty">{t('loadingChanges')}</div>)
   } else if (!gitFiles.length) {
-    gitListRows.push(<div key="empty" className="artifacts-empty">没有未提交的变更</div>)
+    gitListRows.push(<div key="empty" className="artifacts-empty">{t('noChanges')}</div>)
   }
   ;(gitFiles || []).forEach((e, idx) => {
     const label = gitLabel(e)
@@ -559,10 +651,10 @@ export function ArtifactsPanel(): ReactElement | null {
           <div className="artifacts-item-full">{e.path}</div>
         </button>
         <div className="artifacts-item-actions">
-          <button type="button" className="artifacts-minibtn" title="复制路径" onClick={() => copyText(e.path, '已复制路径')}>
+          <button type="button" className="artifacts-minibtn" title={t('copyPath')} onClick={() => copyText(e.path, t('copiedPath'))}>
             ⧉
           </button>
-          <button type="button" className="artifacts-minibtn" title="@引用到输入框" onClick={() => quotePath(e.path)}>
+          <button type="button" className="artifacts-minibtn" title={t('refInput')} onClick={() => quotePath(e.path)}>
             @
           </button>
         </div>
@@ -578,25 +670,25 @@ export function ArtifactsPanel(): ReactElement | null {
       <div
         className={'artifacts-preview-overlay' + (slidOut ? ' artifacts-slid-out' : '')}
         role="region"
-        aria-label="文件预览"
+        aria-label={t('previewRegion')}
       >
         <div className="artifacts-preview-overlay-tabs">
           <div className="artifacts-ptabs-scroll">
-            {tabs.map((t) => (
+            {tabs.map((tab) => (
               <div
-                key={t.key}
-                className={'artifacts-ptab' + (t.key === activeKey ? ' is-active' : '')}
-                title={(t.git ? '[diff] ' : '') + (t.path || '')}
-                onClick={() => setActiveKey(t.key)}
+                key={tab.key}
+                className={'artifacts-ptab' + (tab.key === activeKey ? ' is-active' : '')}
+                title={(tab.git ? t('diffTabPrefix') : '') + (tab.path || '')}
+                onClick={() => setActiveKey(tab.key)}
               >
-                <span className="artifacts-ptab-name">{basename(t.path || '')}</span>
+                <span className="artifacts-ptab-name">{basename(tab.path || '')}</span>
                 <button
                   type="button"
                   className="artifacts-ptab-close"
-                  title="关闭标签页"
+                  title={t('closeTab')}
                   onClick={(e) => {
                     e.stopPropagation()
-                    closeTab(t.key)
+                    closeTab(tab.key)
                   }}
                 >
                   ×
@@ -604,7 +696,7 @@ export function ArtifactsPanel(): ReactElement | null {
               </div>
             ))}
           </div>
-          <button type="button" className="artifacts-preview-hide" title="隐藏预览（标签页保留）" onClick={() => setPreviewHidden(true)}>
+          <button type="button" className="artifacts-preview-hide" title={t('hidePreview')} onClick={() => setPreviewHidden(true)}>
             <PanelCollapseIcon size={16} />
           </button>
         </div>
@@ -623,10 +715,10 @@ export function ArtifactsPanel(): ReactElement | null {
         role="dialog"
         aria-label="Artifacts"
       >
-        <div className="artifacts-resize" title="拖动调整宽度" onMouseDown={startResize} />
+        <div className="artifacts-resize" title={t('resizeHandle')} onMouseDown={startResize} />
         <div className="artifacts-head">
           <div className="artifacts-head-left">
-            <button type="button" className="artifacts-toggle" title="收起侧边栏" onClick={() => store.setOpen(false)}>
+            <button type="button" className="artifacts-toggle" title={t('collapsePanel')} onClick={() => store.setOpen(false)}>
               <PanelIcon size={16} />
             </button>
             <a
@@ -634,7 +726,7 @@ export function ArtifactsPanel(): ReactElement | null {
               href={flyoutHref}
               target="_blank"
               rel="noreferrer noopener"
-              title="弹出式侧边栏 — 在新标签页打开（可拖到另一块显示器）"
+              title={t('flyoutOpen')}
             >
               <FlyoutIcon size={16} />
             </a>
@@ -644,7 +736,7 @@ export function ArtifactsPanel(): ReactElement | null {
           <button
             type="button"
             className="artifacts-toggle"
-            title={activeView === 'tree' ? '刷新文件树' : '刷新变更列表'}
+            title={activeView === 'tree' ? t('refreshTree') : t('refreshChanges')}
             onClick={() => {
               if (activeView === 'tree') setTreeRefresh((n) => n + 1)
               else {
@@ -660,7 +752,7 @@ export function ArtifactsPanel(): ReactElement | null {
             <button
               type="button"
               className={'artifacts-iconbtn artifacts-viewbtn' + (activeView === 'git' ? ' is-active' : '')}
-              title={activeView === 'tree' ? '查看 Git 变更（未提交）' : '返回文件列表'}
+              title={activeView === 'tree' ? t('viewGit') : t('backToFiles')}
               aria-pressed={activeView === 'git'}
               onClick={() => setActiveView(activeView === 'tree' ? 'git' : 'tree')}
             >
@@ -693,6 +785,7 @@ export function ArtifactsPanel(): ReactElement | null {
 // 话时也可见；固定 CSS 定位在角落，被右侧边栏宽度向左让位。刻意只显示图标。
 export function CornerButton(): ReactElement {
   const open = useOpen()
+  useLang()
   // 常驻挂载：面板打开时滑出屏右缘（随面板滑入的推力），关闭时滑回角落。
   // 直接跟随 open，而不是面板的 slidOut —— 后者在关闭动画结束时会停在
   // true，按钮就会被留在屏外。
@@ -700,7 +793,7 @@ export function CornerButton(): ReactElement {
     <button
       type="button"
       className={'artifacts-corner-btn' + (open ? ' artifacts-slid-out' : '')}
-      title="弹出式侧边栏"
+      title={t('flyoutTitle')}
       aria-expanded={open}
       onClick={() => store.toggle()}
     >
@@ -740,34 +833,36 @@ function SettingsToggle({ label, desc, value, onToggle }: SettingsToggleProps): 
 
 export function SettingsSection(): ReactElement {
   const settings = useSettings()
+  // 订阅语言变更：切换时本组件重渲染，下拉框与文案随之更新。
+  useLang()
   const set = (key: keyof Settings, value: boolean | number): void => settingsStore.set(key, value)
 
   return (
     <div className="artifacts-settings">
-      <p className="artifacts-setintro">管理「Flyout Sidebar」的显示与行为。</p>
+      <p className="artifacts-setintro">{t('settingsIntro')}</p>
       <div className="artifacts-setgroup">
         <SettingsToggle
-          label="默认展开"
-          desc="页面加载后侧边栏默认展开；关闭则默认收起，点右上角图标再打开。"
+          label={t('setDefaultOpen')}
+          desc={t('setDefaultOpenDesc')}
           value={settings.defaultOpen}
           onToggle={(v) => set('defaultOpen', v)}
         />
         <SettingsToggle
-          label="自动刷新"
-          desc="开启后侧边栏展开时将即时同步并更新产物列表"
+          label={t('setAutoRefresh')}
+          desc={t('setAutoRefreshDesc')}
           value={settings.autoRefresh}
           onToggle={(v) => set('autoRefresh', v)}
         />
         <SettingsToggle
-          label="文件树"
-          desc="在侧边栏显示「文件树」标签页，浏览工作区目录。"
+          label={t('setFileTree')}
+          desc={t('setFileTreeDesc')}
           value={settings.showFileTree}
           onToggle={(v) => set('showFileTree', v)}
         />
         <div className="artifacts-setrow">
           <div className="artifacts-settext">
-            <div className="artifacts-settitle">最短面板宽度</div>
-            <div className="artifacts-setdesc">面板的最小宽度（占窗口宽度的百分比，20–60）；更宽可通过拖动面板左边缘调整。</div>
+            <div className="artifacts-settitle">{t('setMinWidth')}</div>
+            <div className="artifacts-setdesc">{t('setMinWidthDesc')}</div>
           </div>
           <div className="artifacts-setcontrol">
             <input
@@ -783,6 +878,26 @@ export function SettingsSection(): ReactElement {
               }}
             />
             <span className="artifacts-suffix">%</span>
+          </div>
+        </div>
+        <div className="artifacts-setrow">
+          <div className="artifacts-settext">
+            <div className="artifacts-settitle">{t('setLang')}</div>
+            <div className="artifacts-setdesc">{t('setLangDesc')}</div>
+          </div>
+          <div className="artifacts-setcontrol">
+            <select
+              className="artifacts-langselect"
+              value={getLanguageSetting() || ''}
+              onChange={(e) => {
+                const v = e.currentTarget.value
+                setLanguage(v === 'zh' || v === 'en' ? (v as 'zh' | 'en') : null)
+              }}
+            >
+              <option value="">{t('langAuto')}</option>
+              <option value="zh">{t('langZh')}</option>
+              <option value="en">{t('langEn')}</option>
+            </select>
           </div>
         </div>
       </div>

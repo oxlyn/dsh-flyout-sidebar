@@ -39,7 +39,8 @@ interface StatusCache {
   at: number
 }
 
-function runGit(args: string[], cwd: string | undefined): Promise<{ ok: boolean; out?: string; error?: string }> {
+/** 执行 git 子命令；files.ts 的文件搜索复用（git ls-files） */
+export function runGit(args: string[], cwd: string | undefined): Promise<{ ok: boolean; out?: string; error?: string }> {
   return new Promise((resolve) => {
     try {
       execFile('git', args, { cwd, maxBuffer: 20 * 1024 * 1024, timeout: 15000, windowsHide: true }, (err, stdout, stderr) => {

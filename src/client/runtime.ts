@@ -54,6 +54,13 @@ export interface ReadResponse {
   size?: number
 }
 
+export interface SearchResponse {
+  ok: boolean
+  error?: string
+  query?: string
+  entries?: string[]
+}
+
 export interface ListEntry {
   name: string
   path: string
@@ -92,5 +99,8 @@ export const host = {
   },
   listDir(path: string, sessionId: string): Promise<ListDirResponse> {
     return getJson('/flyout-sidebar/listdir' + qs(['path', path], ['sessionId', sessionId])) as Promise<ListDirResponse>
+  },
+  searchFiles(query: string, sessionId: string): Promise<SearchResponse> {
+    return getJson('/flyout-sidebar/search' + qs(['q', query], ['sessionId', sessionId])) as Promise<SearchResponse>
   },
 }

@@ -8,6 +8,7 @@
 import extSource from '../shared/ext.js?raw'
 import highlightSource from '../shared/highlight.js?raw'
 import markdownSource from '../shared/markdown.js?raw'
+import i18nSource from '../shared/i18n.js?raw'
 
 /** 剥离 ESM 语法，把 shared 模块源码变成经典 <script> 可用的片段 */
 function toInlineScript(source: string): string {
@@ -18,7 +19,7 @@ function toInlineScript(source: string): string {
 
 // 三个模块在同一脚本作用域内互调（markdown → highlight），函数声明提升，
 // 拼接顺序无关紧要；这里按 依赖深浅 排列便于阅读。
-const sharedScript = [extSource, highlightSource, markdownSource].map(toInlineScript).join('\n')
+const sharedScript = [extSource, highlightSource, markdownSource, i18nSource].map(toInlineScript).join('\n')
 
 // shared 文本是运行时插值，反引号/`${…}` 不会破坏模板；唯一会破坏页面结构
 // 的是内联脚本里出现 "</script>"，构建期直接拦截。
@@ -46,6 +47,15 @@ export function buildFlyoutPage(): string {
       if (m) v = m[1];
     }
     if (v === 'dark') document.documentElement.setAttribute('data-ds-dark-theme', '');
+    // 语言：主面板设置项写入 localStorage（LANG_KEY），未设置时按浏览器语言。
+    var LANG_KEY = 'dsh-flyout-sidebar:lang';
+    var lang = null;
+    try { lang = localStorage.getItem(LANG_KEY); } catch (e) {}
+    if (lang !== 'zh' && lang !== 'en') {
+      lang = (navigator.language || '').toLowerCase().indexOf('zh') === 0 ? 'zh' : 'en';
+    }
+    document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
+    document.title = lang === 'zh' ? '弹出式侧边栏' : 'Flyout Sidebar';
   })();
 </script>
 <style>
@@ -244,7 +254,7 @@ export function buildFlyoutPage(): string {
       <div class="area" id="previewArea"></div>
     </div>
     <div class="sidebar">
-      <div class="divider" id="divider" title="拖动调整面板宽度"></div>
+      <div class="divider" id="divider"></div>
       <div class="gtoggle">
         <button class="gtoggle-btn" id="sideBtn" type="button" title="将文件面板移到左侧"></button>
         <span class="gtoggle-status" id="status">connecting…</span>
@@ -260,6 +270,9 @@ export function buildFlyoutPage(): string {
   <div class="toast" id="toast"></div>
   <script>
 ${sharedScript}
+    // i18n 文案函数别名：页面脚本多处用局部变量 t（toast 元素 / 当前标签），
+    // 统一经 tr 取文案避免遮蔽。
+    var tr = t;
     var DATA_URL = '/flyout-sidebar/data';
     var CONTENT_URL = '/flyout-sidebar/content';
     var MEDIA_URL = '/flyout-sidebar/media';
@@ -390,9 +403,9 @@ ${sharedScript}
     }
     function gitTitle(e) {
       var label = gitLabel(e);
-      var map = { U: '未跟踪', A: '新增', M: '修改', D: '删除', R: '重命名', C: '复制' };
+      var map = { U: tr('statusU'), A: tr('statusA'), M: tr('statusM'), D: tr('statusD'), R: tr('statusR'), C: tr('statusC'), T: tr('statusT') };
       var staged = e.x !== ' ' && e.x !== '?';
-      return (map[label] || label) + (staged ? '（已暂存）' : '（未暂存）');
+      return (map[label] || label) + (staged ? tr('staged') : tr('unstaged'));
     }
     function renderGit() {
       var list = document.getElementById('list');
@@ -403,11 +416,11 @@ ${sharedScript}
         return;
       }
       if (gitFiles == null) {
-        list.appendChild(el('div', 'empty', '加载变更列表…'));
+        list.appendChild(el('div', 'empty', tr('loadingChanges')));
         return;
       }
       if (!gitFiles.length) {
-        list.appendChild(el('div', 'empty', '没有未提交的变更'));
+        list.appendChild(el('div', 'empty', tr('noChanges')));
         return;
       }
       gitFiles.forEach(function (e) {
@@ -426,11 +439,11 @@ ${sharedScript}
         item.appendChild(main);
         var actions = el('div', 'actions');
         var cp = el('button', 'mini-btn', '⧉');
-        cp.title = '复制路径';
-        cp.addEventListener('click', function (ev) { ev.stopPropagation(); copyText(e.path, '已复制路径'); });
+        cp.title = tr('copyPath');
+        cp.addEventListener('click', function (ev) { ev.stopPropagation(); copyText(e.path, tr('copiedPath')); });
         var qt = el('button', 'mini-btn', '@');
-        qt.title = '复制 @path 引用';
-        qt.addEventListener('click', function (ev) { ev.stopPropagation(); copyText('@' + e.path, '已复制 @引用'); });
+        qt.title = tr('refFlyoutTitle');
+        qt.addEventListener('click', function (ev) { ev.stopPropagation(); copyText('@' + e.path, tr('copied')); });
         actions.appendChild(cp);
         actions.appendChild(qt);
         item.appendChild(actions);
@@ -441,7 +454,7 @@ ${sharedScript}
     function gitDiffNode(text) {
       var wrap = el('div', 'gd');
       if (!text) {
-        wrap.appendChild(el('div', 'hint', '没有未提交的变更（相对于 HEAD）'));
+        wrap.appendChild(el('div', 'hint', tr('noChangesHead')));
         return wrap;
       }
       var lines = String(text).replace(/\n$/, '').split('\n');
@@ -475,11 +488,11 @@ ${sharedScript}
       var scroll = el('div', 'ptabs-scroll');
       tabs.forEach(function (t) {
         var tab = el('div', 'ptab' + (t.key === activeKey ? ' is-active' : ''));
-        tab.title = (t.git ? '[diff] ' : '') + t.path;
+        tab.title = (t.git ? tr('diffTabPrefix') : '') + t.path;
         tab.appendChild(el('span', 'ptab-name', basename(t.path)));
         var x = el('button', 'ptab-close', '×');
         x.type = 'button';
-        x.title = '关闭标签页';
+        x.title = tr('closeTab');
         x.addEventListener('click', function (ev) { ev.stopPropagation(); closeTab(t.key); });
         tab.appendChild(x);
         tab.addEventListener('click', function () { setActiveTab(t.key); });
@@ -534,18 +547,18 @@ ${sharedScript}
       area.textContent = '';
       var t = activeTab();
       if (!t) {
-        area.appendChild(el('div', 'hint', currentView === 'git' ? '点击右侧变更文件查看 diff' : '点击右侧文件查看内容'));
+        area.appendChild(el('div', 'hint', currentView === 'git' ? tr('hintClickGit') : tr('hintClickTree')));
         return;
       }
-      if (t.loading) { area.appendChild(el('div', 'hint', '加载中…')); return; }
-      if (t.ok === false) { area.appendChild(errNode(t.error || '读取失败')); return; }
+      if (t.loading) { area.appendChild(el('div', 'hint', tr('loading'))); return; }
+      if (t.ok === false) { area.appendChild(errNode(t.error || tr('readFailed'))); return; }
       if (t.git) { area.appendChild(gitDiffNode(t.diff || '')); return; }
       var type = t.type || 'text';
       if (type === 'image') {
         var img = el('img', 'preview-img');
         img.src = MEDIA_URL + '?path=' + encodeURIComponent(t.path);
         img.alt = t.path;
-        img.addEventListener('error', function () { area.textContent = ''; area.appendChild(errNode('图片加载失败')); });
+        img.addEventListener('error', function () { area.textContent = ''; area.appendChild(errNode(tr('imageLoadFailed'))); });
         area.appendChild(img);
         return;
       }
@@ -571,7 +584,7 @@ ${sharedScript}
         area.appendChild(md);
         return;
       }
-      if (t.truncated) area.appendChild(el('div', 'diff-label', '(truncated preview)'));
+      if (t.truncated) area.appendChild(el('div', 'diff-label', tr('truncated')));
       area.appendChild(codeViewNode(t.content || '', t.path));
     }
     function openFileTab(path) {
@@ -588,7 +601,7 @@ ${sharedScript}
       refreshTreeSelection();
       if (!needFetch) return;
       fetch(CONTENT_URL + '?path=' + encodeURIComponent(path)).then(function (r) { return r.json(); }).then(function (data) {
-        if (!data || data.ok !== true) { patchTab(key, { loading: false, ok: false, error: (data && data.error) || '读取失败' }); return; }
+        if (!data || data.ok !== true) { patchTab(key, { loading: false, ok: false, error: (data && data.error) || tr('readFailed') }); return; }
         patchTab(key, { loading: false, ok: true, content: data.content, truncated: data.truncated });
       }).catch(function (e) {
         patchTab(key, { loading: false, ok: false, error: String(e && e.message ? e.message : e) });
@@ -605,7 +618,7 @@ ${sharedScript}
       fetch(GITDIFF_URL + '?path=' + encodeURIComponent(path) + '&sessionId=' + encodeURIComponent(currentSessionId() || ''), { cache: 'no-store' })
         .then(function (r) { return r.json(); })
         .then(function (data) {
-          if (!data || data.ok !== true) { patchTab(key, { loading: false, ok: false, error: (data && data.error) || '读取失败' }); return; }
+          if (!data || data.ok !== true) { patchTab(key, { loading: false, ok: false, error: (data && data.error) || tr('readFailed') }); return; }
           patchTab(key, { loading: false, ok: true, diff: data.diff });
         })
         .catch(function (e) {
@@ -618,11 +631,11 @@ ${sharedScript}
       currentView = view;
       var btn = document.getElementById('viewBtn');
       btn.classList.toggle('is-active', view === 'git');
-      btn.title = view === 'tree' ? '查看 Git 变更（未提交）' : '返回文件列表';
+      btn.title = view === 'tree' ? tr('viewGit') : tr('backToFiles');
       btn.textContent = '';
       btn.appendChild(view === 'tree' ? gitBranchIcon() : folderClosedIcon());
       var rb = document.getElementById('refreshBtn');
-      if (rb) rb.title = view === 'tree' ? '刷新文件树' : '刷新变更列表';
+      if (rb) rb.title = view === 'tree' ? tr('refreshTree') : tr('refreshChanges');
       document.getElementById('list').classList.toggle('is-hidden', view !== 'git');
       document.getElementById('tree').classList.toggle('is-active', view === 'tree');
       if (view === 'tree' && !treeRoot) loadTreeRoot();
@@ -635,7 +648,7 @@ ${sharedScript}
       treeExpanded = {};
       var bodyEl = document.getElementById('treeBody');
       bodyEl.textContent = '';
-      bodyEl.appendChild(el('div', 'tree-loading', '加载文件树…'));
+      bodyEl.appendChild(el('div', 'tree-loading', tr('loadingTree')));
       // A freshly switched-to workspace may not be resolvable on the host yet
       // (its session is still loading/persisting); retry briefly so the tree
       // self-corrects instead of sitting on an error/empty state.
@@ -655,7 +668,7 @@ ${sharedScript}
         if (left > 0) { setTimeout(function () { loadTreeRoot(left - 1); }, 400); return; }
         treeRoot = { path: null, entries: [] };
         renderTree();
-        document.getElementById('treeBody').appendChild(el('div', 'tree-error', '加载失败'));
+        document.getElementById('treeBody').appendChild(el('div', 'tree-error', tr('treeLoadFailed')));
       });
     }
 
@@ -664,7 +677,7 @@ ${sharedScript}
       bodyEl.textContent = '';
       if (!treeRoot) return;
       if (!treeRoot.entries || !treeRoot.entries.length) {
-        bodyEl.appendChild(el('div', 'empty', '（空目录）'));
+        bodyEl.appendChild(el('div', 'empty', tr('emptyDir')));
         return;
       }
       treeRoot.entries.forEach(function (entry) {
@@ -673,7 +686,7 @@ ${sharedScript}
     }
 
     function copyRef(path) {
-      copyText('@' + path, '已复制 @引用');
+      copyText('@' + path, tr('copied'));
     }
 
     function renderTreeNode(entry, depth) {
@@ -687,9 +700,9 @@ ${sharedScript}
       row.appendChild(entry.isDir ? (treeExpanded[entry.path] ? folderOpenIcon() : folderClosedIcon()) : fileCodeIcon());
       row.appendChild(el('span', 'tree-name', entry.name));
 
-      var refBtn = el('button', 'tree-ref', '@引用');
+      var refBtn = el('button', 'tree-ref', tr('refBtn'));
       refBtn.type = 'button';
-      refBtn.title = '复制 @path 引用';
+      refBtn.title = tr('refFlyoutTitle');
       refBtn.addEventListener('click', function (ev) { ev.stopPropagation(); copyRef(entry.path); });
       row.appendChild(refBtn);
 
@@ -704,7 +717,7 @@ ${sharedScript}
         var node = treeChildren[entry.path];
         var childPad = 8 + (depth + 1) * 20 + 20;
         if (node && node.loading) {
-          var lr = el('div', 'tree-row tree-loading', '加载中…');
+          var lr = el('div', 'tree-row tree-loading', tr('loading'));
           lr.style.paddingLeft = childPad + 'px';
           wrap.appendChild(lr);
         } else if (node && node.error) {
@@ -729,10 +742,10 @@ ${sharedScript}
         treeChildren[path] = { loading: true };
         renderTree();
         fetch(listdirUrl(path), { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (res) {
-          treeChildren[path] = res && res.ok ? { entries: res.entries } : { error: (res && res.error) || '读取失败' };
+          treeChildren[path] = res && res.ok ? { entries: res.entries } : { error: (res && res.error) || tr('readFailed') };
           renderTree();
         }).catch(function () {
-          treeChildren[path] = { error: '读取失败' };
+          treeChildren[path] = { error: tr('readFailed') };
           renderTree();
         });
       } else {
@@ -782,7 +795,7 @@ ${sharedScript}
           }
           // 数据签名未变时跳过重渲染：2s 轮询不会重建行元素、冲掉浮现动画。
           var nextFiles = ok ? (Array.isArray(data.entries) ? data.entries : []) : [];
-          var nextError = ok ? null : ((data && data.error) || 'git status 失败');
+          var nextError = ok ? null : ((data && data.error) || tr('gitStatusFailed'));
           var sig = JSON.stringify([nextError, nextFiles]);
           if (!force && sig === gitSig) return;
           gitSig = sig;
@@ -797,6 +810,7 @@ ${sharedScript}
           st.style.color = getComputedStyle(document.documentElement).getPropertyValue('--p-error').trim() || '#ef4444';
         });
     }
+    document.getElementById('divider').title = tr('resizePanel');
     setView('tree');
     renderTabs();
     renderActive();
@@ -829,7 +843,7 @@ ${sharedScript}
       if (main) main.classList.toggle('side-left', panelLeft);
       var b = document.getElementById('sideBtn');
       if (b) {
-        b.title = panelLeft ? '将文件面板移到右侧' : '将文件面板移到左侧';
+        b.title = panelLeft ? tr('movePanelRight') : tr('movePanelLeft');
         var icon = b.querySelector('.gtoggle-side-icon');
         if (icon) icon.classList.toggle('is-flipped', panelLeft);
       }

@@ -6,7 +6,7 @@
  * 兼容（静态 bundle 下 harness 全局不存在，typeof 守卫直接跳过）。
  */
 import { attachArtifactTracking, removeFile, snapshotArtifacts } from './host/artifacts'
-import { listDir, readFile } from './host/files'
+import { listDir, readFile, searchFiles } from './host/files'
 import { attachGitTracking, gitDiff, gitStatus } from './host/git'
 import { registerRoutes } from './host/routes'
 import type { DshWebServer, HostContext } from './host/types'
@@ -31,6 +31,7 @@ export function apply(ctx: HostContext): void {
     harness.handle('artifacts.remove', (args) => removeFile(args?.path))
     harness.handle('artifacts.read', (args) => readFile(ctx, args?.path))
     harness.handle('artifacts.listDir', (args) => listDir(ctx, args?.path, args?.sessionId))
+    harness.handle('artifacts.search', (args) => searchFiles(ctx, args?.query, args?.sessionId))
     harness.handle('git.status', (args) => gitStatus(ctx, args?.sessionId))
     harness.handle('git.diff', (args) => gitDiff(ctx, args?.path, args?.sessionId))
   }

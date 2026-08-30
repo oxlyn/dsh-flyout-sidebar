@@ -214,6 +214,11 @@ body[data-ds-dark-theme] .gd-add { color: #69db7c; }
 body[data-ds-dark-theme] .gd-del { color: #faa2c1; }
 .artifacts-tree { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .artifacts-tree-body { flex: 1; min-height: 0; overflow-y: auto; padding: 2px 6px 8px; }
+.artifacts-searchbar { flex: none; padding: 8px 10px 4px; }
+.artifacts-search-input { box-sizing: border-box; width: 100%; border: 1px solid var(--dsw-alias-border-l2); background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); font: inherit; border-radius: 8px; padding: 5px 10px; outline: none; }
+.artifacts-search-input:focus { border-color: var(--dsw-alias-button-primary-fill); }
+.artifacts-search-input::placeholder { color: var(--dsw-alias-label-tertiary); }
+.artifacts-search-dir { color: var(--dsw-alias-label-tertiary); font-size: 11px; margin-left: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .artifacts-tree-row { box-sizing: border-box; width: 100%; height: 34px; font: var(--dsw-font-s-14); color: var(--dsw-alias-label-primary); text-align: left; cursor: pointer; white-space: nowrap; background: transparent; border: none; border-radius: 8px; align-items: center; gap: 6px; padding: 0 8px; display: flex; animation: artifacts-row-in .15s var(--ds-ease-in-out, ease); }
 .artifacts-tree-row:hover { background: var(--dsw-alias-interactive-bg-hover); }
 .artifacts-tree-dir { font: var(--dsw-font-s-strong-14); }
@@ -245,6 +250,7 @@ body[data-ds-dark-theme] .gd-del { color: #faa2c1; }
 .artifacts-switch input:focus-visible + .artifacts-switch-track { outline: 2px solid var(--dsw-alias-state-business-primary); outline-offset: 2px; }
 .artifacts-setcontrol { flex: none; align-items: center; gap: 6px; display: flex; }
 .artifacts-widthinput { width: 76px; border: 1px solid var(--dsw-alias-border-l2); background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); font: inherit; border-radius: 6px; padding: 4px 8px; }
+.artifacts-langselect { border: 1px solid var(--dsw-alias-border-l2); background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); font: inherit; border-radius: 6px; padding: 4px 8px; cursor: pointer; }
 .artifacts-suffix { color: var(--dsw-alias-label-secondary); font-size: 14px; line-height: 22px; }
 .artifacts-code { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .artifacts-code-scroll { flex: 1; min-height: 0; overflow: auto; display: flex; align-items: flex-start; background: var(--shiki-background, var(--dsw-alias-markdown-code-block, var(--dsw-alias-bg-layer-1))); }

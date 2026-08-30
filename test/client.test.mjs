@@ -130,7 +130,8 @@ test('client bundle: ArtifactsPanel renders file tree panel', () => {
   const html = renderToString(React.createElement(panelEntry.component))
   assert.ok(html.includes('artifacts-panel'), '应有侧边栏面板')
   assert.ok(html.includes('artifacts-tree'), '默认应为文件树视图')
-  assert.ok(html.includes('加载文件树'), '初始应显示加载提示')
+  assert.ok(html.includes('Loading file tree…'), '初始应显示加载提示（测试环境无 navigator，自动判定英文）')
+  assert.ok(html.includes('artifacts-search-input'), '文件树应有搜索框')
   assert.ok(html.includes('flyout-sidebar?sessionId=sess-1'), '弹出链接应携带会话 id')
   assert.ok(html.includes('artifacts-resize'), '应有拖拽手柄')
 })
@@ -141,10 +142,11 @@ test('client bundle: SettingsSection renders all toggles', () => {
   plugin.apply(ctx)
   const settingsEntry = ctx.registered.find((r) => r.definition.id === 'artifacts-sidebar')
   const html = renderToString(React.createElement(settingsEntry.component))
-  for (const label of ['默认展开', '自动刷新', '文件树', '最短面板宽度']) {
+  for (const label of ['Open by default', 'Auto refresh', 'File tree', 'Minimum panel width', 'Interface language']) {
     assert.ok(html.includes(label), '设置项缺失：' + label)
   }
   assert.ok(html.includes('artifacts-switch'), '应有开关组件')
+  assert.ok(html.includes('artifacts-langselect'), '应有语言下拉框')
 })
 
 test('client bundle: CornerButton hidden while panel is open (default-open settings applied)', () => {
@@ -152,6 +154,8 @@ test('client bundle: CornerButton hidden while panel is open (default-open setti
   const ctx = makeClientCtx()
   plugin.apply(ctx)
   const triggerEntry = ctx.registered.find((r) => r.definition.id === 'artifacts-sidebar-trigger')
-  // 默认「默认展开」= true → 面板打开，触发按钮渲染为空
-  assert.equal(renderToString(React.createElement(triggerEntry.component)), '')
+  // 默认「默认展开」= true → 面板打开；触发按钮常驻挂载，靠 CSS 类滑出屏外隐藏
+  const html = renderToString(React.createElement(triggerEntry.component))
+  assert.ok(html.includes('artifacts-corner-btn'), '应渲染触发按钮')
+  assert.ok(html.includes('artifacts-slid-out'), '面板打开时按钮应带滑出类（CSS 隐藏）')
 })

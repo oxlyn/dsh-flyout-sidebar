@@ -43,6 +43,9 @@
 		},
 		listDir(path, sessionId) {
 			return getJson("/flyout-sidebar/listdir" + qs(["path", path], ["sessionId", sessionId]));
+		},
+		searchFiles(query, sessionId) {
+			return getJson("/flyout-sidebar/search" + qs(["q", query], ["sessionId", sessionId]));
 		}
 	};
 	//#endregion
@@ -263,6 +266,11 @@ body[data-ds-dark-theme] .gd-add { color: #69db7c; }
 body[data-ds-dark-theme] .gd-del { color: #faa2c1; }
 .artifacts-tree { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .artifacts-tree-body { flex: 1; min-height: 0; overflow-y: auto; padding: 2px 6px 8px; }
+.artifacts-searchbar { flex: none; padding: 8px 10px 4px; }
+.artifacts-search-input { box-sizing: border-box; width: 100%; border: 1px solid var(--dsw-alias-border-l2); background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); font: inherit; border-radius: 8px; padding: 5px 10px; outline: none; }
+.artifacts-search-input:focus { border-color: var(--dsw-alias-button-primary-fill); }
+.artifacts-search-input::placeholder { color: var(--dsw-alias-label-tertiary); }
+.artifacts-search-dir { color: var(--dsw-alias-label-tertiary); font-size: 11px; margin-left: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .artifacts-tree-row { box-sizing: border-box; width: 100%; height: 34px; font: var(--dsw-font-s-14); color: var(--dsw-alias-label-primary); text-align: left; cursor: pointer; white-space: nowrap; background: transparent; border: none; border-radius: 8px; align-items: center; gap: 6px; padding: 0 8px; display: flex; animation: artifacts-row-in .15s var(--ds-ease-in-out, ease); }
 .artifacts-tree-row:hover { background: var(--dsw-alias-interactive-bg-hover); }
 .artifacts-tree-dir { font: var(--dsw-font-s-strong-14); }
@@ -294,6 +302,7 @@ body[data-ds-dark-theme] .gd-del { color: #faa2c1; }
 .artifacts-switch input:focus-visible + .artifacts-switch-track { outline: 2px solid var(--dsw-alias-state-business-primary); outline-offset: 2px; }
 .artifacts-setcontrol { flex: none; align-items: center; gap: 6px; display: flex; }
 .artifacts-widthinput { width: 76px; border: 1px solid var(--dsw-alias-border-l2); background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); font: inherit; border-radius: 6px; padding: 4px 8px; }
+.artifacts-langselect { border: 1px solid var(--dsw-alias-border-l2); background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); font: inherit; border-radius: 6px; padding: 4px 8px; cursor: pointer; }
 .artifacts-suffix { color: var(--dsw-alias-label-secondary); font-size: 14px; line-height: 22px; }
 .artifacts-code { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .artifacts-code-scroll { flex: 1; min-height: 0; overflow: auto; display: flex; align-items: flex-start; background: var(--shiki-background, var(--dsw-alias-markdown-code-block, var(--dsw-alias-bg-layer-1))); }
@@ -385,7 +394,267 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		return m ? (m[1] || "").toLowerCase() : "";
 	}
 	//#endregion
+	//#region src/shared/i18n.js
+	/**
+	* 共享：中英双语 UI 文案。
+	*
+	* 与 ext/highlight/markdown 一样遵守「可移植源码」约束：只能使用 JSDoc 标注
+	* 类型（不得出现 TS 语法注记）、不得引入本目录之外的依赖。本模块被同时用于：
+	* 1. tsdown 打包进 client 侧（浏览器 React bundle）；
+	* 2. tsdown 构建期经 `?raw` 读入原始文本，内联进独立弹出页 /flyout-sidebar
+	*    的经典 <script>（见 src/host/page.ts）。
+	*
+	* 语言选择：localStorage `dsh-flyout-sidebar:lang`（'zh' | 'en'，主面板的
+	* 设置项写入、弹出页读取），未设置时按浏览器语言自动判定。`t(key)` 取当前
+	* 语言文案，缺失时回退另一语言、再回退 key 本身。
+	*/
+	/** @type {Record<string, string>} */
+	const ZH = {
+		loading: "加载中…",
+		loadingTree: "加载文件树…",
+		loadingChanges: "加载变更列表…",
+		loadingPdf: "加载 PDF…",
+		searching: "搜索中…",
+		emptyDir: "（空目录）",
+		noChanges: "没有未提交的变更",
+		noChangesHead: "没有未提交的变更（相对于 HEAD）",
+		noResults: "没有匹配的文件",
+		readFailed: "读取失败",
+		gitStatusFailed: "git status 失败",
+		imageLoadFailed: "图片加载失败",
+		pdfLoadFailed: "pdf.js 加载失败",
+		searchFailed: "搜索失败",
+		treeLoadFailed: "加载失败",
+		truncated: "（已截断的预览）",
+		copied: "已复制",
+		copiedPath: "已复制路径",
+		copiedRef: "已复制 @引用（未能写入输入框）",
+		insertedInput: "已插入输入框",
+		refBtn: "@引用",
+		refTitle: "引用到输入框（失败则复制 @path）",
+		refFlyoutTitle: "复制 @path 引用",
+		copyPath: "复制路径",
+		refInput: "@引用到输入框",
+		collapsePanel: "收起侧边栏",
+		panelAria: "文件面板",
+		flyoutTitle: "弹出式侧边栏",
+		flyoutOpen: "弹出式侧边栏 — 在新标签页打开（可拖到另一块显示器）",
+		resizeHandle: "拖动调整宽度",
+		resizePanel: "拖动调整面板宽度",
+		refreshTree: "刷新文件树",
+		refreshChanges: "刷新变更列表",
+		refresh: "刷新",
+		viewGit: "查看 Git 变更（未提交）",
+		backToFiles: "返回文件列表",
+		hidePreview: "隐藏预览（标签页保留）",
+		closeTab: "关闭标签页",
+		previewRegion: "文件预览",
+		diffTabPrefix: "[diff] ",
+		searchPlaceholder: "搜索文件…",
+		hintClickGit: "点击右侧变更文件查看 diff",
+		hintClickTree: "点击右侧文件查看内容",
+		movePanelLeft: "将文件面板移到左侧",
+		movePanelRight: "将文件面板移到右侧",
+		statusU: "未跟踪",
+		statusA: "新增",
+		statusM: "修改",
+		statusD: "删除",
+		statusR: "重命名",
+		statusC: "复制",
+		statusT: "类型变更",
+		staged: "（已暂存）",
+		unstaged: "（未暂存）",
+		diffDeleted: "- 删除",
+		diffAdded: "+ 新增",
+		zoomOut: "缩小",
+		zoomIn: "放大",
+		prevPage: "上一页",
+		nextPage: "下一页",
+		settingsIntro: "管理「Flyout Sidebar」的显示与行为。",
+		setDefaultOpen: "默认展开",
+		setDefaultOpenDesc: "页面加载后侧边栏默认展开；关闭则默认收起，点右上角图标再打开。",
+		setAutoRefresh: "自动刷新",
+		setAutoRefreshDesc: "开启后侧边栏展开时将即时同步并更新产物列表",
+		setFileTree: "文件树",
+		setFileTreeDesc: "在侧边栏显示「文件树」标签页，浏览工作区目录。",
+		setMinWidth: "最短面板宽度",
+		setMinWidthDesc: "面板的最小宽度（占窗口宽度的百分比，20–60）；更宽可通过拖动面板左边缘调整。",
+		setLang: "界面语言",
+		setLangDesc: "侧边栏与独立弹出页的显示语言；独立弹出页需刷新后生效。",
+		langAuto: "跟随浏览器",
+		langZh: "中文",
+		langEn: "English"
+	};
+	/** @type {Record<string, string>} */
+	const EN = {
+		loading: "Loading…",
+		loadingTree: "Loading file tree…",
+		loadingChanges: "Loading change list…",
+		loadingPdf: "Loading PDF…",
+		searching: "Searching…",
+		emptyDir: "(empty directory)",
+		noChanges: "No uncommitted changes",
+		noChangesHead: "No uncommitted changes (relative to HEAD)",
+		noResults: "No matching files",
+		readFailed: "Failed to read",
+		gitStatusFailed: "git status failed",
+		imageLoadFailed: "Failed to load image",
+		pdfLoadFailed: "Failed to load pdf.js",
+		searchFailed: "Search failed",
+		treeLoadFailed: "Failed to load",
+		truncated: "(truncated preview)",
+		copied: "Copied",
+		copiedPath: "Path copied",
+		copiedRef: "Copied @reference (could not write to input box)",
+		insertedInput: "Inserted into input box",
+		refBtn: "@ref",
+		refTitle: "Quote into input box (falls back to copying @path)",
+		refFlyoutTitle: "Copy @path reference",
+		copyPath: "Copy path",
+		refInput: "@reference into input box",
+		collapsePanel: "Collapse sidebar",
+		panelAria: "File panel",
+		flyoutTitle: "Flyout sidebar",
+		flyoutOpen: "Flyout sidebar — open in a new tab (drag to another display)",
+		resizeHandle: "Drag to resize",
+		resizePanel: "Drag to resize panel",
+		refreshTree: "Refresh file tree",
+		refreshChanges: "Refresh change list",
+		refresh: "Refresh",
+		viewGit: "View Git changes (uncommitted)",
+		backToFiles: "Back to file list",
+		hidePreview: "Hide preview (tabs are kept)",
+		closeTab: "Close tab",
+		previewRegion: "File preview",
+		diffTabPrefix: "[diff] ",
+		searchPlaceholder: "Search files…",
+		hintClickGit: "Click a changed file to view its diff",
+		hintClickTree: "Click a file to view its content",
+		movePanelLeft: "Move file panel to the left",
+		movePanelRight: "Move file panel to the right",
+		statusU: "Untracked",
+		statusA: "Added",
+		statusM: "Modified",
+		statusD: "Deleted",
+		statusR: "Renamed",
+		statusC: "Copied",
+		statusT: "Type change",
+		staged: "(staged)",
+		unstaged: "(unstaged)",
+		diffDeleted: "- Deleted",
+		diffAdded: "+ Added",
+		zoomOut: "Zoom out",
+		zoomIn: "Zoom in",
+		prevPage: "Previous page",
+		nextPage: "Next page",
+		settingsIntro: "Manage the display and behavior of \"Flyout Sidebar\".",
+		setDefaultOpen: "Open by default",
+		setDefaultOpenDesc: "Expand the sidebar on page load; when off it stays collapsed until the corner icon is clicked.",
+		setAutoRefresh: "Auto refresh",
+		setAutoRefreshDesc: "Keep the artifact list in sync while the sidebar is open",
+		setFileTree: "File tree",
+		setFileTreeDesc: "Show the \"File tree\" tab in the sidebar to browse the workspace directory.",
+		setMinWidth: "Minimum panel width",
+		setMinWidthDesc: "Minimum width of the panel (percentage of window width, 20–60); drag the panel edge to go wider.",
+		setLang: "Interface language",
+		setLangDesc: "Display language for the sidebar and the standalone flyout page (flyout requires a reload).",
+		langAuto: "Auto (browser)",
+		langZh: "中文",
+		langEn: "English"
+	};
+	/** @type {Record<string, Record<string, string>>} */
+	const DICTS = {
+		zh: ZH,
+		en: EN
+	};
+	const LANG_KEY = "dsh-flyout-sidebar:lang";
+	/** @type {'zh' | 'en' | null} 已显式选择的语言（null = 跟随浏览器自动判定） */
+	let explicitLang = null;
+	/** @type {Array<(lang: string) => void>} */
+	let listeners = [];
+	function readStoredLang() {
+		try {
+			var v = localStorage.getItem(LANG_KEY);
+			return v === "zh" || v === "en" ? v : null;
+		} catch (e) {
+			return null;
+		}
+	}
+	/** 浏览器语言自动判定：非 zh 开头一律英文 */
+	function autoLang() {
+		try {
+			var langs = navigator.languages || (navigator.language ? [navigator.language] : []);
+			for (var i = 0; i < langs.length; i++) {
+				var l = String(langs[i] || "").toLowerCase();
+				if (l.indexOf("zh") === 0) return "zh";
+				if (l.indexOf("en") === 0) return "en";
+			}
+		} catch (e) {}
+		return "en";
+	}
+	function currentLang() {
+		if (explicitLang === null) explicitLang = readStoredLang();
+		return explicitLang || autoLang();
+	}
+	/**
+	* @param {string} key 文案键
+	* @returns {string} 当前语言文案；两级回退（另一语言 → key）
+	*/
+	function t(key) {
+		var lang = currentLang();
+		var dict = DICTS[lang] || EN;
+		if (dict[key] != null) return dict[key];
+		var other = DICTS[lang === "zh" ? "en" : "zh"];
+		if (!other) return key;
+		return other[key] != null ? other[key] : key;
+	}
+	/** @returns {'zh' | 'en'} 当前生效语言（含自动判定的结果） */
+	function getLang() {
+		return currentLang();
+	}
+	/** @returns {'zh' | 'en' | null} 用户显式选择的语言（null = 跟随浏览器） */
+	function getExplicitLang() {
+		if (explicitLang === null) explicitLang = readStoredLang();
+		return explicitLang;
+	}
+	/**
+	* 显式设置语言并持久化（null = 恢复跟随浏览器）。
+	* @param {'zh' | 'en' | null} lang
+	*/
+	function setLang(lang) {
+		explicitLang = lang;
+		try {
+			if (lang === null) localStorage.removeItem(LANG_KEY);
+			else localStorage.setItem(LANG_KEY, lang);
+		} catch (e) {}
+		var next = listeners.slice();
+		for (var i = 0; i < next.length; i++) {
+			var fn = next[i];
+			if (!fn) continue;
+			try {
+				fn(currentLang());
+			} catch (e) {}
+		}
+	}
+	/** @param {(lang: string) => void} fn @returns {() => void} 取消订阅 */
+	function subscribeLang(fn) {
+		listeners.push(fn);
+		return function() {
+			listeners = listeners.filter(function(f) {
+				return f !== fn;
+			});
+		};
+	}
+	//#endregion
 	//#region src/client/store.ts
+	/**
+	* Client 侧：共享状态与工具函数。
+	*
+	* - store / settingsStore：面板开关与功能设置（localStorage 持久化），
+	*   触发按钮与面板等组件通过 useOpen / useSettings 订阅。
+	* - currentSessionId / quoteToComposer：读取客户端会话库、把 @path 引用
+	*   写入会话输入框。
+	*/
 	const basename = (p) => {
 		const parts = String(p).split("/");
 		return parts[parts.length - 1] || p;
@@ -585,6 +854,22 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		}, []);
 		return sessionId;
 	}
+	/**
+	* 界面语言：订阅 i18n 的语言变更，语言切换时强制订阅组件重渲染（组件内的
+	* t() 调用随之取到新语言文案）。返回值用于设置区判断下拉框选项。
+	*/
+	function useLang() {
+		const [, force] = React.useReducer((n) => n + 1, 0);
+		React.useEffect(() => {
+			const unsubscribe = subscribeLang(() => force());
+			return () => unsubscribe();
+		}, []);
+		return getLang();
+	}
+	/** 当前设置语言：'zh' / 'en'（显式）或 null（跟随浏览器自动判定） */
+	const getLanguageSetting = getExplicitLang;
+	/** 设置界面语言并持久化；null = 恢复跟随浏览器 */
+	const setLanguage = setLang;
 	//#endregion
 	//#region src/shared/highlight.js
 	/**
@@ -943,7 +1228,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 	* 自定义 pdf.js 渲染器、Markdown / 图片 / HTML 沙箱、多类型分发。
 	*/
 	function renderDiff(diff) {
-		return /* @__PURE__ */ h("div", { className: "artifacts-diff" }, diff && diff.before != null && diff.before !== "" ? /* @__PURE__ */ h("div", { className: "artifacts-diff-block artifacts-diff-del" }, /* @__PURE__ */ h("div", { className: "artifacts-diff-label" }, "- 删除"), /* @__PURE__ */ h("pre", { className: "artifacts-diff-pre" }, diff.before)) : null, /* @__PURE__ */ h("div", { className: "artifacts-diff-block artifacts-diff-add" }, /* @__PURE__ */ h("div", { className: "artifacts-diff-label" }, "+ 新增"), /* @__PURE__ */ h("pre", { className: "artifacts-diff-pre" }, diff && diff.after != null ? diff.after : "")));
+		return /* @__PURE__ */ h("div", { className: "artifacts-diff" }, diff && diff.before != null && diff.before !== "" ? /* @__PURE__ */ h("div", { className: "artifacts-diff-block artifacts-diff-del" }, /* @__PURE__ */ h("div", { className: "artifacts-diff-label" }, t("diffDeleted")), /* @__PURE__ */ h("pre", { className: "artifacts-diff-pre" }, diff.before)) : null, /* @__PURE__ */ h("div", { className: "artifacts-diff-block artifacts-diff-add" }, /* @__PURE__ */ h("div", { className: "artifacts-diff-label" }, t("diffAdded")), /* @__PURE__ */ h("pre", { className: "artifacts-diff-pre" }, diff && diff.after != null ? diff.after : "")));
 	}
 	/** 代码预览：行号栏 + 语法高亮代码（共享高亮器，语言取自扩展名） */
 	function CodeView({ code, path }) {
@@ -969,7 +1254,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			s.async = true;
 			s.onload = () => {
 				try {
-					if (!window.pdfjsLib) throw new Error("pdf.js 加载失败");
+					if (!window.pdfjsLib) throw new Error(t("pdfLoadFailed"));
 					window.pdfjsLib.GlobalWorkerOptions.workerSrc = "/flyout-sidebar/pdfjs/pdf.worker.min.js";
 					resolve(window.pdfjsLib);
 				} catch (e) {
@@ -978,7 +1263,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			};
 			s.onerror = () => {
 				pdfjsPromise = null;
-				reject(/* @__PURE__ */ new Error("pdf.js 加载失败"));
+				reject(new Error(t("pdfLoadFailed")));
 			};
 			document.head.appendChild(s);
 		});
@@ -1096,7 +1381,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		const clampPage = (n) => Math.max(1, Math.min(pageCount || 1, n));
 		const goPage = (n) => setPageNo(clampPage(n));
 		const zoomBy = (f) => setZoom((z) => Math.max(.25, Math.min(4, Math.round(z * f * 100) / 100)));
-		if (phase === "loading") return /* @__PURE__ */ h("div", { className: "artifacts-pdfview" }, /* @__PURE__ */ h("div", { className: "artifacts-hint" }, "加载 PDF…"));
+		if (phase === "loading") return /* @__PURE__ */ h("div", { className: "artifacts-pdfview" }, /* @__PURE__ */ h("div", { className: "artifacts-hint" }, t("loadingPdf")));
 		if (phase === "error") return /* @__PURE__ */ h("embed", {
 			className: "artifacts-pdf",
 			src: "/flyout-sidebar/media?path=" + encodeURIComponent(path),
@@ -1107,25 +1392,25 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		return /* @__PURE__ */ h("div", { className: "artifacts-pdfview" }, /* @__PURE__ */ h("div", { className: "artifacts-pdfview-bar" }, /* @__PURE__ */ h("button", {
 			type: "button",
 			className: "artifacts-pdfview-btn",
-			title: "缩小",
+			title: t("zoomOut"),
 			disabled,
 			onClick: () => zoomBy(.8)
 		}, "−"), /* @__PURE__ */ h("span", { className: "artifacts-pdfview-zoom" }, Math.round(zoom * 100) + "%"), /* @__PURE__ */ h("button", {
 			type: "button",
 			className: "artifacts-pdfview-btn",
-			title: "放大",
+			title: t("zoomIn"),
 			disabled,
 			onClick: () => zoomBy(1.25)
 		}, "＋"), /* @__PURE__ */ h("span", { className: "artifacts-pdfview-spacer" }), /* @__PURE__ */ h("button", {
 			type: "button",
 			className: "artifacts-pdfview-btn",
-			title: "上一页",
+			title: t("prevPage"),
 			disabled: disabled || pageNo <= 1,
 			onClick: () => goPage(pageNo - 1)
 		}, "‹"), /* @__PURE__ */ h("span", { className: "artifacts-pdfview-page" }, pageNo + " / " + pageCount), /* @__PURE__ */ h("button", {
 			type: "button",
 			className: "artifacts-pdfview-btn",
-			title: "下一页",
+			title: t("nextPage"),
 			disabled: disabled || pageNo >= pageCount,
 			onClick: () => goPage(pageNo + 1)
 		}, "›")), /* @__PURE__ */ h("div", {
@@ -1139,7 +1424,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 	/** 统一 git diff 渲染：meta/hunk/+/- 行着色，等宽可滚动 */
 	function GitDiffView({ diff }) {
 		const text = String(diff || "");
-		if (!text) return /* @__PURE__ */ h("div", { className: "artifacts-hint" }, "没有未提交的变更（相对于 HEAD）");
+		if (!text) return /* @__PURE__ */ h("div", { className: "artifacts-hint" }, t("noChangesHead"));
 		return /* @__PURE__ */ h("div", { className: "artifacts-gitdiff" }, text.replace(/\n$/, "").split("\n").map((line, i) => {
 			let cls = "gd-line";
 			if (line.startsWith("@@")) cls += " gd-hunk";
@@ -1153,8 +1438,8 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		}));
 	}
 	function renderPreview(p) {
-		if (p.loading) return /* @__PURE__ */ h("div", { className: "artifacts-hint" }, "加载中…");
-		if (p.ok === false) return /* @__PURE__ */ h("div", { className: "artifacts-error" }, p.error || "读取失败");
+		if (p.loading) return /* @__PURE__ */ h("div", { className: "artifacts-hint" }, t("loading"));
+		if (p.ok === false) return /* @__PURE__ */ h("div", { className: "artifacts-error" }, p.error || t("readFailed"));
 		if (p.git) return /* @__PURE__ */ h("div", { className: "artifacts-preview-body" }, /* @__PURE__ */ h(GitDiffView, { diff: p.diff }));
 		const type = p.type || extType(p.path);
 		let view;
@@ -1177,7 +1462,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		else view = /* @__PURE__ */ h(Fragment, null, /* @__PURE__ */ h(CodeView, {
 			code: p.content,
 			path: p.path
-		}), p.truncated ? /* @__PURE__ */ h("div", { className: "artifacts-diff-label" }, "(truncated preview)") : null);
+		}), p.truncated ? /* @__PURE__ */ h("div", { className: "artifacts-diff-label" }, t("truncated")) : null);
 		return /* @__PURE__ */ h("div", { className: "artifacts-preview-body" }, p.diff && typeof p.diff === "object" ? renderDiff(p.diff) : null, view);
 	}
 	//#endregion
@@ -1346,9 +1631,35 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		const [expanded, setExpanded] = React.useState({});
 		const [copiedPath, setCopiedPath] = React.useState(null);
 		const [copiedLabel, setCopiedLabel] = React.useState("");
+		const [query, setQuery] = React.useState("");
+		const [search, setSearch] = React.useState(null);
 		const copyTimer = React.useRef(null);
 		const rootTimer = React.useRef(null);
 		const sessionId = useSessionId();
+		React.useEffect(() => {
+			const q = query.trim();
+			if (!q) {
+				setSearch(null);
+				return;
+			}
+			let alive = true;
+			setSearch({ loading: true });
+			const timer = setTimeout(() => {
+				host.searchFiles(q, currentSessionId()).then((res) => {
+					if (alive) setSearch(res && res.ok ? { entries: res.entries || [] } : { error: res && res.error || t("searchFailed") });
+				}).catch(() => {
+					if (alive) setSearch({ error: t("searchFailed") });
+				});
+			}, 250);
+			return () => {
+				alive = false;
+				clearTimeout(timer);
+			};
+		}, [
+			query,
+			sessionId,
+			refreshToken
+		]);
 		const loadRoot = () => {
 			setChildren({});
 			setExpanded({});
@@ -1387,19 +1698,19 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 				host.listDir(path, currentSessionId()).then((res) => {
 					setChildren((prev) => ({
 						...prev,
-						[path]: res && res.ok ? { entries: res.entries || [] } : { error: res && res.error || "读取失败" }
+						[path]: res && res.ok ? { entries: res.entries || [] } : { error: res && res.error || t("readFailed") }
 					}));
 				}).catch(() => {
 					setChildren((prev) => ({
 						...prev,
-						[path]: { error: "读取失败" }
+						[path]: { error: t("readFailed") }
 					}));
 				});
 			}
 		};
 		const copyRef = (path) => {
 			const text = "@" + path;
-			let label = "已复制";
+			let label = t("copied");
 			const done = () => {
 				setCopiedPath(path);
 				setCopiedLabel(label);
@@ -1410,7 +1721,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 				}, 1600);
 			};
 			if (quoteToComposer(path)) {
-				label = "已插入输入框";
+				label = t("insertedInput");
 				done();
 				return;
 			}
@@ -1423,15 +1734,15 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 				done();
 			}
 		};
-		const rowActions = (entry) => copiedPath === entry.path ? /* @__PURE__ */ h("span", { className: "artifacts-tree-copied" }, copiedLabel || "已复制") : /* @__PURE__ */ h("button", {
+		const rowActions = (entry) => copiedPath === entry.path ? /* @__PURE__ */ h("span", { className: "artifacts-tree-copied" }, copiedLabel || t("copied")) : /* @__PURE__ */ h("button", {
 			type: "button",
 			className: "artifacts-tree-ref",
-			title: "引用到输入框（失败则复制 @path）",
+			title: t("refTitle"),
 			onClick: (e) => {
 				e.stopPropagation();
 				copyRef(entry.path);
 			}
-		}, "@引用");
+		}, t("refBtn"));
 		const renderNode = (entry, depth, flashDelay) => {
 			const pad = { paddingLeft: 6 + depth * 20 };
 			const isSelected = selectedPath === entry.path;
@@ -1459,7 +1770,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 				}, isExpanded ? /* @__PURE__ */ h(FolderOpenIcon, { size: 14 }) : /* @__PURE__ */ h(FolderClosedIcon, { size: 14 }), /* @__PURE__ */ h("span", { className: "artifacts-tree-name" }, entry.name), rowActions(entry)), isExpanded ? node && node.loading ? /* @__PURE__ */ h("div", {
 					className: "artifacts-tree-row artifacts-tree-loading",
 					style: { paddingLeft: 6 + (depth + 1) * 20 + 20 }
-				}, "加载中…") : node && node.error ? /* @__PURE__ */ h("div", {
+				}, t("loading")) : node && node.error ? /* @__PURE__ */ h("div", {
 					className: "artifacts-tree-row artifacts-tree-error",
 					style: { paddingLeft: 6 + (depth + 1) * 20 + 20 }
 				}, node.error) : node && node.entries ? node.entries.map((c) => renderNode(c, depth + 1)) : null : null);
@@ -1484,11 +1795,48 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 				title: entry.path
 			}, /* @__PURE__ */ h(FileCodeIcon, { size: 14 }), /* @__PURE__ */ h("span", { className: "artifacts-tree-name" }, entry.name), rowActions(entry));
 		};
-		return /* @__PURE__ */ h("div", { className: "artifacts-tree" }, /* @__PURE__ */ h("div", { className: "artifacts-tree-body" }, !root ? /* @__PURE__ */ h("div", { className: "artifacts-hint" }, "加载文件树…") : !root.entries || !root.entries.length ? /* @__PURE__ */ h("div", { className: "artifacts-hint" }, "（空目录）") : root.entries.map((e, i) => renderNode(e, 0, Math.min(i, 12) * 45))));
+		const renderSearchRow = (path, idx) => {
+			const entry = {
+				name: basename(path),
+				path,
+				isDir: false,
+				hidden: false
+			};
+			const slash = path.lastIndexOf("/");
+			const dir = slash >= 0 ? path.slice(0, slash) : "";
+			return /* @__PURE__ */ h("div", {
+				key: path,
+				role: "button",
+				tabIndex: 0,
+				className: "artifacts-tree-row artifacts-flash-in" + (selectedPath === path ? " is-selected" : ""),
+				style: { animationDelay: Math.min(idx, 12) * 30 + "ms" },
+				onClick: () => {
+					if (onOpen) onOpen(path);
+				},
+				onKeyDown: (ev) => {
+					if (ev.key === "Enter" || ev.key === " ") {
+						ev.preventDefault();
+						if (onOpen) onOpen(path);
+					}
+				},
+				title: path
+			}, /* @__PURE__ */ h(FileCodeIcon, { size: 14 }), /* @__PURE__ */ h("span", { className: "artifacts-tree-name" }, entry.name, dir ? /* @__PURE__ */ h("span", { className: "artifacts-search-dir" }, dir) : null), rowActions(entry));
+		};
+		return /* @__PURE__ */ h("div", { className: "artifacts-tree" }, /* @__PURE__ */ h("div", { className: "artifacts-searchbar" }, /* @__PURE__ */ h("input", {
+			type: "text",
+			className: "artifacts-search-input",
+			placeholder: t("searchPlaceholder"),
+			value: query,
+			onChange: (e) => setQuery(e.currentTarget.value),
+			onKeyDown: (ev) => {
+				if (ev.key === "Escape") setQuery("");
+			}
+		})), /* @__PURE__ */ h("div", { className: "artifacts-tree-body" }, query.trim() ? search && search.loading ? /* @__PURE__ */ h("div", { className: "artifacts-hint" }, t("searching")) : search && search.error ? /* @__PURE__ */ h("div", { className: "artifacts-tree-error artifacts-git-error" }, search.error) : search && search.entries && search.entries.length ? search.entries.map((p, i) => renderSearchRow(p, i)) : /* @__PURE__ */ h("div", { className: "artifacts-hint" }, t("noResults")) : !root ? /* @__PURE__ */ h("div", { className: "artifacts-hint" }, t("loadingTree")) : !root.entries || !root.entries.length ? /* @__PURE__ */ h("div", { className: "artifacts-hint" }, t("emptyDir")) : root.entries.map((e, i) => renderNode(e, 0, Math.min(i, 12) * 45))));
 	}
 	function ArtifactsPanel() {
 		const open = useOpen();
 		const settings = useSettings();
+		useLang();
 		const [tabs, setTabs] = React.useState([]);
 		const [activeKey, setActiveKey] = React.useState(null);
 		const [previewHidden, setPreviewHidden] = React.useState(false);
@@ -1532,7 +1880,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 						setGitError(null);
 					} else {
 						setGitFiles([]);
-						setGitError(res && res.error || "git status 失败");
+						setGitError(res && res.error || t("gitStatusFailed"));
 					}
 				}).catch((e) => {
 					if (force) setGitRefreshing(false);
@@ -1652,10 +2000,10 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		};
 		const quotePath = (path) => {
 			if (quoteToComposer(path)) {
-				flash("已插入输入框");
+				flash(t("insertedInput"));
 				return;
 			}
-			copyText("@" + path, "已复制 @引用（未能写入输入框）");
+			copyText("@" + path, t("copiedRef"));
 		};
 		const patchTab = (key, patch) => setTabs((prev) => prev.map((t) => t.key === key ? {
 			...t,
@@ -1737,15 +2085,16 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		const gitTitle = (e) => {
 			const label = gitLabel(e);
 			const map = {
-				U: "未跟踪",
-				A: "新增",
-				M: "修改",
-				D: "删除",
-				R: "重命名",
-				C: "复制"
+				U: t("statusU"),
+				A: t("statusA"),
+				M: t("statusM"),
+				D: t("statusD"),
+				R: t("statusR"),
+				C: t("statusC"),
+				T: t("statusT")
 			};
 			const staged = e.x !== " " && e.x !== "?";
-			return (map[label] || label) + (staged ? "（已暂存）" : "（未暂存）");
+			return (map[label] || label) + (staged ? t("staged") : t("unstaged"));
 		};
 		const gitListRows = [];
 		if (gitError) gitListRows.push(/* @__PURE__ */ h("div", {
@@ -1755,11 +2104,11 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		else if (gitFiles == null) gitListRows.push(/* @__PURE__ */ h("div", {
 			key: "load",
 			className: "artifacts-empty"
-		}, "加载变更列表…"));
+		}, t("loadingChanges")));
 		else if (!gitFiles.length) gitListRows.push(/* @__PURE__ */ h("div", {
 			key: "empty",
 			className: "artifacts-empty"
-		}, "没有未提交的变更"));
+		}, t("noChanges")));
 		(gitFiles || []).forEach((e, idx) => {
 			const label = gitLabel(e);
 			const isActive = !!(activeTab && activeTab.git && activeTab.path === e.path);
@@ -1776,36 +2125,36 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			}, /* @__PURE__ */ h("div", { className: "artifacts-item-row" }, /* @__PURE__ */ h("span", { className: "artifacts-git-badge artifacts-git-badge-" + label }, label), /* @__PURE__ */ h("span", { className: "artifacts-item-base" }, basename(e.path)), e.origPath ? /* @__PURE__ */ h("span", { className: "artifacts-git-orig" }, "← ", basename(e.origPath)) : null), /* @__PURE__ */ h("div", { className: "artifacts-item-full" }, e.path)), /* @__PURE__ */ h("div", { className: "artifacts-item-actions" }, /* @__PURE__ */ h("button", {
 				type: "button",
 				className: "artifacts-minibtn",
-				title: "复制路径",
-				onClick: () => copyText(e.path, "已复制路径")
+				title: t("copyPath"),
+				onClick: () => copyText(e.path, t("copiedPath"))
 			}, "⧉"), /* @__PURE__ */ h("button", {
 				type: "button",
 				className: "artifacts-minibtn",
-				title: "@引用到输入框",
+				title: t("refInput"),
 				onClick: () => quotePath(e.path)
 			}, "@"))));
 		});
 		const previewOverlay = tabs.length && !previewHidden ? /* @__PURE__ */ h("div", {
 			className: "artifacts-preview-overlay" + (slidOut ? " artifacts-slid-out" : ""),
 			role: "region",
-			"aria-label": "文件预览"
-		}, /* @__PURE__ */ h("div", { className: "artifacts-preview-overlay-tabs" }, /* @__PURE__ */ h("div", { className: "artifacts-ptabs-scroll" }, tabs.map((t) => /* @__PURE__ */ h("div", {
-			key: t.key,
-			className: "artifacts-ptab" + (t.key === activeKey ? " is-active" : ""),
-			title: (t.git ? "[diff] " : "") + (t.path || ""),
-			onClick: () => setActiveKey(t.key)
-		}, /* @__PURE__ */ h("span", { className: "artifacts-ptab-name" }, basename(t.path || "")), /* @__PURE__ */ h("button", {
+			"aria-label": t("previewRegion")
+		}, /* @__PURE__ */ h("div", { className: "artifacts-preview-overlay-tabs" }, /* @__PURE__ */ h("div", { className: "artifacts-ptabs-scroll" }, tabs.map((tab) => /* @__PURE__ */ h("div", {
+			key: tab.key,
+			className: "artifacts-ptab" + (tab.key === activeKey ? " is-active" : ""),
+			title: (tab.git ? t("diffTabPrefix") : "") + (tab.path || ""),
+			onClick: () => setActiveKey(tab.key)
+		}, /* @__PURE__ */ h("span", { className: "artifacts-ptab-name" }, basename(tab.path || "")), /* @__PURE__ */ h("button", {
 			type: "button",
 			className: "artifacts-ptab-close",
-			title: "关闭标签页",
+			title: t("closeTab"),
 			onClick: (e) => {
 				e.stopPropagation();
-				closeTab(t.key);
+				closeTab(tab.key);
 			}
 		}, "×")))), /* @__PURE__ */ h("button", {
 			type: "button",
 			className: "artifacts-preview-hide",
-			title: "隐藏预览（标签页保留）",
+			title: t("hidePreview"),
 			onClick: () => setPreviewHidden(true)
 		}, /* @__PURE__ */ h(PanelCollapseIcon, { size: 16 }))), activeTab ? renderPreview(activeTab) : null) : null;
 		return /* @__PURE__ */ h(Fragment, null, previewOverlay, /* @__PURE__ */ h("div", {
@@ -1815,23 +2164,23 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			"aria-label": "Artifacts"
 		}, /* @__PURE__ */ h("div", {
 			className: "artifacts-resize",
-			title: "拖动调整宽度",
+			title: t("resizeHandle"),
 			onMouseDown: startResize
 		}), /* @__PURE__ */ h("div", { className: "artifacts-head" }, /* @__PURE__ */ h("div", { className: "artifacts-head-left" }, /* @__PURE__ */ h("button", {
 			type: "button",
 			className: "artifacts-toggle",
-			title: "收起侧边栏",
+			title: t("collapsePanel"),
 			onClick: () => store.setOpen(false)
 		}, /* @__PURE__ */ h(PanelIcon, { size: 16 })), /* @__PURE__ */ h("a", {
 			className: "artifacts-link",
 			href: flyoutHref,
 			target: "_blank",
 			rel: "noreferrer noopener",
-			title: "弹出式侧边栏 — 在新标签页打开（可拖到另一块显示器）"
+			title: t("flyoutOpen")
 		}, /* @__PURE__ */ h(FlyoutIcon, { size: 16 }))), /* @__PURE__ */ h("span", { className: "artifacts-spacer" }), notice ? /* @__PURE__ */ h("span", { className: "artifacts-notice" }, notice) : null, /* @__PURE__ */ h("button", {
 			type: "button",
 			className: "artifacts-toggle",
-			title: activeView === "tree" ? "刷新文件树" : "刷新变更列表",
+			title: activeView === "tree" ? t("refreshTree") : t("refreshChanges"),
 			onClick: () => {
 				if (activeView === "tree") setTreeRefresh((n) => n + 1);
 				else {
@@ -1843,7 +2192,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		}, /* @__PURE__ */ h(RefreshIcon, { size: 16 })), settings.showFileTree ? /* @__PURE__ */ h("button", {
 			type: "button",
 			className: "artifacts-iconbtn artifacts-viewbtn" + (activeView === "git" ? " is-active" : ""),
-			title: activeView === "tree" ? "查看 Git 变更（未提交）" : "返回文件列表",
+			title: activeView === "tree" ? t("viewGit") : t("backToFiles"),
 			"aria-pressed": activeView === "git",
 			onClick: () => setActiveView(activeView === "tree" ? "git" : "tree")
 		}, activeView === "tree" ? /* @__PURE__ */ h(GitBranchIcon, { size: 16 }) : /* @__PURE__ */ h(FolderClosedIcon, { size: 16 })) : null), /* @__PURE__ */ h("div", { className: "artifacts-main" }, /* @__PURE__ */ h("div", {
@@ -1857,10 +2206,11 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 	}
 	function CornerButton() {
 		const open = useOpen();
+		useLang();
 		return /* @__PURE__ */ h("button", {
 			type: "button",
 			className: "artifacts-corner-btn" + (open ? " artifacts-slid-out" : ""),
-			title: "弹出式侧边栏",
+			title: t("flyoutTitle"),
 			"aria-expanded": open,
 			onClick: () => store.toggle()
 		}, /* @__PURE__ */ h(PanelIcon, { size: 18 }));
@@ -1878,23 +2228,24 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 	}
 	function SettingsSection() {
 		const settings = useSettings();
+		useLang();
 		const set = (key, value) => settingsStore.set(key, value);
-		return /* @__PURE__ */ h("div", { className: "artifacts-settings" }, /* @__PURE__ */ h("p", { className: "artifacts-setintro" }, "管理「Flyout Sidebar」的显示与行为。"), /* @__PURE__ */ h("div", { className: "artifacts-setgroup" }, /* @__PURE__ */ h(SettingsToggle, {
-			label: "默认展开",
-			desc: "页面加载后侧边栏默认展开；关闭则默认收起，点右上角图标再打开。",
+		return /* @__PURE__ */ h("div", { className: "artifacts-settings" }, /* @__PURE__ */ h("p", { className: "artifacts-setintro" }, t("settingsIntro")), /* @__PURE__ */ h("div", { className: "artifacts-setgroup" }, /* @__PURE__ */ h(SettingsToggle, {
+			label: t("setDefaultOpen"),
+			desc: t("setDefaultOpenDesc"),
 			value: settings.defaultOpen,
 			onToggle: (v) => set("defaultOpen", v)
 		}), /* @__PURE__ */ h(SettingsToggle, {
-			label: "自动刷新",
-			desc: "开启后侧边栏展开时将即时同步并更新产物列表",
+			label: t("setAutoRefresh"),
+			desc: t("setAutoRefreshDesc"),
 			value: settings.autoRefresh,
 			onToggle: (v) => set("autoRefresh", v)
 		}), /* @__PURE__ */ h(SettingsToggle, {
-			label: "文件树",
-			desc: "在侧边栏显示「文件树」标签页，浏览工作区目录。",
+			label: t("setFileTree"),
+			desc: t("setFileTreeDesc"),
 			value: settings.showFileTree,
 			onToggle: (v) => set("showFileTree", v)
-		}), /* @__PURE__ */ h("div", { className: "artifacts-setrow" }, /* @__PURE__ */ h("div", { className: "artifacts-settext" }, /* @__PURE__ */ h("div", { className: "artifacts-settitle" }, "最短面板宽度"), /* @__PURE__ */ h("div", { className: "artifacts-setdesc" }, "面板的最小宽度（占窗口宽度的百分比，20–60）；更宽可通过拖动面板左边缘调整。")), /* @__PURE__ */ h("div", { className: "artifacts-setcontrol" }, /* @__PURE__ */ h("input", {
+		}), /* @__PURE__ */ h("div", { className: "artifacts-setrow" }, /* @__PURE__ */ h("div", { className: "artifacts-settext" }, /* @__PURE__ */ h("div", { className: "artifacts-settitle" }, t("setMinWidth")), /* @__PURE__ */ h("div", { className: "artifacts-setdesc" }, t("setMinWidthDesc"))), /* @__PURE__ */ h("div", { className: "artifacts-setcontrol" }, /* @__PURE__ */ h("input", {
 			type: "number",
 			className: "artifacts-widthinput",
 			min: 20,
@@ -1905,7 +2256,14 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 				if (Number.isNaN(n)) return;
 				set("minPanelWidth", Math.max(20, Math.min(60, n)));
 			}
-		}), /* @__PURE__ */ h("span", { className: "artifacts-suffix" }, "%")))));
+		}), /* @__PURE__ */ h("span", { className: "artifacts-suffix" }, "%"))), /* @__PURE__ */ h("div", { className: "artifacts-setrow" }, /* @__PURE__ */ h("div", { className: "artifacts-settext" }, /* @__PURE__ */ h("div", { className: "artifacts-settitle" }, t("setLang")), /* @__PURE__ */ h("div", { className: "artifacts-setdesc" }, t("setLangDesc"))), /* @__PURE__ */ h("div", { className: "artifacts-setcontrol" }, /* @__PURE__ */ h("select", {
+			className: "artifacts-langselect",
+			value: getLanguageSetting() || "",
+			onChange: (e) => {
+				const v = e.currentTarget.value;
+				setLanguage(v === "zh" || v === "en" ? v : null);
+			}
+		}, /* @__PURE__ */ h("option", { value: "" }, t("langAuto")), /* @__PURE__ */ h("option", { value: "zh" }, t("langZh")), /* @__PURE__ */ h("option", { value: "en" }, t("langEn")))))));
 	}
 	//#endregion
 	//#region src/client/index.tsx

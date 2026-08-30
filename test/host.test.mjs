@@ -123,6 +123,7 @@ test('host plugin: apply registers routes, events and intervals', async () => {
     '/flyout-sidebar/media',
     '/flyout-sidebar/remove',
     '/flyout-sidebar/listdir',
+    '/flyout-sidebar/search',
     '/flyout-sidebar/gitstatus',
     '/flyout-sidebar/gitdiff',
     '/flyout-sidebar/pdfjs/pdf.min.js',
@@ -190,6 +191,64 @@ test('host plugin: content / listdir / media routes', async () => {
   const res4 = makeFakeRes()
   await ctx.routes.get('/flyout-sidebar/content')({ url: '/flyout-sidebar/content?path=missing.txt' }, res4)
   assert.equal(JSON.parse(res4.body).ok, false)
+})
+
+test('host plugin: search route (git ls-files + fallback walk)', async () => {
+  const workspace = mkdtempSync(join(os.tmpdir(), 'dsh-flyout-search-'))
+  writeFileSync(join(workspace, 'alpha.ts'), 'export {}\n')
+  mkdirSync(join(workspace, 'lib'))
+  writeFileSync(join(workspace, 'lib', 'alpha-utils.ts'), 'export {}\n')
+  writeFileSync(join(workspace, 'beta.md'), '# beta\n')
+  const plugin = await import('../dist/index.js')
+  const ctx = makeCtx(workspace)
+  plugin.apply(ctx)
+
+  const res = makeFakeRes()
+  await ctx.routes.get('/flyout-sidebar/search')({ url: '/flyout-sidebar/search?q=alpha' }, res)
+  const body = JSON.parse(res.body)
+  assert.equal(body.ok, true)
+  assert.equal(body.query, 'alpha')
+  // 大小写不敏感子串匹配，字典序返回
+  assert.deepEqual(body.entries, ['alpha.ts', 'lib/alpha-utils.ts'])
+
+  // 无 git 仓库时回退文件系统遍历，仍能搜到
+  const plain = mkdtempSync(join(os.tmpdir(), 'dsh-flyout-plain-'))
+  writeFileSync(join(plain, 'gamma.js'), 'x')
+  const ctx2 = makeCtx(plain)
+  plugin.apply(ctx2)
+  const res2 = makeFakeRes()
+  await ctx2.routes.get('/flyout-sidebar/search')({ url: '/flyout-sidebar/search?q=GAM' }, res2)
+  const body2 = JSON.parse(res2.body)
+  assert.equal(body2.ok, true)
+  assert.deepEqual(body2.entries, ['gamma.js'])
+
+  // 空查询返回空列表
+  const res3 = makeFakeRes()
+  await ctx.routes.get('/flyout-sidebar/search')({ url: '/flyout-sidebar/search' }, res3)
+  assert.deepEqual(JSON.parse(res3.body).entries, [])
+})
+
+test('host plugin: oversized text file is truncated without reading it all', async () => {
+  const workspace = mkdtempSync(join(os.tmpdir(), 'dsh-flyout-big-'))
+  // > 200000 字符（cap），但远小于 cap*4 字节上界：仍应截断并打标
+  writeFileSync(join(workspace, 'huge.log'), 'x'.repeat(200001))
+  writeFileSync(join(workspace, 'exact.txt'), 'y'.repeat(200000))
+  const plugin = await import('../dist/index.js')
+  const ctx = makeCtx(workspace)
+  plugin.apply(ctx)
+
+  const res = makeFakeRes()
+  await ctx.routes.get('/flyout-sidebar/content')({ url: '/flyout-sidebar/content?path=huge.log' }, res)
+  const body = JSON.parse(res.body)
+  assert.equal(body.ok, true)
+  assert.equal(body.content.length, 200000)
+  assert.equal(body.truncated, true)
+  assert.equal(body.size, 200001)
+
+  const res2 = makeFakeRes()
+  await ctx.routes.get('/flyout-sidebar/content')({ url: '/flyout-sidebar/content?path=exact.txt' }, res2)
+  const body2 = JSON.parse(res2.body)
+  assert.equal(body2.truncated, false)
 })
 
 test('host plugin: git status and diff against a real repo', async () => {

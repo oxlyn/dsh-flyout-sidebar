@@ -1,9 +1,10 @@
 /**
- * Host 侧：文件读取与目录列举（文件树 / 代码预览的后端）。
+ * Host 侧：文件读取与目录列举（文件树 / 代码预览的后端）+ 文件名搜索。
  */
 import { extType } from '../shared/ext.js'
 import type { DshFs, HostContext } from './types'
 import { resolveCwd } from './workspace'
+import { runGit } from './git'
 
 export interface ReadResult {
   ok: boolean
@@ -33,8 +34,17 @@ export async function readFile(ctx: HostContext, path: unknown): Promise<ReadRes
     const target = await fs.resolve(path, cwd ? { cwd } : undefined)
     const info = await fs.stat(target)
     if (!info || info.type !== 'file') return { ok: false, error: 'not a readable file' }
-    const text = await fs.readText(target)
     const cap = 200000
+    // 截断上限的字节上界（UTF-8 每字符最多 4 字节）。大文件只从后端读需要的
+    // 字节再解码 —— readText 会把整个文件读进内存，GB 级日志会打爆进程。
+    const capBytes = cap * 4
+    let text: string
+    if (typeof info.size === 'number' && info.size > capBytes) {
+      const bytes = await fs.readBytes(target, undefined, capBytes)
+      text = new TextDecoder().decode(new Uint8Array(bytes))
+    } else {
+      text = await fs.readText(target)
+    }
     return { ok: true, type: extType(path), content: text.slice(0, cap), truncated: text.length > cap, size: info.size }
   } catch (e) {
     return { ok: false, error: e && typeof e === 'object' && 'message' in e ? String((e as Error).message) : 'read failed' }
@@ -70,5 +80,79 @@ export async function listDir(ctx: HostContext, path: unknown, sessionId?: strin
     return { ok: true, path: p, entries: rows }
   } catch (e) {
     return { ok: false, error: e && typeof e === 'object' && 'message' in e ? String((e as Error).message) : 'list failed' }
+  }
+}
+
+export interface SearchResult {
+  ok: boolean
+  error?: string
+  query?: string
+  entries?: string[]
+}
+
+/** 单次搜索返回的路径数上限，防止超大仓库刷爆响应 */
+const SEARCH_MAX = 200
+const SEARCH_WALK_MAX_FILES = 20000
+const SEARCH_WALK_MAX_DEPTH = 12
+
+/** git 不可用时的回退：有界文件系统遍历（跳过依赖/缓存目录与点前缀目录） */
+async function walkFileNames(ctx: HostContext, root: string): Promise<string[]> {
+  const fs = ctx.get<DshFs>('fs')
+  if (!fs) return []
+  const SKIP = new Set([
+    'node_modules', 'venv', '.venv', 'env', '__pycache__', 'dist', 'build', 'out',
+    'target', '.git', '.svn', '.hg', '.next', '.cache', '.tox', '.idea', '.vscode',
+  ])
+  const out: string[] = []
+  let count = 0
+  const walk = async (dirPath: string, depth: number): Promise<void> => {
+    if (count >= SEARCH_WALK_MAX_FILES || depth > SEARCH_WALK_MAX_DEPTH) return
+    let entries
+    try {
+      entries = await fs.listDir(await fs.resolve(dirPath))
+    } catch {
+      return
+    }
+    if (!entries) return
+    for (const e of entries) {
+      if (count >= SEARCH_WALK_MAX_FILES) return
+      const child = dirPath.replace(/\/+$/, '') + '/' + e.name
+      if (e.type === 'directory') {
+        if (e.name.startsWith('.') || SKIP.has(e.name)) continue
+        await walk(child, depth + 1)
+      } else {
+        count += 1
+        out.push(child)
+      }
+    }
+  }
+  await walk(root, 0)
+  return out
+}
+
+/**
+ * 文件名搜索（文件树搜索框的后端）：子串不区分大小写匹配。优先
+ * `git ls-files --cached --others --exclude-standard`（快、尊重 gitignore、
+ * 含未跟踪文件）；git 不可用时回退有界 fs 遍历。路径按字典序返回。
+ */
+export async function searchFiles(ctx: HostContext, query: unknown, sessionId?: string): Promise<SearchResult> {
+  const q = typeof query === 'string' ? query.trim() : ''
+  if (!q) return { ok: true, query: '', entries: [] }
+  try {
+    const cwd = await resolveCwd(ctx, sessionId)
+    if (!cwd) return { ok: false, error: 'workspace unavailable' }
+    const git = await runGit(['ls-files', '--cached', '--others', '--exclude-standard'], cwd)
+    const all = git.ok && git.out != null ? git.out.split('\n') : await walkFileNames(ctx, cwd)
+    // 统一返回相对工作区根的路径（walk 回退产出绝对路径）
+    const prefix = cwd.replace(/\/+$/, '') + '/'
+    const lower = q.toLowerCase()
+    const entries = all
+      .map((p) => (p.startsWith(prefix) ? p.slice(prefix.length) : p))
+      .filter((p) => p && p.toLowerCase().includes(lower))
+      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+      .slice(0, SEARCH_MAX)
+    return { ok: true, query: q, entries }
+  } catch (e) {
+    return { ok: false, error: e && typeof e === 'object' && 'message' in e ? String((e as Error).message) : 'search failed' }
   }
 }

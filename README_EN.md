@@ -58,7 +58,7 @@ dsh --profile web --dump-config | grep dsh-flyout-sidebar   # this line should a
 
 | # | Form | Entry | Description |
 |---|------|-------|-------------|
-| 1 | File tree view (default) | visible when the panel opens | Browse the current workspace; lazy-expanded directories, directories first; re-roots automatically when the workspace/session switches |
+| 1 | File tree view (default) | visible when the panel opens | Browse the current workspace; lazy-expanded directories, directories first; re-roots automatically when the workspace/session switches; a search box at the top filters files by name (instant full-repo search via `git ls-files`, gitignore-aware) |
 | 2 | Git changes view | git-branch icon in the panel header | Lists changed-but-uncommitted files (`M`/`A`/`D`/`R`/`U` badges, hover for staged/unstaged, renames show the original path); clicking a file shows a colored unified diff against HEAD — untracked files get a synthesized new-file diff |
 | 3 | Multi-tab preview | click a file | The preview overlay covers the entire area left of the sidebar; open many files at once; syntax highlighting by extension, plus Markdown, images, PDF and sandboxed HTML iframes; ⇥ collapses the whole preview (tabs kept, opening a file restores them) |
 | 4 | Flyout tab | ↗ in the panel header | Pops out to `/flyout-sidebar`, draggable to another monitor; content left / file panel right, one-click side swap, draggable width (defaults to minimum, preference remembered) |
@@ -70,6 +70,7 @@ dsh --profile web --dump-config | grep dsh-flyout-sidebar   # this line should a
 - Both the panel and the flyout tab follow DSH's light/dark theme in real time (the flyout syncs via `localStorage`, correct on first paint)
 - Coexists with other sidebar plugins: it shifts left of other side cards automatically, both stay visible
 - The panel opens/closes with a push-pull slide animation; the trigger button slides along with it
+- Bilingual UI (Chinese / English): follows the browser language by default, pinnable in settings; the flyout syncs the choice via `localStorage`
 
 ![Flyout tab — full-window preview](snapshots/flyout-file-preview.png)
 
@@ -83,6 +84,7 @@ A "**Flyout Sidebar**" tab appears in the DSH settings panel (⚙️ in the bott
 | Auto refresh | on | Poll the latest git status every 2s while the changes view is open |
 | File tree | on | Show the file tree view and the view-toggle icon; when off the panel always shows the Git changes view |
 | Min panel width | 20% | Minimum panel width (percent of window width, 20–60%); drag the panel's left edge to widen it |
+| Interface language | auto (browser) | Display language for the sidebar and the flyout page (Chinese / English); the flyout applies it after a reload |
 
 Settings are stored in the browser's `localStorage` (key `dsh-flyout-sidebar:settings`); the flyout's panel width / side preferences live in `dsh-flyout-sidebar:panelw` / `panelLeft`.
 

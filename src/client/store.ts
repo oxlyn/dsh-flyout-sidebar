@@ -6,6 +6,7 @@
  * - currentSessionId / quoteToComposer：读取客户端会话库、把 @path 引用
  *   写入会话输入框。
  */
+import { getLang, getExplicitLang, setLang as setI18nLang, subscribeLang } from '../shared/i18n.js'
 import type { SessionListLike } from './runtime'
 import { ctx } from './runtime'
 import { React } from './jsx'
@@ -262,3 +263,22 @@ export function useSessionId(): string {
   }, [])
   return sessionId
 }
+
+/**
+ * 界面语言：订阅 i18n 的语言变更，语言切换时强制订阅组件重渲染（组件内的
+ * t() 调用随之取到新语言文案）。返回值用于设置区判断下拉框选项。
+ */
+export function useLang(): 'zh' | 'en' {
+  const [, force] = React.useReducer((n: number) => n + 1, 0)
+  React.useEffect(() => {
+    const unsubscribe = subscribeLang(() => force())
+    return () => unsubscribe()
+  }, [])
+  return getLang()
+}
+
+/** 当前设置语言：'zh' / 'en'（显式）或 null（跟随浏览器自动判定） */
+export const getLanguageSetting = getExplicitLang
+
+/** 设置界面语言并持久化；null = 恢复跟随浏览器 */
+export const setLanguage = setI18nLang
