@@ -12,11 +12,25 @@ function mdEscape(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
+/**
+ * URL 白名单：只放行 http(s)、站内相对路径、页内锚点与 data:image/*，
+ * 其余（javascript:、vbscript: 及实体编码变体等）一律替换为 '#'，防止
+ * 预览渲染出来的链接/图片在点击时执行脚本。
+ * @param {string} u @returns {string}
+ */
+function mdSafeUrl(u) {
+  var s = String(u || '').replace(/[\s\u0000-\u001f]/g, '')
+  if (/^https?:\/\//i.test(s)) return s
+  if (/^\/(?!\/)/.test(s) || /^\.{1,2}\//.test(s) || s.charAt(0) === '#') return s
+  if (/^data:image\/(?:png|gif|jpeg|webp|bmp|avif);/i.test(s)) return s
+  return '#'
+}
+
 /** @param {string} s @returns {string} */
 function mdInline(s) {
   s = s.replace(/`([^`]+)`/g, (m, c) => '<code>' + c + '</code>')
-  s = s.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, '<img alt="$1" src="$2">')
-  s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
+  s = s.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (m, alt, u) => '<img alt="' + alt + '" src="' + mdSafeUrl(u) + '">')
+  s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (m, text, u) => '<a href="' + mdSafeUrl(u) + '" target="_blank" rel="noopener noreferrer">' + text + '</a>')
   s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
   s = s.replace(/\*([^*\n]+)\*/g, '<em>$1</em>')
   return s

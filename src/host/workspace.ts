@@ -119,6 +119,7 @@ export async function resolveCwd(ctx: HostContext, sessionId?: string): Promise<
  * 陈旧根目录。
  */
 const cwdCache = new Map<string, string>()
+const CWD_CACHE_MAX = 64
 
 export async function resolveCwdCached(ctx: HostContext, sessionId?: string): Promise<string | undefined> {
   const key = sessionId || ''
@@ -139,6 +140,13 @@ export async function resolveCwdCached(ctx: HostContext, sessionId?: string): Pr
     }
   }
   const c = await resolveCwd(ctx, sessionId)
-  if (c) cwdCache.set(key, c)
+  if (c) {
+    if (!cwdCache.has(key) && cwdCache.size >= CWD_CACHE_MAX) {
+      // Map 按插入序迭代：删最旧的条目防长驻进程无限增长
+      const oldest = cwdCache.keys().next()
+      if (!oldest.done) cwdCache.delete(oldest.value)
+    }
+    cwdCache.set(key, c)
+  }
   return c
 }

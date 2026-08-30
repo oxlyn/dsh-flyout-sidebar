@@ -4,11 +4,11 @@
 import { Fragment, h, React } from './jsx'
 import { extType } from '../shared/ext.js'
 import { t } from '../shared/i18n.js'
+import { basename, gitLabel, gitTitle } from '../shared/gitui.js'
 import type { ReactElement, ReactNode } from 'react'
 
 import { ctx, host, type GitStatusEntry, type ListEntry } from './runtime'
 import {
-  basename,
   currentSessionId,
   fallbackCopy,
   getLanguageSetting,
@@ -32,9 +32,7 @@ import {
   PanelCollapseIcon,
   PanelIcon,
   FlyoutIcon,
-  ExternalIcon,
   RefreshIcon,
-  WrapIcon,
 } from './icons'
 
 // 文件树（文件树视图）：better-sidebar 风格的资源管理器 —— 圆角行、目录/
@@ -354,20 +352,29 @@ export function FileTree({ onOpen, selectedPath, refreshToken }: FileTreeProps):
   )
 }
 
-export function ArtifactsPanel(): ReactElement | null {
-  const open = useOpen()
-  const settings = useSettings()
-  // 订阅界面语言：切换语言时本组件（含整棵子树）重渲染，t() 取到新文案。
-  useLang()
+const TABS_KEY = 'dsh-flyout-sidebar:tabs'
+
+/**
+ * 多标签预览状态（'p:' 前缀 = 内容预览，'g:' 前缀 = git diff）：打开/关闭/
+ * 会话切换清空/持久化与恢复集中在此 hook，面板组件只消费结果。
+ */
+function usePreviewTabs(sessionId: string): {
+  tabs: PreviewTab[]
+  activeKey: string | null
+  setActiveKey: (key: string | null) => void
+  previewHidden: boolean
+  setPreviewHidden: (v: boolean) => void
+  openFile: (path: string) => void
+  openGitDiff: (path: string) => void
+  closeTab: (key: string) => void
+} {
   const [tabs, setTabs] = React.useState<PreviewTab[]>([])
   const [activeKey, setActiveKey] = React.useState<string | null>(null)
-  // ⇥ 隐藏整个预览覆盖层但保留标签页；从文件树/git 列表打开任何文件都会全部
-  // 恢复。
+  // ⇥ 隐藏整个预览覆盖层但保留标签页；从文件树/git 列表打开任何文件都会恢复。
   const [previewHidden, setPreviewHidden] = React.useState(false)
 
   // 跟随活动会话：预览标签页属于某个项目的文件，工作区切换时全部关闭
   //（否则陈旧标签会把旧项目内容显示在新工作区旁边）。
-  const sessionId = useSessionId()
   const firstSession = React.useRef(true)
   React.useEffect(() => {
     if (firstSession.current) {
@@ -383,8 +390,197 @@ export function ArtifactsPanel(): ReactElement | null {
       // sessionStorage 不可用时跳过
     }
   }, [sessionId])
+
+  // 标签持久化（sessionStorage，按会话归属）：浏览器刷新后恢复打开的标签
+  //（只存元数据，内容恢复时重新拉取）。会话切换时由上面的清空逻辑移除。
+  React.useEffect(() => {
+    try {
+      if (!tabs.length) sessionStorage.removeItem(TABS_KEY)
+      else
+        sessionStorage.setItem(
+          TABS_KEY,
+          JSON.stringify({ sid: sessionId, tabs: tabs.map((tb) => ({ key: tb.key, path: tb.path, git: tb.git })), activeKey }),
+        )
+    } catch {
+      // sessionStorage 不可用时跳过
+    }
+  }, [tabs, activeKey, sessionId])
+
+  const patchTab = (key: string, patch: Partial<PreviewTab>): void =>
+    setTabs((prev) => prev.map((t) => (t.key === key ? { ...t, ...patch } : t)))
+
+  const openTab = (key: string, path: string, git: boolean, initial: Partial<PreviewTab>): void => {
+    setPreviewHidden(false)
+    setTabs((prev) => {
+      const i = prev.findIndex((t) => t.key === key)
+      if (i >= 0) {
+        // 重复打开 = 重新加载并聚焦该标签。
+        const next = prev.slice()
+        const cur = next[i]
+        if (cur) next[i] = { ...cur, ...initial }
+        return next
+      }
+      return prev.concat([{ key, path, git, ...initial }])
+    })
+    setActiveKey(key)
+  }
+
+  const closeTab = (key: string): void => {
+    setTabs((prev) => {
+      const idx = prev.findIndex((t) => t.key === key)
+      const next = prev.filter((t) => t.key !== key)
+      if (activeKey === key) setActiveKey(next.length ? (next[Math.min(idx, next.length - 1)]?.key ?? null) : null)
+      return next
+    })
+  }
+
+  const openFile = (path: string): void => {
+    const key = 'p:' + path
+    const type = extType(path)
+    // 图片和 PDF 以二进制媒体伺服 —— 无需读文本。
+    const initial: Partial<PreviewTab> = { loading: false, type, diff: null }
+    if (type !== 'image' && type !== 'pdf') initial.loading = true
+    openTab(key, path, false, initial)
+    if (type === 'image' || type === 'pdf') return
+    host
+      .readArtifact(path, sessionId)
+      .then((res) => {
+        patchTab(key, { loading: false, ...res })
+      })
+      .catch((e: unknown) => {
+        patchTab(key, { loading: false, ok: false, error: String(e instanceof Error && e.message ? e.message : e) })
+      })
+  }
+
+  // 打开一个变更文件相对 HEAD 的未提交 diff。
+  const openGitDiff = (path: string): void => {
+    const key = 'g:' + path
+    openTab(key, path, true, { loading: true })
+    host
+      .gitDiff(path, sessionId)
+      .then((res) => {
+        patchTab(key, { loading: false, ...res })
+      })
+      .catch((e: unknown) => {
+        patchTab(key, { loading: false, ok: false, error: String(e instanceof Error && e.message ? e.message : e) })
+      })
+  }
+
+  // 恢复持久化的标签：同一会话内浏览器刷新后，把打开的标签重新拉起
+  //（openFile / openGitDiff 自带重新取数）。每个会话只恢复一次。
+  const restoredSid = React.useRef<string | null>(null)
+  React.useEffect(() => {
+    if (restoredSid.current === sessionId) return
+    restoredSid.current = sessionId
+    if (sessionId == null) return
+    try {
+      const raw = sessionStorage.getItem(TABS_KEY)
+      if (!raw) return
+      const saved: unknown = JSON.parse(raw)
+      const sid = (saved as { sid?: unknown }).sid
+      const list = (saved as { tabs?: unknown }).tabs
+      if (sid !== sessionId || !Array.isArray(list)) return
+      for (const st of list as Array<{ key?: unknown; path?: unknown; git?: unknown }>) {
+        if (typeof st?.key !== 'string' || typeof st?.path !== 'string') continue
+        if (st.git) openGitDiff(st.path)
+        else openFile(st.path)
+      }
+      const savedActive = (saved as { activeKey?: unknown }).activeKey
+      if (typeof savedActive === 'string') setActiveKey(savedActive)
+    } catch {
+      // 解析失败按无持久化处理
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId])
+
+  return { tabs, activeKey, setActiveKey, previewHidden, setPreviewHidden, openFile, openGitDiff, closeTab }
+}
+
+interface GitChangesListProps {
+  files: GitStatusEntry[] | null
+  error: string | null
+  /** 活动 diff 标签的路径（高亮对应行） */
+  activeDiffPath: string | null
+  /** >0 时作为行 key 前缀：刷新后行重新挂载、重放浮现动画 */
+  flashKey: number
+  onOpen: (path: string) => void
+  onCopyPath: (path: string) => void
+  onQuote: (path: string) => void
+}
+
+/** git 变更列表（文件面板的「变更」视图） */
+export function GitChangesList({ files, error, activeDiffPath, flashKey, onOpen, onCopyPath, onQuote }: GitChangesListProps): ReactElement {
+  const rows: ReactNode[] = []
+  if (error) {
+    rows.push(
+      <div key="err" className="artifacts-tree-error artifacts-git-error">
+        {error}
+      </div>,
+    )
+  } else if (files == null) {
+    rows.push(<div key="load" className="artifacts-empty">{t('loadingChanges')}</div>)
+  } else if (!files.length) {
+    rows.push(<div key="empty" className="artifacts-empty">{t('noChanges')}</div>)
+  }
+  ;(files || []).forEach((e, idx) => {
+    const label = gitLabel(e)
+    const isActive = activeDiffPath === e.path
+    // 刚刷新过：key 带上 flashKey 令行重新挂载、重放动画；延迟按行号递增，
+    // 形成「从上往下逐行浮现」，封顶避免长列表拖太久。
+    const flashPrefix = flashKey > 0 ? flashKey + ':' : ''
+    rows.push(
+      <div
+        key={flashPrefix + e.path}
+        className={'artifacts-item' + (isActive ? ' is-active' : '') + (flashPrefix ? ' artifacts-flash-in' : '')}
+        style={flashPrefix ? { animationDelay: Math.min(idx, 12) * 45 + 'ms' } : undefined}
+      >
+        <button type="button" className="artifacts-item-main" title={gitTitle(e)} onClick={() => onOpen(e.path)}>
+          <div className="artifacts-item-row">
+            <span className={'artifacts-git-badge artifacts-git-badge-' + label}>{label}</span>
+            <span className="artifacts-item-base">{basename(e.path)}</span>
+            {typeof e.adds === 'number' && (e.adds > 0 || (e.dels ?? 0) > 0) ? (
+              <span className="artifacts-git-stats">
+                <span className="artifacts-git-adds">+{e.adds}</span>
+                <span className="artifacts-git-dels">−{e.dels ?? 0}</span>
+              </span>
+            ) : null}
+            {e.origPath ? <span className="artifacts-git-orig">← {basename(e.origPath)}</span> : null}
+          </div>
+          <div className="artifacts-item-full">{e.path}</div>
+        </button>
+        <div className="artifacts-item-actions">
+          <button type="button" className="artifacts-minibtn" title={t('copyPath')} onClick={() => onCopyPath(e.path)}>
+            ⧉
+          </button>
+          <button type="button" className="artifacts-minibtn" title={t('refInput')} onClick={() => onQuote(e.path)}>
+            @
+          </button>
+        </div>
+      </div>,
+    )
+  })
+  return <>{rows}</>
+}
+
+export function ArtifactsPanel(): ReactElement | null {
+  const open = useOpen()
+  const settings = useSettings()
+  // 订阅界面语言：切换语言时本组件（含整棵子树）重渲染，t() 取到新文案。
+  useLang()
+  // 多标签预览状态与 git 变更列表分别由 usePreviewTabs / GitChangesList 承担。
+  const sessionId = useSessionId()
+  const {
+    tabs,
+    activeKey,
+    setActiveKey,
+    previewHidden,
+    setPreviewHidden,
+    openFile,
+    openGitDiff,
+    closeTab,
+  } = usePreviewTabs(sessionId)
+  const activeTab = tabs.find((t) => t.key === activeKey) || null
   const [notice, setNotice] = React.useState('')
-  const TABS_KEY = 'dsh-flyout-sidebar:tabs'
   // 窗口宽度（resize 时更新）：面板宽度以「可用宽度的比例」保存，窗口缩放
   // 后宽度按比例跟随，而不是停在拖拽时的固定像素。
   const [winW, setWinW] = React.useState(() => (typeof window !== 'undefined' ? window.innerWidth : 1400))
@@ -439,21 +635,6 @@ export function ArtifactsPanel(): ReactElement | null {
       if (dispose) dispose()
     }
   }, [open, activeView, settings.autoRefresh, gitRefresh, sessionId])
-
-  // 预览标签持久化（sessionStorage，按会话归属）：浏览器刷新后恢复打开的
-  // 标签（只存元数据，内容恢复时重新拉取）。会话切换时由下方的清空逻辑移除。
-  React.useEffect(() => {
-    try {
-      if (!tabs.length) sessionStorage.removeItem(TABS_KEY)
-      else
-        sessionStorage.setItem(
-          TABS_KEY,
-          JSON.stringify({ sid: sessionId, tabs: tabs.map((tb) => ({ key: tb.key, path: tb.path, git: tb.git })), activeKey }),
-        )
-    } catch {
-      // sessionStorage 不可用时跳过
-    }
-  }, [tabs, activeKey, sessionId])
 
   // 把当前会话 id 发布到 localStorage：独立弹出标签页没有客户端会话库，
   // 靠它把文件树根植到活动工作区并实时跟随切换。
@@ -611,160 +792,6 @@ export function ArtifactsPanel(): ReactElement | null {
     return () => document.removeEventListener('keydown', onKey)
   }, [open, tabs, previewHidden, activeKey])
 
-  // 多标签预览状态：每个打开的文件（或 git diff）一个标签，按路径作键
-  //（'g:' 前缀区分 diff 标签）。
-  const patchTab = (key: string, patch: Partial<PreviewTab>): void =>
-    setTabs((prev) => prev.map((t) => (t.key === key ? { ...t, ...patch } : t)))
-
-  const openTab = (key: string, path: string, git: boolean, initial: Partial<PreviewTab>): void => {
-    setPreviewHidden(false)
-    setTabs((prev) => {
-      const i = prev.findIndex((t) => t.key === key)
-      if (i >= 0) {
-        // 重复打开 = 重新加载并聚焦该标签。
-        const next = prev.slice()
-        const cur = next[i]
-        if (cur) next[i] = { ...cur, ...initial }
-        return next
-      }
-      return prev.concat([{ key, path, git, ...initial }])
-    })
-    setActiveKey(key)
-  }
-
-  const closeTab = (key: string): void => {
-    const idx = tabs.findIndex((t) => t.key === key)
-    const next = tabs.filter((t) => t.key !== key)
-    setTabs(next)
-    if (activeKey === key) setActiveKey(next.length ? (next[Math.min(idx, next.length - 1)]?.key ?? null) : null)
-  }
-
-  const activeTab = tabs.find((t) => t.key === activeKey) || null
-
-  const openFile = (path: string): void => {
-    const key = 'p:' + path
-    const type = extType(path)
-    // 图片和 PDF 以二进制媒体伺服 —— 无需读文本。
-    const initial: Partial<PreviewTab> = { loading: false, type, diff: null }
-    if (type !== 'image' && type !== 'pdf') initial.loading = true
-    openTab(key, path, false, initial)
-    if (type === 'image' || type === 'pdf') return
-    host
-      .readArtifact(path)
-      .then((res) => {
-        patchTab(key, { loading: false, ...res })
-      })
-      .catch((e: unknown) => {
-        patchTab(key, { loading: false, ok: false, error: String(e instanceof Error && e.message ? e.message : e) })
-      })
-  }
-
-  // 打开一个变更文件相对 HEAD 的未提交 diff。
-  const openGitDiff = (path: string): void => {
-    const key = 'g:' + path
-    openTab(key, path, true, { loading: true })
-    host
-      .gitDiff(path, currentSessionId())
-      .then((res) => {
-        patchTab(key, { loading: false, ...res })
-      })
-      .catch((e: unknown) => {
-        patchTab(key, { loading: false, ok: false, error: String(e instanceof Error && e.message ? e.message : e) })
-      })
-  }
-
-  // 恢复持久化的标签：同一会话内浏览器刷新后，把打开的标签重新拉起
-  //（openFile / openGitDiff 自带重新取数）。每个会话只恢复一次。
-  const restoredSid = React.useRef<string | null>(null)
-  React.useEffect(() => {
-    if (restoredSid.current === sessionId) return
-    restoredSid.current = sessionId
-    if (sessionId == null) return
-    try {
-      const raw = sessionStorage.getItem(TABS_KEY)
-      if (!raw) return
-      const saved: unknown = JSON.parse(raw)
-      const sid = (saved as { sid?: unknown }).sid
-      const list = (saved as { tabs?: unknown }).tabs
-      if (sid !== sessionId || !Array.isArray(list)) return
-      for (const st of list as Array<{ key?: unknown; path?: unknown; git?: unknown }>) {
-        if (typeof st?.key !== 'string' || typeof st?.path !== 'string') continue
-        if (st.git) openGitDiff(st.path)
-        else openFile(st.path)
-      }
-      const savedActive = (saved as { activeKey?: unknown }).activeKey
-      if (typeof savedActive === 'string') setActiveKey(savedActive)
-    } catch {
-      // 解析失败按无持久化处理
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId])
-
-  // 状态字母 → 变更行显示标签。
-  const gitLabel = (e: GitStatusEntry): string => {
-    if (e.x === '?' || e.y === '?') return 'U'
-    return (e.y !== ' ' ? e.y : e.x) || 'M'
-  }
-  const gitTitle = (e: GitStatusEntry): string => {
-    const label = gitLabel(e)
-    const map: Record<string, string> = {
-      U: t('statusU'), A: t('statusA'), M: t('statusM'),
-      D: t('statusD'), R: t('statusR'), C: t('statusC'), T: t('statusT'),
-    }
-    const staged = e.x !== ' ' && e.x !== '?'
-    return (map[label] || label) + (staged ? t('staged') : t('unstaged'))
-  }
-
-  const gitListRows: ReactNode[] = []
-  if (gitError) {
-    gitListRows.push(
-      <div key="err" className="artifacts-tree-error artifacts-git-error">
-        {gitError}
-      </div>,
-    )
-  } else if (gitFiles == null) {
-    gitListRows.push(<div key="load" className="artifacts-empty">{t('loadingChanges')}</div>)
-  } else if (!gitFiles.length) {
-    gitListRows.push(<div key="empty" className="artifacts-empty">{t('noChanges')}</div>)
-  }
-  ;(gitFiles || []).forEach((e, idx) => {
-    const label = gitLabel(e)
-    const isActive = !!(activeTab && activeTab.git && activeTab.path === e.path)
-    // 刚刷新过：key 带上 gitFlash 令行重新挂载、重放动画；延迟按行号递增，
-    // 形成「从上往下逐行浮现」，封顶避免长列表拖太久。
-    const flashKey = gitFlash > 0 ? gitFlash + ':' : ''
-    gitListRows.push(
-      <div
-        key={flashKey + e.path}
-        className={'artifacts-item' + (isActive ? ' is-active' : '') + (flashKey ? ' artifacts-flash-in' : '')}
-        style={flashKey ? { animationDelay: Math.min(idx, 12) * 45 + 'ms' } : undefined}
-      >
-        <button type="button" className="artifacts-item-main" title={gitTitle(e)} onClick={() => openGitDiff(e.path)}>
-          <div className="artifacts-item-row">
-            <span className={'artifacts-git-badge artifacts-git-badge-' + label}>{label}</span>
-            <span className="artifacts-item-base">{basename(e.path)}</span>
-            {typeof e.adds === 'number' && (e.adds > 0 || (e.dels ?? 0) > 0) ? (
-              <span className="artifacts-git-stats">
-                <span className="artifacts-git-adds">+{e.adds}</span>
-                <span className="artifacts-git-dels">−{e.dels ?? 0}</span>
-              </span>
-            ) : null}
-            {e.origPath ? <span className="artifacts-git-orig">← {basename(e.origPath)}</span> : null}
-          </div>
-          <div className="artifacts-item-full">{e.path}</div>
-        </button>
-        <div className="artifacts-item-actions">
-          <button type="button" className="artifacts-minibtn" title={t('copyPath')} onClick={() => copyText(e.path, t('copiedPath'))}>
-            ⧉
-          </button>
-          <button type="button" className="artifacts-minibtn" title={t('refInput')} onClick={() => quotePath(e.path)}>
-            @
-          </button>
-        </div>
-      </div>,
-    )
-  })
-
   // 多标签预览覆盖层：每个打开的文件一个标签；活动标签内容盖住侧边栏面板
   // 左侧的整个区域。⇥ 按钮隐藏整个覆盖层 —— 标签保留，经左缘胶囊或打开任
   // 何文件恢复。
@@ -799,29 +826,6 @@ export function ArtifactsPanel(): ReactElement | null {
               </div>
             ))}
           </div>
-          <button
-            type="button"
-            className="artifacts-preview-hide"
-            title={t('openInEditor')}
-            onClick={() => {
-              if (!activeTab) return
-              host
-                .openInEditor(activeTab.path)
-                .then((res) => flash(res && res.ok ? t('openedInEditor') : t('openFailed') + ((res && res.error) ? '：' + res.error : '')))
-                .catch(() => flash(t('openFailed')))
-            }}
-          >
-            <ExternalIcon size={16} />
-          </button>
-          <button
-            type="button"
-            className={'artifacts-preview-hide' + (settings.codeWrap ? ' is-active' : '')}
-            title={t('wordWrap')}
-            aria-pressed={settings.codeWrap}
-            onClick={() => settingsStore.set('codeWrap', !settings.codeWrap)}
-          >
-            <WrapIcon size={16} />
-          </button>
           <button type="button" className="artifacts-preview-hide" title={t('hidePreview')} onClick={() => setPreviewHidden(true)}>
             <PanelCollapseIcon size={16} />
           </button>
@@ -898,7 +902,15 @@ export function ArtifactsPanel(): ReactElement | null {
                 refreshToken={treeRefresh}
               />
             ) : (
-              gitListRows
+              <GitChangesList
+                files={gitFiles}
+                error={gitError}
+                activeDiffPath={activeTab && activeTab.git ? activeTab.path : null}
+                flashKey={gitFlash}
+                onOpen={openGitDiff}
+                onCopyPath={(p) => copyText(p, t('copiedPath'))}
+                onQuote={quotePath}
+              />
             )}
           </div>
         </div>
@@ -1007,6 +1019,11 @@ export function SettingsSection(): ReactElement {
                 const n = parseInt(e.currentTarget.value, 10)
                 if (Number.isNaN(n)) return
                 set('minPanelWidth', Math.max(20, Math.min(60, n)))
+              }}
+              onBlur={(e) => {
+                // 离开输入框时把空值/越界值归一到合法范围，避免停留无效状态
+                const n = parseInt(e.currentTarget.value, 10)
+                set('minPanelWidth', Number.isNaN(n) ? 20 : Math.max(20, Math.min(60, n)))
               }}
             />
             <span className="artifacts-suffix">%</span>

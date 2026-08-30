@@ -178,6 +178,8 @@ export function attachArtifactTracking(ctx: HostContext): void {
   ctx.on('tools/execute', async (exec, next) => {
     if (!exec || !WATCH_TOOLS[exec.name || '']) return next()
     const cwd = execCwd(ctx, exec)
+    // 限频：窗口内的连续 shell 执行跳过快照 diff（见 snapAllowed）
+    if (!cwd || !snapAllowed(cwd)) return next()
     const before = await snapshotWorkspace(ctx, cwd)
     let outcome: ToolResult | undefined
     try {
@@ -198,3 +200,26 @@ export function attachArtifactTracking(ctx: HostContext): void {
 
 /** 有文件副作用的 shell 执行器 */
 const WATCH_TOOLS: Record<string, number> = { bash: 1, pwsh: 1 }
+
+/**
+ * 全工作区快照在大仓库上很贵（数千次 resolve/listDir），限频：同一工作区
+ * SNAP_MIN_INTERVAL 内的连续 shell 执行合并为一次快照 diff（窗口内的工具
+ * 副作用可能漏记，产物列表还有文件树/git 视图兜底）。记录的未超时窗口也
+ * 上限 64 个工作区，防长驻进程缓慢积累。
+ */
+const SNAP_MIN_INTERVAL = 3000
+const lastSnapAt = new Map<string, number>()
+
+function snapAllowed(cwd: string): boolean {
+  const at = lastSnapAt.get(cwd)
+  if (at != null && Date.now() - at < SNAP_MIN_INTERVAL) return false
+  if (lastSnapAt.size >= 64 && at == null) {
+    for (const [k, v] of lastSnapAt) {
+      lastSnapAt.delete(k)
+      if (lastSnapAt.size < 64) break
+      void v
+    }
+  }
+  lastSnapAt.set(cwd, Date.now())
+  return true
+}

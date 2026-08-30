@@ -38,8 +38,8 @@
 		gitDiff(path, sessionId) {
 			return getJson("/flyout-sidebar/gitdiff" + qs(["path", path], ["sessionId", sessionId]));
 		},
-		readArtifact(path) {
-			return getJson("/flyout-sidebar/content" + qs(["path", path]));
+		readArtifact(path, sessionId) {
+			return getJson("/flyout-sidebar/content" + qs(["path", path], ["sessionId", sessionId]));
 		},
 		listDir(path, sessionId) {
 			return getJson("/flyout-sidebar/listdir" + qs(["path", path], ["sessionId", sessionId]));
@@ -47,8 +47,8 @@
 		searchFiles(query, sessionId) {
 			return getJson("/flyout-sidebar/search" + qs(["q", query], ["sessionId", sessionId]));
 		},
-		openInEditor(path) {
-			return getJson("/flyout-sidebar/open" + qs(["path", path]));
+		openInEditor(path, sessionId) {
+			return getJson("/flyout-sidebar/open" + qs(["path", path], ["sessionId", sessionId]));
 		}
 	};
 	//#endregion
@@ -685,6 +685,62 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		};
 	}
 	//#endregion
+	//#region src/shared/gitui.js
+	/**
+	* 共享：git 变更列表 / diff 的纯展示逻辑。
+	*
+	* client 侧 React 组件与独立弹出页（page.ts 内联脚本）共用，避免双端各自
+	* 实现后细节漂移。与 ext/highlight/markdown 一样遵守「可移植源码」约束：
+	* 只能使用 JSDoc 标注类型、依赖仅限本目录（i18n 的 t 在内联场景由同作用域
+	* 函数声明提升提供）。
+	*/
+	/** @param {string} p @returns {string} */
+	function basename(p) {
+		var parts = String(p).split("/");
+		return parts[parts.length - 1] || p;
+	}
+	/**
+	* 变更文件的状态徽章字母：未跟踪为 U，否则取工作树状态（y），再退到暂存
+	* 状态（x），空缺按 M。
+	* @param {{ x: string, y: string }} e @returns {string}
+	*/
+	function gitLabel(e) {
+		if (e.x === "?" || e.y === "?") return "U";
+		return (e.y !== " " ? e.y : e.x) || "M";
+	}
+	/**
+	* 变更文件行 hover 提示：状态名 + 暂存/未暂存。
+	* @param {{ x: string, y: string }} e @returns {string}
+	*/
+	function gitTitle(e) {
+		var label = gitLabel(e);
+		/** @type {Record<string, string>} */
+		var map = {
+			U: t("statusU"),
+			A: t("statusA"),
+			M: t("statusM"),
+			D: t("statusD"),
+			R: t("statusR"),
+			C: t("statusC"),
+			T: t("statusT")
+		};
+		var staged = e.x !== " " && e.x !== "?";
+		return (map[label] || label) + (staged ? t("staged") : t("unstaged"));
+	}
+	/**
+	* unified diff 单行的样式类：hunk / 增 / 删 / 元信息（diff --git、index、
+	* rename 等），其余为普通行。
+	* @param {string} line @returns {string}
+	*/
+	function gitDiffLineClass(line) {
+		var cls = "gd-line";
+		if (line.indexOf("@@") === 0) cls += " gd-hunk";
+		else if (line.charAt(0) === "+" && line.indexOf("+++") !== 0) cls += " gd-add";
+		else if (line.charAt(0) === "-" && line.indexOf("---") !== 0) cls += " gd-del";
+		else if (line.indexOf("diff ") === 0 || line.indexOf("index ") === 0 || line.indexOf("--- ") === 0 || line.indexOf("+++ ") === 0 || line.indexOf("new file") === 0 || line.indexOf("deleted file") === 0 || line.indexOf("old mode") === 0 || line.indexOf("new mode") === 0 || line.indexOf("rename ") === 0 || line.indexOf("similarity ") === 0 || line.indexOf("copy ") === 0 || line.indexOf("Binary files") === 0 || line.charAt(0) === "\\") cls += " gd-meta";
+		return cls;
+	}
+	//#endregion
 	//#region src/client/store.ts
 	/**
 	* Client 侧：共享状态与工具函数。
@@ -694,10 +750,6 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 	* - currentSessionId / quoteToComposer：读取客户端会话库、把 @path 引用
 	*   写入会话输入框。
 	*/
-	const basename = (p) => {
-		const parts = String(p).split("/");
-		return parts[parts.length - 1] || p;
-	};
 	/** 当前会话 id（读自客户端会话库；文件树把它传给 host 以定位工作区） */
 	function currentSessionId() {
 		try {
@@ -1240,11 +1292,24 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 	function mdEscape(s) {
 		return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 	}
+	/**
+	* URL 白名单：只放行 http(s)、站内相对路径、页内锚点与 data:image/*，
+	* 其余（javascript:、vbscript: 及实体编码变体等）一律替换为 '#'，防止
+	* 预览渲染出来的链接/图片在点击时执行脚本。
+	* @param {string} u @returns {string}
+	*/
+	function mdSafeUrl(u) {
+		var s = String(u || "").replace(/[\s\u0000-\u001f]/g, "");
+		if (/^https?:\/\//i.test(s)) return s;
+		if (/^\/(?!\/)/.test(s) || /^\.{1,2}\//.test(s) || s.charAt(0) === "#") return s;
+		if (/^data:image\/(?:png|gif|jpeg|webp|bmp|avif);/i.test(s)) return s;
+		return "#";
+	}
 	/** @param {string} s @returns {string} */
 	function mdInline(s) {
 		s = s.replace(/`([^`]+)`/g, (m, c) => "<code>" + c + "</code>");
-		s = s.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, "<img alt=\"$1\" src=\"$2\">");
-		s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, "<a href=\"$2\" target=\"_blank\" rel=\"noopener noreferrer\">$1</a>");
+		s = s.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (m, alt, u) => "<img alt=\"" + alt + "\" src=\"" + mdSafeUrl(u) + "\">");
+		s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (m, text, u) => "<a href=\"" + mdSafeUrl(u) + "\" target=\"_blank\" rel=\"noopener noreferrer\">" + text + "</a>");
 		s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
 		s = s.replace(/\*([^*\n]+)\*/g, "<em>$1</em>");
 		return s;
@@ -1376,6 +1441,9 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			return () => document.removeEventListener("keydown", onKey, true);
 		}, []);
 		const matchSet = matchLines.length ? new Set(matchLines) : null;
+		React.useEffect(() => {
+			rowRefs.current.length = hlLines.length;
+		}, [hlLines]);
 		return /* @__PURE__ */ h("div", { className: "artifacts-code" + (wrap ? " artifacts-code-wrap" : "") }, /* @__PURE__ */ h("div", { className: "artifacts-findbar" }, /* @__PURE__ */ h("input", {
 			ref: inputRef,
 			type: "text",
@@ -1675,21 +1743,14 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			style: { transform: "translate(" + offset.x + "px," + offset.y + "px) scale(" + scale + ")" }
 		}));
 	}
-	/** 统一 git diff 渲染：meta/hunk/+/- 行着色，等宽可滚动 */
+	/** 统一 git diff 渲染：meta/hunk/+/- 行着色，等宽可滚动；行分类与独立弹出页共用 */
 	function GitDiffView({ diff }) {
 		const text = String(diff || "");
 		if (!text) return /* @__PURE__ */ h("div", { className: "artifacts-hint" }, t("noChangesHead"));
-		return /* @__PURE__ */ h("div", { className: "artifacts-gitdiff" }, text.replace(/\n$/, "").split("\n").map((line, i) => {
-			let cls = "gd-line";
-			if (line.startsWith("@@")) cls += " gd-hunk";
-			else if (line.startsWith("+") && !line.startsWith("+++")) cls += " gd-add";
-			else if (line.startsWith("-") && !line.startsWith("---")) cls += " gd-del";
-			else if (line.startsWith("diff ") || line.startsWith("index ") || line.startsWith("--- ") || line.startsWith("+++ ") || line.startsWith("new file") || line.startsWith("deleted file") || line.startsWith("old mode") || line.startsWith("new mode") || line.startsWith("rename ") || line.startsWith("similarity ") || line.startsWith("copy ") || line.startsWith("Binary files") || line.startsWith("\\")) cls += " gd-meta";
-			return /* @__PURE__ */ h("div", {
-				key: i,
-				className: cls
-			}, line);
-		}));
+		return /* @__PURE__ */ h("div", { className: "artifacts-gitdiff" }, text.replace(/\n$/, "").split("\n").map((line, i) => /* @__PURE__ */ h("div", {
+			key: i,
+			className: gitDiffLineClass(line)
+		}, line)));
 	}
 	function renderPreview(p, codeWrap = false) {
 		if (p.loading) return /* @__PURE__ */ h("div", { className: "artifacts-hint" }, t("loading"));
@@ -1870,44 +1931,6 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		strokeWidth: 1.4,
 		strokeLinecap: "round",
 		fill: "none"
-	}));
-	/** 换行图标：一条折返的长线（代码软换行开关） */
-	const WrapIcon = ({ size }) => /* @__PURE__ */ h("svg", {
-		width: size,
-		height: size,
-		viewBox: "0 0 16 16",
-		fill: "none",
-		"aria-hidden": "true"
-	}, /* @__PURE__ */ h("path", {
-		d: "M2 4h12M2 8h9.5a2.5 2.5 0 0 1 0 5H9",
-		stroke: "currentColor",
-		strokeWidth: 1.4,
-		strokeLinecap: "round"
-	}), /* @__PURE__ */ h("path", {
-		d: "M11 10.6 9 13l2 2.4",
-		stroke: "currentColor",
-		strokeWidth: 1.4,
-		strokeLinecap: "round",
-		strokeLinejoin: "round",
-		transform: "translate(0 -2.4)"
-	}));
-	/** 外开图标：方框 + 指向右上角的箭头（在系统编辑器打开） */
-	const ExternalIcon = ({ size }) => /* @__PURE__ */ h("svg", {
-		width: size,
-		height: size,
-		viewBox: "0 0 16 16",
-		fill: "none",
-		"aria-hidden": "true"
-	}, /* @__PURE__ */ h("path", {
-		d: "M12.5 9v3.7a1.3 1.3 0 0 1-1.3 1.3H3.8a1.3 1.3 0 0 1-1.3-1.3V5.3A1.3 1.3 0 0 1 3.8 4H7.5",
-		stroke: "currentColor",
-		strokeWidth: 1.4,
-		strokeLinecap: "round"
-	}), /* @__PURE__ */ h("path", {
-		d: "M10 2.5h3.5V6M13.2 2.8 8.2 7.8",
-		stroke: "currentColor",
-		strokeWidth: 1.4,
-		strokeLinecap: "round"
 	}));
 	//#endregion
 	//#region src/client/components.tsx
@@ -2133,14 +2156,15 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			}
 		})), /* @__PURE__ */ h("div", { className: "artifacts-tree-body" }, query.trim() ? search && search.loading ? /* @__PURE__ */ h("div", { className: "artifacts-hint" }, t("searching")) : search && search.error ? /* @__PURE__ */ h("div", { className: "artifacts-tree-error artifacts-git-error" }, search.error) : search && search.entries && search.entries.length ? search.entries.map((p, i) => renderSearchRow(p, i)) : /* @__PURE__ */ h("div", { className: "artifacts-hint" }, t("noResults")) : !root ? /* @__PURE__ */ h("div", { className: "artifacts-hint" }, t("loadingTree")) : !root.entries || !root.entries.length ? /* @__PURE__ */ h("div", { className: "artifacts-hint" }, t("emptyDir")) : root.entries.map((e, i) => renderNode(e, 0, Math.min(i, 12) * 45))));
 	}
-	function ArtifactsPanel() {
-		const open = useOpen();
-		const settings = useSettings();
-		useLang();
+	const TABS_KEY = "dsh-flyout-sidebar:tabs";
+	/**
+	* 多标签预览状态（'p:' 前缀 = 内容预览，'g:' 前缀 = git diff）：打开/关闭/
+	* 会话切换清空/持久化与恢复集中在此 hook，面板组件只消费结果。
+	*/
+	function usePreviewTabs(sessionId) {
 		const [tabs, setTabs] = React.useState([]);
 		const [activeKey, setActiveKey] = React.useState(null);
 		const [previewHidden, setPreviewHidden] = React.useState(false);
-		const sessionId = useSessionId();
 		const firstSession = React.useRef(true);
 		React.useEffect(() => {
 			if (firstSession.current) {
@@ -2154,8 +2178,180 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 				sessionStorage.removeItem(TABS_KEY);
 			} catch {}
 		}, [sessionId]);
+		React.useEffect(() => {
+			try {
+				if (!tabs.length) sessionStorage.removeItem(TABS_KEY);
+				else sessionStorage.setItem(TABS_KEY, JSON.stringify({
+					sid: sessionId,
+					tabs: tabs.map((tb) => ({
+						key: tb.key,
+						path: tb.path,
+						git: tb.git
+					})),
+					activeKey
+				}));
+			} catch {}
+		}, [
+			tabs,
+			activeKey,
+			sessionId
+		]);
+		const patchTab = (key, patch) => setTabs((prev) => prev.map((t) => t.key === key ? {
+			...t,
+			...patch
+		} : t));
+		const openTab = (key, path, git, initial) => {
+			setPreviewHidden(false);
+			setTabs((prev) => {
+				const i = prev.findIndex((t) => t.key === key);
+				if (i >= 0) {
+					const next = prev.slice();
+					const cur = next[i];
+					if (cur) next[i] = {
+						...cur,
+						...initial
+					};
+					return next;
+				}
+				return prev.concat([{
+					key,
+					path,
+					git,
+					...initial
+				}]);
+			});
+			setActiveKey(key);
+		};
+		const closeTab = (key) => {
+			setTabs((prev) => {
+				const idx = prev.findIndex((t) => t.key === key);
+				const next = prev.filter((t) => t.key !== key);
+				if (activeKey === key) setActiveKey(next.length ? next[Math.min(idx, next.length - 1)]?.key ?? null : null);
+				return next;
+			});
+		};
+		const openFile = (path) => {
+			const key = "p:" + path;
+			const type = extType(path);
+			const initial = {
+				loading: false,
+				type,
+				diff: null
+			};
+			if (type !== "image" && type !== "pdf") initial.loading = true;
+			openTab(key, path, false, initial);
+			if (type === "image" || type === "pdf") return;
+			host.readArtifact(path, sessionId).then((res) => {
+				patchTab(key, {
+					loading: false,
+					...res
+				});
+			}).catch((e) => {
+				patchTab(key, {
+					loading: false,
+					ok: false,
+					error: String(e instanceof Error && e.message ? e.message : e)
+				});
+			});
+		};
+		const openGitDiff = (path) => {
+			const key = "g:" + path;
+			openTab(key, path, true, { loading: true });
+			host.gitDiff(path, sessionId).then((res) => {
+				patchTab(key, {
+					loading: false,
+					...res
+				});
+			}).catch((e) => {
+				patchTab(key, {
+					loading: false,
+					ok: false,
+					error: String(e instanceof Error && e.message ? e.message : e)
+				});
+			});
+		};
+		const restoredSid = React.useRef(null);
+		React.useEffect(() => {
+			if (restoredSid.current === sessionId) return;
+			restoredSid.current = sessionId;
+			if (sessionId == null) return;
+			try {
+				const raw = sessionStorage.getItem(TABS_KEY);
+				if (!raw) return;
+				const saved = JSON.parse(raw);
+				const sid = saved.sid;
+				const list = saved.tabs;
+				if (sid !== sessionId || !Array.isArray(list)) return;
+				for (const st of list) {
+					if (typeof st?.key !== "string" || typeof st?.path !== "string") continue;
+					if (st.git) openGitDiff(st.path);
+					else openFile(st.path);
+				}
+				const savedActive = saved.activeKey;
+				if (typeof savedActive === "string") setActiveKey(savedActive);
+			} catch {}
+		}, [sessionId]);
+		return {
+			tabs,
+			activeKey,
+			setActiveKey,
+			previewHidden,
+			setPreviewHidden,
+			openFile,
+			openGitDiff,
+			closeTab
+		};
+	}
+	/** git 变更列表（文件面板的「变更」视图） */
+	function GitChangesList({ files, error, activeDiffPath, flashKey, onOpen, onCopyPath, onQuote }) {
+		const rows = [];
+		if (error) rows.push(/* @__PURE__ */ h("div", {
+			key: "err",
+			className: "artifacts-tree-error artifacts-git-error"
+		}, error));
+		else if (files == null) rows.push(/* @__PURE__ */ h("div", {
+			key: "load",
+			className: "artifacts-empty"
+		}, t("loadingChanges")));
+		else if (!files.length) rows.push(/* @__PURE__ */ h("div", {
+			key: "empty",
+			className: "artifacts-empty"
+		}, t("noChanges")));
+		(files || []).forEach((e, idx) => {
+			const label = gitLabel(e);
+			const isActive = activeDiffPath === e.path;
+			const flashPrefix = flashKey > 0 ? flashKey + ":" : "";
+			rows.push(/* @__PURE__ */ h("div", {
+				key: flashPrefix + e.path,
+				className: "artifacts-item" + (isActive ? " is-active" : "") + (flashPrefix ? " artifacts-flash-in" : ""),
+				style: flashPrefix ? { animationDelay: Math.min(idx, 12) * 45 + "ms" } : void 0
+			}, /* @__PURE__ */ h("button", {
+				type: "button",
+				className: "artifacts-item-main",
+				title: gitTitle(e),
+				onClick: () => onOpen(e.path)
+			}, /* @__PURE__ */ h("div", { className: "artifacts-item-row" }, /* @__PURE__ */ h("span", { className: "artifacts-git-badge artifacts-git-badge-" + label }, label), /* @__PURE__ */ h("span", { className: "artifacts-item-base" }, basename(e.path)), typeof e.adds === "number" && (e.adds > 0 || (e.dels ?? 0) > 0) ? /* @__PURE__ */ h("span", { className: "artifacts-git-stats" }, /* @__PURE__ */ h("span", { className: "artifacts-git-adds" }, "+", e.adds), /* @__PURE__ */ h("span", { className: "artifacts-git-dels" }, "−", e.dels ?? 0)) : null, e.origPath ? /* @__PURE__ */ h("span", { className: "artifacts-git-orig" }, "← ", basename(e.origPath)) : null), /* @__PURE__ */ h("div", { className: "artifacts-item-full" }, e.path)), /* @__PURE__ */ h("div", { className: "artifacts-item-actions" }, /* @__PURE__ */ h("button", {
+				type: "button",
+				className: "artifacts-minibtn",
+				title: t("copyPath"),
+				onClick: () => onCopyPath(e.path)
+			}, "⧉"), /* @__PURE__ */ h("button", {
+				type: "button",
+				className: "artifacts-minibtn",
+				title: t("refInput"),
+				onClick: () => onQuote(e.path)
+			}, "@"))));
+		});
+		return /* @__PURE__ */ h(Fragment, null, rows);
+	}
+	function ArtifactsPanel() {
+		const open = useOpen();
+		const settings = useSettings();
+		useLang();
+		const sessionId = useSessionId();
+		const { tabs, activeKey, setActiveKey, previewHidden, setPreviewHidden, openFile, openGitDiff, closeTab } = usePreviewTabs(sessionId);
+		const activeTab = tabs.find((t) => t.key === activeKey) || null;
 		const [notice, setNotice] = React.useState("");
-		const TABS_KEY = "dsh-flyout-sidebar:tabs";
 		const [winW, setWinW] = React.useState(() => typeof window !== "undefined" ? window.innerWidth : 1400);
 		const [gitFiles, setGitFiles] = React.useState(null);
 		const [gitError, setGitError] = React.useState(null);
@@ -2204,24 +2400,6 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			activeView,
 			settings.autoRefresh,
 			gitRefresh,
-			sessionId
-		]);
-		React.useEffect(() => {
-			try {
-				if (!tabs.length) sessionStorage.removeItem(TABS_KEY);
-				else sessionStorage.setItem(TABS_KEY, JSON.stringify({
-					sid: sessionId,
-					tabs: tabs.map((tb) => ({
-						key: tb.key,
-						path: tb.path,
-						git: tb.git
-					})),
-					activeKey
-				}));
-			} catch {}
-		}, [
-			tabs,
-			activeKey,
 			sessionId
 		]);
 		React.useEffect(() => {
@@ -2354,156 +2532,6 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			previewHidden,
 			activeKey
 		]);
-		const patchTab = (key, patch) => setTabs((prev) => prev.map((t) => t.key === key ? {
-			...t,
-			...patch
-		} : t));
-		const openTab = (key, path, git, initial) => {
-			setPreviewHidden(false);
-			setTabs((prev) => {
-				const i = prev.findIndex((t) => t.key === key);
-				if (i >= 0) {
-					const next = prev.slice();
-					const cur = next[i];
-					if (cur) next[i] = {
-						...cur,
-						...initial
-					};
-					return next;
-				}
-				return prev.concat([{
-					key,
-					path,
-					git,
-					...initial
-				}]);
-			});
-			setActiveKey(key);
-		};
-		const closeTab = (key) => {
-			const idx = tabs.findIndex((t) => t.key === key);
-			const next = tabs.filter((t) => t.key !== key);
-			setTabs(next);
-			if (activeKey === key) setActiveKey(next.length ? next[Math.min(idx, next.length - 1)]?.key ?? null : null);
-		};
-		const activeTab = tabs.find((t) => t.key === activeKey) || null;
-		const openFile = (path) => {
-			const key = "p:" + path;
-			const type = extType(path);
-			const initial = {
-				loading: false,
-				type,
-				diff: null
-			};
-			if (type !== "image" && type !== "pdf") initial.loading = true;
-			openTab(key, path, false, initial);
-			if (type === "image" || type === "pdf") return;
-			host.readArtifact(path).then((res) => {
-				patchTab(key, {
-					loading: false,
-					...res
-				});
-			}).catch((e) => {
-				patchTab(key, {
-					loading: false,
-					ok: false,
-					error: String(e instanceof Error && e.message ? e.message : e)
-				});
-			});
-		};
-		const openGitDiff = (path) => {
-			const key = "g:" + path;
-			openTab(key, path, true, { loading: true });
-			host.gitDiff(path, currentSessionId()).then((res) => {
-				patchTab(key, {
-					loading: false,
-					...res
-				});
-			}).catch((e) => {
-				patchTab(key, {
-					loading: false,
-					ok: false,
-					error: String(e instanceof Error && e.message ? e.message : e)
-				});
-			});
-		};
-		const restoredSid = React.useRef(null);
-		React.useEffect(() => {
-			if (restoredSid.current === sessionId) return;
-			restoredSid.current = sessionId;
-			if (sessionId == null) return;
-			try {
-				const raw = sessionStorage.getItem(TABS_KEY);
-				if (!raw) return;
-				const saved = JSON.parse(raw);
-				const sid = saved.sid;
-				const list = saved.tabs;
-				if (sid !== sessionId || !Array.isArray(list)) return;
-				for (const st of list) {
-					if (typeof st?.key !== "string" || typeof st?.path !== "string") continue;
-					if (st.git) openGitDiff(st.path);
-					else openFile(st.path);
-				}
-				const savedActive = saved.activeKey;
-				if (typeof savedActive === "string") setActiveKey(savedActive);
-			} catch {}
-		}, [sessionId]);
-		const gitLabel = (e) => {
-			if (e.x === "?" || e.y === "?") return "U";
-			return (e.y !== " " ? e.y : e.x) || "M";
-		};
-		const gitTitle = (e) => {
-			const label = gitLabel(e);
-			const map = {
-				U: t("statusU"),
-				A: t("statusA"),
-				M: t("statusM"),
-				D: t("statusD"),
-				R: t("statusR"),
-				C: t("statusC"),
-				T: t("statusT")
-			};
-			const staged = e.x !== " " && e.x !== "?";
-			return (map[label] || label) + (staged ? t("staged") : t("unstaged"));
-		};
-		const gitListRows = [];
-		if (gitError) gitListRows.push(/* @__PURE__ */ h("div", {
-			key: "err",
-			className: "artifacts-tree-error artifacts-git-error"
-		}, gitError));
-		else if (gitFiles == null) gitListRows.push(/* @__PURE__ */ h("div", {
-			key: "load",
-			className: "artifacts-empty"
-		}, t("loadingChanges")));
-		else if (!gitFiles.length) gitListRows.push(/* @__PURE__ */ h("div", {
-			key: "empty",
-			className: "artifacts-empty"
-		}, t("noChanges")));
-		(gitFiles || []).forEach((e, idx) => {
-			const label = gitLabel(e);
-			const isActive = !!(activeTab && activeTab.git && activeTab.path === e.path);
-			const flashKey = gitFlash > 0 ? gitFlash + ":" : "";
-			gitListRows.push(/* @__PURE__ */ h("div", {
-				key: flashKey + e.path,
-				className: "artifacts-item" + (isActive ? " is-active" : "") + (flashKey ? " artifacts-flash-in" : ""),
-				style: flashKey ? { animationDelay: Math.min(idx, 12) * 45 + "ms" } : void 0
-			}, /* @__PURE__ */ h("button", {
-				type: "button",
-				className: "artifacts-item-main",
-				title: gitTitle(e),
-				onClick: () => openGitDiff(e.path)
-			}, /* @__PURE__ */ h("div", { className: "artifacts-item-row" }, /* @__PURE__ */ h("span", { className: "artifacts-git-badge artifacts-git-badge-" + label }, label), /* @__PURE__ */ h("span", { className: "artifacts-item-base" }, basename(e.path)), typeof e.adds === "number" && (e.adds > 0 || (e.dels ?? 0) > 0) ? /* @__PURE__ */ h("span", { className: "artifacts-git-stats" }, /* @__PURE__ */ h("span", { className: "artifacts-git-adds" }, "+", e.adds), /* @__PURE__ */ h("span", { className: "artifacts-git-dels" }, "−", e.dels ?? 0)) : null, e.origPath ? /* @__PURE__ */ h("span", { className: "artifacts-git-orig" }, "← ", basename(e.origPath)) : null), /* @__PURE__ */ h("div", { className: "artifacts-item-full" }, e.path)), /* @__PURE__ */ h("div", { className: "artifacts-item-actions" }, /* @__PURE__ */ h("button", {
-				type: "button",
-				className: "artifacts-minibtn",
-				title: t("copyPath"),
-				onClick: () => copyText(e.path, t("copiedPath"))
-			}, "⧉"), /* @__PURE__ */ h("button", {
-				type: "button",
-				className: "artifacts-minibtn",
-				title: t("refInput"),
-				onClick: () => quotePath(e.path)
-			}, "@"))));
-		});
 		const previewOverlay = tabs.length && !previewHidden ? /* @__PURE__ */ h("div", {
 			className: "artifacts-preview-overlay" + (slidOut ? " artifacts-slid-out" : ""),
 			role: "region",
@@ -2522,20 +2550,6 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 				closeTab(tab.key);
 			}
 		}, "×")))), /* @__PURE__ */ h("button", {
-			type: "button",
-			className: "artifacts-preview-hide",
-			title: t("openInEditor"),
-			onClick: () => {
-				if (!activeTab) return;
-				host.openInEditor(activeTab.path).then((res) => flash(res && res.ok ? t("openedInEditor") : t("openFailed") + (res && res.error ? "：" + res.error : ""))).catch(() => flash(t("openFailed")));
-			}
-		}, /* @__PURE__ */ h(ExternalIcon, { size: 16 })), /* @__PURE__ */ h("button", {
-			type: "button",
-			className: "artifacts-preview-hide" + (settings.codeWrap ? " is-active" : ""),
-			title: t("wordWrap"),
-			"aria-pressed": settings.codeWrap,
-			onClick: () => settingsStore.set("codeWrap", !settings.codeWrap)
-		}, /* @__PURE__ */ h(WrapIcon, { size: 16 })), /* @__PURE__ */ h("button", {
 			type: "button",
 			className: "artifacts-preview-hide",
 			title: t("hidePreview"),
@@ -2586,7 +2600,15 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			onOpen: openFile,
 			selectedPath: activeTab && !activeTab.git ? activeTab.path : null,
 			refreshToken: treeRefresh
-		}) : gitListRows))));
+		}) : /* @__PURE__ */ h(GitChangesList, {
+			files: gitFiles,
+			error: gitError,
+			activeDiffPath: activeTab && activeTab.git ? activeTab.path : null,
+			flashKey: gitFlash,
+			onOpen: openGitDiff,
+			onCopyPath: (p) => copyText(p, t("copiedPath")),
+			onQuote: quotePath
+		})))));
 	}
 	function CornerButton() {
 		const open = useOpen();
@@ -2644,6 +2666,10 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 				const n = parseInt(e.currentTarget.value, 10);
 				if (Number.isNaN(n)) return;
 				set("minPanelWidth", Math.max(20, Math.min(60, n)));
+			},
+			onBlur: (e) => {
+				const n = parseInt(e.currentTarget.value, 10);
+				set("minPanelWidth", Number.isNaN(n) ? 20 : Math.max(20, Math.min(60, n)));
 			}
 		}), /* @__PURE__ */ h("span", { className: "artifacts-suffix" }, "%"))), /* @__PURE__ */ h("div", { className: "artifacts-setrow" }, /* @__PURE__ */ h("div", { className: "artifacts-settext" }, /* @__PURE__ */ h("div", { className: "artifacts-settitle" }, t("setLang")), /* @__PURE__ */ h("div", { className: "artifacts-setdesc" }, t("setLangDesc"))), /* @__PURE__ */ h("div", { className: "artifacts-setcontrol" }, /* @__PURE__ */ h("select", {
 			className: "artifacts-langselect",

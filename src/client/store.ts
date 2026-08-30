@@ -11,11 +11,6 @@ import type { SessionListLike } from './runtime'
 import { ctx } from './runtime'
 import { React } from './jsx'
 
-export const basename = (p: string): string => {
-  const parts = String(p).split('/')
-  return parts[parts.length - 1] || p
-}
-
 /** 当前会话 id（读自客户端会话库；文件树把它传给 host 以定位工作区） */
 export function currentSessionId(): string {
   try {

@@ -30,10 +30,10 @@ export function apply(ctx: HostContext): void {
   if (typeof harness !== 'undefined' && harness) {
     harness.handle('artifacts.list', () => ({ artifacts: snapshotArtifacts() }))
     harness.handle('artifacts.remove', (args) => removeFile(args?.path))
-    harness.handle('artifacts.read', (args) => readFile(ctx, args?.path))
+    harness.handle('artifacts.read', (args) => readFile(ctx, args?.path, args?.sessionId))
     harness.handle('artifacts.listDir', (args) => listDir(ctx, args?.path, args?.sessionId))
     harness.handle('artifacts.search', (args) => searchFiles(ctx, args?.query, args?.sessionId))
-    harness.handle('artifacts.open', (args) => openInEditor(ctx, args?.path))
+    harness.handle('artifacts.open', (args) => openInEditor(ctx, args?.path, args?.sessionId))
     harness.handle('git.status', (args) => gitStatus(ctx, args?.sessionId))
     harness.handle('git.diff', (args) => gitDiff(ctx, args?.path, args?.sessionId))
   }

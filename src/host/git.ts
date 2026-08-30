@@ -8,7 +8,7 @@
 import { execFile } from 'node:child_process'
 import { readFile as fsReadFile, stat as fsStat } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { HostContext, ToolExec } from './types'
+import type { DshFs, HostContext, ToolExec } from './types'
 import { readFile } from './files'
 import { execCwd, resolveCwdCached } from './workspace'
 
@@ -42,10 +42,11 @@ interface StatusCache {
   error: string | null
   entries: GitStatusEntry[]
   at: number
+  /** 最近一次被 gitStatus() 读到的时间：兜底轮询只刷新仍被关注的工作区 */
+  seen: number
 }
 
-/** 执行 git 子命令；files.ts 的文件搜索复用（git ls-files） */
-export function runGit(args: string[], cwd: string | undefined): Promise<{ ok: boolean; out?: string; error?: string }> {
+/** 执行 git 子命令；files.ts 的文件搜索复用（git ls-files） */export function runGit(args: string[], cwd: string | undefined): Promise<{ ok: boolean; out?: string; error?: string }> {
   return new Promise((resolve) => {
     try {
       execFile('git', args, { cwd, maxBuffer: 20 * 1024 * 1024, timeout: 15000, windowsHide: true }, (err, stdout, stderr) => {
@@ -67,6 +68,24 @@ const statusCache = new Map<string, StatusCache>()
 const statusInFlight = new Set<string>()
 const statusTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const STATUS_MIN_INTERVAL = 1500
+/** 兜底轮询忽略「最近 10 分钟无人查看」的工作区；缓存条目超上限时按 seen 驱逐 */
+const STATUS_SEEN_TTL = 10 * 60 * 1000
+const STATUS_CACHE_MAX = 32
+
+function writeStatusCache(cwd: string, entry: Omit<StatusCache, 'seen'>): void {
+  const prev = statusCache.get(cwd)
+  statusCache.set(cwd, { ...entry, seen: prev ? prev.seen : Date.now() })
+  if (statusCache.size <= STATUS_CACHE_MAX) return
+  let oldestKey: string | null = null
+  let oldest = Infinity
+  for (const [k, v] of statusCache) {
+    if (v.seen < oldest) {
+      oldest = v.seen
+      oldestKey = k
+    }
+  }
+  if (oldestKey != null && oldestKey !== cwd) statusCache.delete(oldestKey)
+}
 
 async function gitStatusRemote(cwd: string): Promise<{ ok: boolean; error?: string; entries?: GitStatusEntry[] }> {
   // 默认（非递归）untracked 模式：在大工作区上枚举未跟踪目录里的每个文件
@@ -134,9 +153,24 @@ async function diffStats(cwd: string): Promise<Map<string, { adds: number; dels:
   return stats
 }
 
-/** 未跟踪文件的行数（过大文件跳过，徽章缺失可接受） */
+/** attachGitTracking 捕获的宿主上下文：untrackedLineCount 走 DSH fs 抽象用 */
+let hostCtx: HostContext | null = null
+
+/** 未跟踪文件的行数（过大文件跳过，徽章缺失可接受）。优先 DSH fs 抽象
+ * （与全库读写路径一致，尊重沙箱/远端后端），不可用时回退 node:fs。 */
 async function untrackedLineCount(cwd: string, relPath: string): Promise<number | null> {
+  const fs = hostCtx?.get<DshFs>('fs')
   try {
+    if (fs && typeof fs.resolve === 'function' && typeof fs.stat === 'function' && typeof fs.readText === 'function') {
+      const target = await fs.resolve(relPath, { cwd })
+      const st = await fs.stat(target)
+      if (!st || st.type !== 'file') return null
+      if (typeof st.size === 'number' && st.size > 200000) return null
+      const content = await fs.readText(target)
+      const lines = content.split('\n')
+      if (lines.length && lines[lines.length - 1] === '') lines.pop()
+      return lines.length
+    }
     const abs = join(cwd, relPath)
     const st = await fsStat(abs)
     if (!st.isFile() || st.size > 200000) return null
@@ -156,9 +190,9 @@ async function refreshStatus(cwd: string, force: boolean): Promise<void> {
   statusInFlight.add(cwd)
   try {
     const res = await gitStatusRemote(cwd)
-    statusCache.set(cwd, { ok: res.ok, error: res.error || null, entries: res.entries || [], at: Date.now() })
+    writeStatusCache(cwd, { ok: res.ok, error: res.error || null, entries: res.entries || [], at: Date.now() })
   } catch (e) {
-    statusCache.set(cwd, { ok: false, error: e instanceof Error && e.message ? e.message : 'git failed', entries: [], at: Date.now() })
+    writeStatusCache(cwd, { ok: false, error: e instanceof Error && e.message ? e.message : 'git failed', entries: [], at: Date.now() })
   } finally {
     statusInFlight.delete(cwd)
   }
@@ -176,6 +210,7 @@ function scheduleStatusRefresh(cwd: string | undefined): void {
 
 /** 事件挂载：工具完成 → 去抖刷新该工作区；15s 兜底轮询覆盖 IDE 等带外修改 */
 export function attachGitTracking(ctx: HostContext): void {
+  hostCtx = ctx
   ctx.on('tools/result', (exec: ToolExec) => {
     try {
       scheduleStatusRefresh(execCwd(ctx, exec))
@@ -185,7 +220,12 @@ export function attachGitTracking(ctx: HostContext): void {
   })
 
   ctx.interval(() => {
-    for (const cwd of Array.from(statusCache.keys())) void refreshStatus(cwd, false)
+    const now = Date.now()
+    for (const [cwd, cached] of Array.from(statusCache.entries())) {
+      // 长时间未被查看的工作区停止兜底轮询（下次被 gitStatus 读到会恢复）
+      if (now - cached.seen > STATUS_SEEN_TTL) continue
+      void refreshStatus(cwd, false)
+    }
   }, 15000)
 }
 
@@ -196,17 +236,20 @@ export async function gitStatus(ctx: HostContext, sessionId?: string, opts?: { f
   if (opts?.force) {
     await refreshStatus(cwd, true)
     const fresh = statusCache.get(cwd)
+    if (fresh) fresh.seen = Date.now()
     if (!fresh) return { ok: false, error: 'git status 失败', root: cwd }
     return { ok: fresh.ok, error: fresh.error || undefined, entries: fresh.entries, root: cwd, cachedAt: fresh.at }
   }
   const cached = statusCache.get(cwd)
   if (cached) {
+    cached.seen = Date.now()
     // stale-while-revalidate：即时应答，后台刷新。
     scheduleStatusRefresh(cwd)
     return { ok: cached.ok, error: cached.error || undefined, entries: cached.entries, root: cwd, cachedAt: cached.at }
   }
   await refreshStatus(cwd, true)
   const fresh = statusCache.get(cwd)
+  if (fresh) fresh.seen = Date.now()
   if (!fresh) return { ok: false, error: 'git status 失败', root: cwd }
   return { ok: fresh.ok, error: fresh.error || undefined, entries: fresh.entries, root: cwd, cachedAt: fresh.at }
 }

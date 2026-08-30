@@ -6,20 +6,19 @@
  */
 import { spawn } from 'node:child_process'
 import type { DshFs, HostContext } from './types'
+import { resolveWorkspaceCwd } from './files'
 
 export interface OpenResult {
   ok: boolean
   error?: string
 }
 
-export async function openInEditor(ctx: HostContext, path: unknown): Promise<OpenResult> {
+export async function openInEditor(ctx: HostContext, path: unknown, sessionId?: string): Promise<OpenResult> {
   const fs = ctx.get<DshFs>('fs')
   if (!fs) return { ok: false, error: 'filesystem unavailable' }
   if (typeof path !== 'string' || !path) return { ok: false, error: 'missing path' }
   try {
-    const policy = ctx.get('sandboxPolicy')
-    const root = (policy as { workspaceRoot?: string } | undefined)?.workspaceRoot
-    const cwd = typeof root === 'string' && root ? root : undefined
+    const cwd = await resolveWorkspaceCwd(ctx, sessionId)
     const target = await fs.resolve(path, cwd ? { cwd } : undefined)
     const cmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'cmd' : 'xdg-open'
     const args = process.platform === 'win32' ? ['/c', 'start', '', String(target)] : [String(target)]

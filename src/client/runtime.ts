@@ -97,8 +97,8 @@ export const host = {
   gitDiff(path: string, sessionId: string): Promise<GitDiffResponse> {
     return getJson('/flyout-sidebar/gitdiff' + qs(['path', path], ['sessionId', sessionId])) as Promise<GitDiffResponse>
   },
-  readArtifact(path: string): Promise<ReadResponse> {
-    return getJson('/flyout-sidebar/content' + qs(['path', path])) as Promise<ReadResponse>
+  readArtifact(path: string, sessionId: string): Promise<ReadResponse> {
+    return getJson('/flyout-sidebar/content' + qs(['path', path], ['sessionId', sessionId])) as Promise<ReadResponse>
   },
   listDir(path: string, sessionId: string): Promise<ListDirResponse> {
     return getJson('/flyout-sidebar/listdir' + qs(['path', path], ['sessionId', sessionId])) as Promise<ListDirResponse>
@@ -106,7 +106,7 @@ export const host = {
   searchFiles(query: string, sessionId: string): Promise<SearchResponse> {
     return getJson('/flyout-sidebar/search' + qs(['q', query], ['sessionId', sessionId])) as Promise<SearchResponse>
   },
-  openInEditor(path: string): Promise<{ ok: boolean; error?: string }> {
-    return getJson('/flyout-sidebar/open' + qs(['path', path])) as Promise<{ ok: boolean; error?: string }>
+  openInEditor(path: string, sessionId: string): Promise<{ ok: boolean; error?: string }> {
+    return getJson('/flyout-sidebar/open' + qs(['path', path], ['sessionId', sessionId])) as Promise<{ ok: boolean; error?: string }>
   },
 }

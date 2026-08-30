@@ -9,6 +9,7 @@ import extSource from '../shared/ext.js?raw'
 import highlightSource from '../shared/highlight.js?raw'
 import markdownSource from '../shared/markdown.js?raw'
 import i18nSource from '../shared/i18n.js?raw'
+import gituiSource from '../shared/gitui.js?raw'
 
 /** 剥离 ESM 语法，把 shared 模块源码变成经典 <script> 可用的片段 */
 function toInlineScript(source: string): string {
@@ -19,7 +20,7 @@ function toInlineScript(source: string): string {
 
 // 三个模块在同一脚本作用域内互调（markdown → highlight），函数声明提升，
 // 拼接顺序无关紧要；这里按 依赖深浅 排列便于阅读。
-const sharedScript = [extSource, highlightSource, markdownSource, i18nSource].map(toInlineScript).join('\n')
+const sharedScript = [extSource, highlightSource, markdownSource, i18nSource, gituiSource].map(toInlineScript).join('\n')
 
 // shared 文本是运行时插值，反引号/`${…}` 不会破坏模板；唯一会破坏页面结构
 // 的是内联脚本里出现 "</script>"，构建期直接拦截。
@@ -299,6 +300,11 @@ ${sharedScript}
       if (path) q.push('path=' + encodeURIComponent(path));
       return LISTDIR_URL + (q.length ? '?' + q.join('&') : '');
     }
+    // 内容/媒体读取也带 sessionId：host 按会话解析工作区根（可能与沙箱根不同）
+    function sessionQuery() {
+      var sid = currentSessionId();
+      return sid ? '&sessionId=' + encodeURIComponent(sid) : '';
+    }
     var gitFiles = null;
     var gitError = null;
     var gitSig = null; // 上次渲染的变更签名；轮询数据未变时跳过重渲染，避免冲掉刷新动画
@@ -371,10 +377,6 @@ ${sharedScript}
       if (text != null) n.textContent = text;
       return n;
     }
-    function basename(p) {
-      var parts = String(p).split('/');
-      return parts[parts.length - 1] || p;
-    }
     function toast(msg) {
       var t = document.getElementById('toast');
       t.textContent = msg;
@@ -400,16 +402,7 @@ ${sharedScript}
     function errNode(msg) {
       return el('div', 'err', msg || 'read failed');
     }
-    function gitLabel(e) {
-      if (e.x === '?' || e.y === '?') return 'U';
-      return (e.y !== ' ' ? e.y : e.x) || 'M';
-    }
-    function gitTitle(e) {
-      var label = gitLabel(e);
-      var map = { U: tr('statusU'), A: tr('statusA'), M: tr('statusM'), D: tr('statusD'), R: tr('statusR'), C: tr('statusC'), T: tr('statusT') };
-      var staged = e.x !== ' ' && e.x !== '?';
-      return (map[label] || label) + (staged ? tr('staged') : tr('unstaged'));
-    }
+    // gitLabel / gitTitle / basename 由 shared/gitui.js 内联提供
     function renderGit() {
       var list = document.getElementById('list');
       list.textContent = '';
@@ -460,6 +453,7 @@ ${sharedScript}
       });
     }
     // Unified git diff renderer: meta/hunk/+/- rows with colors.
+    // 行分类逻辑由 shared/gitui.js 的 gitDiffLineClass 提供。
     function gitDiffNode(text) {
       var wrap = el('div', 'gd');
       if (!text) {
@@ -468,16 +462,7 @@ ${sharedScript}
       }
       var lines = String(text).replace(/\n$/, '').split('\n');
       lines.forEach(function (line) {
-        var cls = 'gd-line';
-        if (line.indexOf('@@') === 0) cls += ' gd-hunk';
-        else if (line.charAt(0) === '+' && line.indexOf('+++') !== 0) cls += ' gd-add';
-        else if (line.charAt(0) === '-' && line.indexOf('---') !== 0) cls += ' gd-del';
-        else if (line.indexOf('diff ') === 0 || line.indexOf('index ') === 0 || line.indexOf('--- ') === 0 ||
-          line.indexOf('+++ ') === 0 || line.indexOf('new file') === 0 || line.indexOf('deleted file') === 0 ||
-          line.indexOf('old mode') === 0 || line.indexOf('new mode') === 0 || line.indexOf('rename ') === 0 ||
-          line.indexOf('similarity ') === 0 || line.indexOf('copy ') === 0 || line.indexOf('Binary files') === 0 ||
-          line.charAt(0) === '\\') cls += ' gd-meta';
-        wrap.appendChild(el('div', cls, line));
+        wrap.appendChild(el('div', gitDiffLineClass(line), line));
       });
       return wrap;
     }
@@ -565,7 +550,7 @@ ${sharedScript}
       var type = t.type || 'text';
       if (type === 'image') {
         var img = el('img', 'preview-img');
-        img.src = MEDIA_URL + '?path=' + encodeURIComponent(t.path);
+        img.src = MEDIA_URL + '?path=' + encodeURIComponent(t.path) + sessionQuery();
         img.alt = t.path;
         img.addEventListener('error', function () { area.textContent = ''; area.appendChild(errNode(tr('imageLoadFailed'))); });
         area.appendChild(img);
@@ -575,7 +560,7 @@ ${sharedScript}
         // Standalone tab: use the browser's NATIVE PDF viewer (with its own
         // toolbar). #zoom=page-width fits the page to the box width.
         var pdf = el('embed', 'preview-pdf');
-        pdf.src = MEDIA_URL + '?path=' + encodeURIComponent(t.path) + '#zoom=page-width';
+        pdf.src = MEDIA_URL + '?path=' + encodeURIComponent(t.path) + sessionQuery() + '#zoom=page-width';
         pdf.type = 'application/pdf';
         area.appendChild(pdf);
         return;
@@ -609,7 +594,7 @@ ${sharedScript}
       renderActive();
       refreshTreeSelection();
       if (!needFetch) return;
-      fetch(CONTENT_URL + '?path=' + encodeURIComponent(path)).then(function (r) { return r.json(); }).then(function (data) {
+      fetch(CONTENT_URL + '?path=' + encodeURIComponent(path) + sessionQuery()).then(function (r) { return r.json(); }).then(function (data) {
         if (!data || data.ok !== true) { patchTab(key, { loading: false, ok: false, error: (data && data.error) || tr('readFailed') }); return; }
         patchTab(key, { loading: false, ok: true, content: data.content, truncated: data.truncated });
       }).catch(function (e) {
@@ -797,10 +782,10 @@ ${sharedScript}
           var ok = data && data.ok === true;
           if (ok) {
             st.textContent = 'live';
-            st.style.color = getComputedStyle(document.documentElement).getPropertyValue('--p-success-fg').trim() || '#34c55e';
+            st.style.color = themeColors.success;
           } else {
             st.textContent = 'git error';
-            st.style.color = getComputedStyle(document.documentElement).getPropertyValue('--p-error').trim() || '#ef4444';
+            st.style.color = themeColors.error;
           }
           // 数据签名未变时跳过重渲染：2s 轮询不会重建行元素、冲掉浮现动画。
           var nextFiles = ok ? (Array.isArray(data.entries) ? data.entries : []) : [];
@@ -816,7 +801,7 @@ ${sharedScript}
           if (list) list.classList.remove('is-refreshing');
           var st = document.getElementById('status');
           st.textContent = 'offline';
-          st.style.color = getComputedStyle(document.documentElement).getPropertyValue('--p-error').trim() || '#ef4444';
+          st.style.color = themeColors.error;
         });
     }
     document.getElementById('divider').title = tr('resizePanel');
@@ -904,10 +889,19 @@ ${sharedScript}
       document.addEventListener('mousemove', onMove);
       document.addEventListener('mouseup', onUp);
     });
-    setInterval(function () { if (currentView === 'git') loadGit(); }, 2000);
+    setInterval(function () { if (!document.hidden && currentView === 'git') loadGit(); }, 2000);
     // Follow the app's light/dark theme live: the main tab writes the theme to
     // localStorage (THEME_KEY) whenever DSH's theme changes.
     var THEME_KEY = 'dsh-flyout-sidebar:theme';
+    // 主题切换时缓存一次状态色，2s 轮询不再反复 getComputedStyle
+    var themeColors = { success: '#34c55e', error: '#ef4444' };
+    function readThemeColors() {
+      try {
+        var cs = getComputedStyle(document.documentElement);
+        themeColors.success = cs.getPropertyValue('--p-success-fg').trim() || themeColors.success;
+        themeColors.error = cs.getPropertyValue('--p-error').trim() || themeColors.error;
+      } catch (e) {}
+    }
     function applyTheme() {
       var v = null;
       try { v = localStorage.getItem(THEME_KEY); } catch (e) {}
@@ -917,7 +911,9 @@ ${sharedScript}
       }
       if (v === 'dark') document.documentElement.setAttribute('data-ds-dark-theme', '');
       else document.documentElement.removeAttribute('data-ds-dark-theme');
+      readThemeColors();
     }
+    readThemeColors();
     // Follow the active session in real time: the main tab publishes the
     // current session id to localStorage (SESSION_KEY) only when it actually
     // changes, so the storage event alone is enough — no polling.

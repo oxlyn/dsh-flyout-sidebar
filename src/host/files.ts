@@ -3,8 +3,26 @@
  */
 import { extType } from '../shared/ext.js'
 import type { DshFs, HostContext } from './types'
-import { resolveCwd } from './workspace'
+import { resolveCwd, resolveCwdCached } from './workspace'
 import { runGit } from './git'
+
+/**
+ * 解析读取/打开类操作的工作区根：指名会话时优先解析其工作区（独立弹出页与
+ * 主面板都可能处于非沙箱根的工作区），解析不到或未指名时回退沙箱根。
+ */
+export async function resolveWorkspaceCwd(ctx: HostContext, sessionId?: string): Promise<string | undefined> {
+  if (typeof sessionId === 'string' && sessionId) {
+    const c = await resolveCwdCached(ctx, sessionId)
+    if (c) return c
+  }
+  try {
+    const policy = ctx.get('sandboxPolicy')
+    const root = (policy as { workspaceRoot?: string } | undefined)?.workspaceRoot
+    return typeof root === 'string' && root ? root : undefined
+  } catch {
+    return undefined
+  }
+}
 
 export interface ReadResult {
   ok: boolean
@@ -23,14 +41,12 @@ export interface ListResult {
 }
 
 /** 文本内容读取（代码预览）。超长内容截断并打标。 */
-export async function readFile(ctx: HostContext, path: unknown): Promise<ReadResult> {
+export async function readFile(ctx: HostContext, path: unknown, sessionId?: string): Promise<ReadResult> {
   const fs = ctx.get<DshFs>('fs')
   if (!fs) return { ok: false, error: 'filesystem unavailable' }
   if (typeof path !== 'string' || !path) return { ok: false, error: 'missing path' }
   try {
-    const policy = ctx.get('sandboxPolicy')
-    const root = (policy as { workspaceRoot?: string } | undefined)?.workspaceRoot
-    const cwd = typeof root === 'string' && root ? root : undefined
+    const cwd = await resolveWorkspaceCwd(ctx, sessionId)
     const target = await fs.resolve(path, cwd ? { cwd } : undefined)
     const info = await fs.stat(target)
     if (!info || info.type !== 'file') return { ok: false, error: 'not a readable file' }
@@ -42,6 +58,9 @@ export async function readFile(ctx: HostContext, path: unknown): Promise<ReadRes
     if (typeof info.size === 'number' && info.size > capBytes) {
       const bytes = await fs.readBytes(target, undefined, capBytes)
       text = new TextDecoder().decode(new Uint8Array(bytes))
+      // 字节截断可能切在 UTF-8 多字节序列中间，解码尾部出现替换符：剥掉，
+      // 避免预览末尾挂一个乱码字符（真实 U+FFFD 内容丢失可忽略）。
+      while (text.length && text.charCodeAt(text.length - 1) === 0xfffd) text = text.slice(0, -1)
     } else {
       text = await fs.readText(target)
     }
@@ -141,8 +160,9 @@ export async function searchFiles(ctx: HostContext, query: unknown, sessionId?: 
   try {
     const cwd = await resolveCwd(ctx, sessionId)
     if (!cwd) return { ok: false, error: 'workspace unavailable' }
-    const git = await runGit(['ls-files', '--cached', '--others', '--exclude-standard'], cwd)
-    const all = git.ok && git.out != null ? git.out.split('\n') : await walkFileNames(ctx, cwd)
+    // -z：NUL 分隔输出，git 不会对含引号/非 ASCII 字符的路径做 C 风格转义
+    const git = await runGit(['ls-files', '-z', '--cached', '--others', '--exclude-standard'], cwd)
+    const all = git.ok && git.out != null ? git.out.split('\0') : await walkFileNames(ctx, cwd)
     // 统一返回相对工作区根的路径（walk 回退产出绝对路径）
     const prefix = cwd.replace(/\/+$/, '') + '/'
     const lower = q.toLowerCase()

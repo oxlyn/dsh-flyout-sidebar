@@ -8,7 +8,7 @@ import type { ServerResponse } from 'node:http'
 import pdfjsLibSource from '../vendor/pdfjs/pdf.min.js?raw'
 import pdfjsWorkerSource from '../vendor/pdfjs/pdf.worker.min.js?raw'
 import type { DshFs, DshWebServer, HostContext } from './types'
-import { readFile, listDir, searchFiles } from './files'
+import { readFile, listDir, searchFiles, resolveWorkspaceCwd } from './files'
 import { gitDiff, gitStatus } from './git'
 import { openInEditor } from './editor'
 import { removeFile, snapshotArtifacts } from './artifacts'
@@ -51,7 +51,22 @@ export function registerRoutes(ctx: HostContext, webServer: DshWebServer): void 
     kind: 'exact',
     path: '/flyout-sidebar',
     handler(req, res) {
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' })
+      // 内联脚本 + 内联样式 + self 资源；给独立弹出页兜一层 CSP 底线
+      const csp = [
+        "default-src 'self'",
+        "script-src 'self' 'unsafe-inline'",
+        "style-src 'self' 'unsafe-inline'",
+        "img-src 'self' data:",
+        "media-src 'self'",
+        "object-src 'self'",
+        "frame-src 'self'",
+        "connect-src 'self'",
+      ].join('; ')
+      res.writeHead(200, {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': 'no-store',
+        'Content-Security-Policy': csp,
+      })
       res.end(page)
     },
   }, 'artifacts: page route')
@@ -68,7 +83,8 @@ export function registerRoutes(ctx: HostContext, webServer: DshWebServer): void 
     kind: 'exact',
     path: '/flyout-sidebar/content',
     handler: async (req, res) => {
-      const out = await readFile(ctx, queryParams(req.url).get('path') ?? undefined)
+      const q = queryParams(req.url)
+      const out = await readFile(ctx, q.get('path') ?? undefined, q.get('sessionId') || undefined)
       sendJson(res, out)
     },
   }, 'artifacts: content route')
@@ -77,16 +93,15 @@ export function registerRoutes(ctx: HostContext, webServer: DshWebServer): void 
     kind: 'exact',
     path: '/flyout-sidebar/media',
     handler: async (req, res) => {
-      const path = queryParams(req.url).get('path') || ''
+      const q = queryParams(req.url)
+      const path = q.get('path') || ''
       const fs = ctx.get<DshFs>('fs')
       if (!fs || !path) {
         sendText(res, 400, 'bad request')
         return
       }
       try {
-        const policy = ctx.get('sandboxPolicy')
-        const root = (policy as { workspaceRoot?: string } | undefined)?.workspaceRoot
-        const cwd = typeof root === 'string' && root ? root : undefined
+        const cwd = await resolveWorkspaceCwd(ctx, q.get('sessionId') || undefined)
         const target = await fs.resolve(path, cwd ? { cwd } : undefined)
         const info = await fs.stat(target)
         if (!info || info.type !== 'file') {
@@ -127,7 +142,8 @@ export function registerRoutes(ctx: HostContext, webServer: DshWebServer): void 
     kind: 'exact',
     path: '/flyout-sidebar/open',
     handler: async (req, res) => {
-      const out = await openInEditor(ctx, queryParams(req.url).get('path') ?? undefined)
+      const q = queryParams(req.url)
+      const out = await openInEditor(ctx, q.get('path') ?? undefined, q.get('sessionId') || undefined)
       sendJson(res, out, true)
     },
   }, 'artifacts: open route')

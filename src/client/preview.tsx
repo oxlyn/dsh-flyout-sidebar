@@ -7,6 +7,7 @@ import { fileExt, extType } from '../shared/ext.js'
 import { t } from '../shared/i18n.js'
 import { highlightCode, splitHlLines } from '../shared/highlight.js'
 import { mdToHtml } from '../shared/markdown.js'
+import { gitDiffLineClass } from '../shared/gitui.js'
 import type { ReactElement, ReactNode } from 'react'
 
 /** 预览标签页状态（'p:' 前缀 = 内容预览，'g:' 前缀 = git diff） */
@@ -93,6 +94,10 @@ export function CodeView({ code, path, wrap }: { code?: string; path?: string; w
   }, [])
 
   const matchSet = matchLines.length ? new Set(matchLines) : null
+  // 换码/重查后裁掉超出行数的陈旧 row 引用（jumpTo 按行号索引）
+  React.useEffect(() => {
+    rowRefs.current.length = hlLines.length
+  }, [hlLines])
   return (
     <div className={'artifacts-code' + (wrap ? ' artifacts-code-wrap' : '')}>
       <div className="artifacts-findbar">
@@ -485,30 +490,16 @@ export function ImageView({ path }: { path: string }): ReactElement {
   )
 }
 
-/** 统一 git diff 渲染：meta/hunk/+/- 行着色，等宽可滚动 */
+/** 统一 git diff 渲染：meta/hunk/+/- 行着色，等宽可滚动；行分类与独立弹出页共用 */
 export function GitDiffView({ diff }: { diff?: string }): ReactElement {
   const text = String(diff || '')
   if (!text) return <div className="artifacts-hint">{t('noChangesHead')}</div>
   const lines = text.replace(/\n$/, '').split('\n')
-  const rows = lines.map((line, i) => {
-    let cls = 'gd-line'
-    if (line.startsWith('@@')) cls += ' gd-hunk'
-    else if (line.startsWith('+') && !line.startsWith('+++')) cls += ' gd-add'
-    else if (line.startsWith('-') && !line.startsWith('---')) cls += ' gd-del'
-    else if (
-      line.startsWith('diff ') || line.startsWith('index ') || line.startsWith('--- ') || line.startsWith('+++ ') ||
-      line.startsWith('new file') || line.startsWith('deleted file') || line.startsWith('old mode') ||
-      line.startsWith('new mode') || line.startsWith('rename ') || line.startsWith('similarity ') ||
-      line.startsWith('copy ') || line.startsWith('Binary files') || line.startsWith('\\')
-    ) {
-      cls += ' gd-meta'
-    }
-    return (
-      <div key={i} className={cls}>
-        {line}
-      </div>
-    )
-  })
+  const rows = lines.map((line, i) => (
+    <div key={i} className={gitDiffLineClass(line)}>
+      {line}
+    </div>
+  ))
   return <div className="artifacts-gitdiff">{rows}</div>
 }
 
