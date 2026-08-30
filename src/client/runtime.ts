@@ -106,4 +106,7 @@ export const host = {
   searchFiles(query: string, sessionId: string): Promise<SearchResponse> {
     return getJson('/flyout-sidebar/search' + qs(['q', query], ['sessionId', sessionId])) as Promise<SearchResponse>
   },
+  openInEditor(path: string): Promise<{ ok: boolean; error?: string }> {
+    return getJson('/flyout-sidebar/open' + qs(['path', path])) as Promise<{ ok: boolean; error?: string }>
+  },
 }

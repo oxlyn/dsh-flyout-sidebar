@@ -5,7 +5,7 @@
 import { Fragment, h, React } from './jsx'
 import { fileExt, extType } from '../shared/ext.js'
 import { t } from '../shared/i18n.js'
-import { highlightCode } from '../shared/highlight.js'
+import { highlightCode, splitHlLines } from '../shared/highlight.js'
 import { mdToHtml } from '../shared/markdown.js'
 import type { ReactElement, ReactNode } from 'react'
 
@@ -40,20 +40,119 @@ export function renderDiff(diff: { before: string; after: string } | null | unde
   )
 }
 
-/** 代码预览：行号栏 + 语法高亮代码（共享高亮器，语言取自扩展名）；wrap 为软换行 */
+/** 代码预览：逐行渲染（行号 + 语法高亮同行内对齐，软换行也不串行）+ 查找条 */
 export function CodeView({ code, path, wrap }: { code?: string; path?: string; wrap?: boolean }): ReactElement {
-  const src = String(code || '')
-  const srcLines = src.replace(/\n$/, '').split('\n')
-  const gutter = srcLines.map((_, i) => String(i + 1)).join('\n')
+  const src = String(code || '').replace(/\n$/, '')
+  const [query, setQuery] = React.useState('')
+  const [matchIdx, setMatchIdx] = React.useState(0)
+  const scrollRef = React.useRef<HTMLDivElement | null>(null)
+  const inputRef = React.useRef<HTMLInputElement | null>(null)
+  const rowRefs = React.useRef<Array<HTMLDivElement | null>>([])
+
+  const hlLines = React.useMemo(() => splitHlLines(highlightCode(src, fileExt(path || ''))), [src, path])
+  const matchLines = React.useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return [] as number[]
+    const out: number[] = []
+    const lines = src.split('\n')
+    for (let i = 0; i < lines.length; i += 1) {
+      const line = lines[i]
+      if (line != null && line.toLowerCase().includes(q)) out.push(i)
+    }
+    return out
+  }, [query, src])
+
+  // 查询变化后归零当前位置；若有匹配则跳到第一处
+  React.useEffect(() => {
+    setMatchIdx(0)
+    if (matchLines.length) jumpTo(0)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, matchLines])
+
+  const jumpTo = (idx: number): void => {
+    if (!matchLines.length) return
+    const n = ((idx % matchLines.length) + matchLines.length) % matchLines.length
+    setMatchIdx(n)
+    const row = rowRefs.current[matchLines[n] ?? -1]
+    const scroll = scrollRef.current
+    if (row && scroll) scroll.scrollTop = row.offsetTop - scroll.clientHeight / 3
+  }
+
+  // Cmd/Ctrl+F 聚焦查找条（代码标签激活时接管浏览器默认查找）
+  React.useEffect(() => {
+    const onKey = (ev: KeyboardEvent): void => {
+      if ((ev.metaKey || ev.ctrlKey) && (ev.key === 'f' || ev.key === 'F')) {
+        ev.preventDefault()
+        ev.stopPropagation()
+        inputRef.current?.focus()
+        inputRef.current?.select()
+      }
+    }
+    document.addEventListener('keydown', onKey, true)
+    return () => document.removeEventListener('keydown', onKey, true)
+  }, [])
+
+  const matchSet = matchLines.length ? new Set(matchLines) : null
   return (
     <div className={'artifacts-code' + (wrap ? ' artifacts-code-wrap' : '')}>
-      <div className="artifacts-code-scroll">
-        <pre className="artifacts-code-gutter" aria-hidden="true">
-          {gutter}
-        </pre>
-        <pre className="artifacts-code-pre">
-          <code dangerouslySetInnerHTML={{ __html: highlightCode(src, fileExt(path || '')) }} />
-        </pre>
+      <div className="artifacts-findbar">
+        <input
+          ref={inputRef}
+          type="text"
+          className="artifacts-find-input"
+          placeholder={t('findPlaceholder')}
+          value={query}
+          onChange={(e) => setQuery(e.currentTarget.value)}
+          onKeyDown={(ev) => {
+            if (ev.key === 'Escape') {
+              setQuery('')
+              ev.currentTarget.blur()
+            } else if (ev.key === 'Enter') {
+              ev.preventDefault()
+              jumpTo(ev.shiftKey ? matchIdx - 1 : matchIdx + 1)
+            }
+          }}
+        />
+        {query.trim() ? (
+          <span className="artifacts-find-count">{matchLines.length ? matchIdx + 1 + '/' + matchLines.length : '0'}</span>
+        ) : null}
+        <button
+          type="button"
+          className="artifacts-find-btn"
+          title={t('prevMatch')}
+          disabled={!matchLines.length}
+          onClick={() => jumpTo(matchIdx - 1)}
+        >
+          ‹
+        </button>
+        <button
+          type="button"
+          className="artifacts-find-btn"
+          title={t('nextMatch')}
+          disabled={!matchLines.length}
+          onClick={() => jumpTo(matchIdx + 1)}
+        >
+          ›
+        </button>
+      </div>
+      <div className="artifacts-code-scroll" ref={scrollRef}>
+        {hlLines.map((line, i) => (
+          <div
+            key={i}
+            ref={(el) => {
+              rowRefs.current[i] = el
+            }}
+            className={'artifacts-code-line' + (matchSet && matchSet.has(i) ? ' is-match' : '')}
+          >
+            <div className="artifacts-code-gutter" aria-hidden="true">
+              {i + 1}
+            </div>
+            <div
+              className="artifacts-code-pre"
+              dangerouslySetInnerHTML={{ __html: line || '&nbsp;' }}
+            />
+          </div>
+        ))}
       </div>
     </div>
   )
@@ -320,6 +419,72 @@ export function PdfView({ path }: { path: string }): ReactElement | null {
   )
 }
 
+/** 图片预览：滚轮缩放 + 拖拽平移 + 双击复位 */
+export function ImageView({ path }: { path: string }): ReactElement {
+  const [scale, setScale] = React.useState(1)
+  const [offset, setOffset] = React.useState({ x: 0, y: 0 })
+  const [dragging, setDragging] = React.useState(false)
+  const dragRef = React.useRef<{ x: number; y: number; ox: number; oy: number } | null>(null)
+  const wrapRef = React.useRef<HTMLDivElement | null>(null)
+  const src = '/flyout-sidebar/media?path=' + encodeURIComponent(path)
+
+  // 原生 wheel 监听（React 的合成 wheel 是 passive 的，preventDefault 无效）
+  React.useEffect(() => {
+    const wrap = wrapRef.current
+    if (!wrap) return
+    const onWheel = (ev: WheelEvent): void => {
+      ev.preventDefault()
+      const factor = ev.deltaY < 0 ? 1.15 : 1 / 1.15
+      setScale((sc) => Math.max(0.1, Math.min(12, sc * factor)))
+    }
+    wrap.addEventListener('wheel', onWheel, { passive: false })
+    return () => wrap.removeEventListener('wheel', onWheel)
+  }, [])
+
+  React.useEffect(() => {
+    if (!dragging) return
+    const onMove = (ev: MouseEvent): void => {
+      const start = dragRef.current
+      if (!start) return
+      setOffset({ x: start.ox + (ev.clientX - start.x), y: start.oy + (ev.clientY - start.y) })
+    }
+    const onUp = (): void => {
+      setDragging(false)
+      dragRef.current = null
+    }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+    return () => {
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+    }
+  }, [dragging])
+
+  return (
+    <div
+      ref={wrapRef}
+      className={'artifacts-imgview' + (dragging ? ' is-dragging' : '')}
+      onMouseDown={(ev) => {
+        ev.preventDefault()
+        dragRef.current = { x: ev.clientX, y: ev.clientY, ox: offset.x, oy: offset.y }
+        setDragging(true)
+      }}
+      onDoubleClick={() => {
+        setScale(1)
+        setOffset({ x: 0, y: 0 })
+      }}
+    >
+      <img
+        className="artifacts-img"
+        draggable={false}
+        src={src}
+        alt={path}
+        style={{ transform: 'translate(' + offset.x + 'px,' + offset.y + 'px) scale(' + scale + ')' }}
+      />
+    </div>
+  )
+}
+
 /** 统一 git diff 渲染：meta/hunk/+/- 行着色，等宽可滚动 */
 export function GitDiffView({ diff }: { diff?: string }): ReactElement {
   const text = String(diff || '')
@@ -360,13 +525,7 @@ export function renderPreview(p: PreviewTab, codeWrap = false): ReactElement {
   const type = p.type || extType(p.path)
   let view: ReactNode
   if (type === 'image') {
-    view = (
-      <img
-        className="artifacts-img"
-        src={'/flyout-sidebar/media?path=' + encodeURIComponent(p.path || '')}
-        alt={p.path || ''}
-      />
-    )
+    view = <ImageView path={p.path || ''} />
   } else if (type === 'html') {
     view = (
       <iframe className="artifacts-iframe" sandbox="allow-scripts" srcDoc={p.content || ''} title={p.path || ''} />

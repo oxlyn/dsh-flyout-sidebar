@@ -124,6 +124,7 @@ test('host plugin: apply registers routes, events and intervals', async () => {
     '/flyout-sidebar/remove',
     '/flyout-sidebar/listdir',
     '/flyout-sidebar/search',
+    '/flyout-sidebar/open',
     '/flyout-sidebar/gitstatus',
     '/flyout-sidebar/gitdiff',
     '/flyout-sidebar/pdfjs/pdf.min.js',
@@ -226,6 +227,18 @@ test('host plugin: search route (git ls-files + fallback walk)', async () => {
   const res3 = makeFakeRes()
   await ctx.routes.get('/flyout-sidebar/search')({ url: '/flyout-sidebar/search' }, res3)
   assert.deepEqual(JSON.parse(res3.body).entries, [])
+})
+
+test('host plugin: open route rejects missing path without spawning', async () => {
+  const workspace = mkdtempSync(join(os.tmpdir(), 'dsh-flyout-open-'))
+  const plugin = await import('../dist/index.js')
+  const ctx = makeCtx(workspace)
+  plugin.apply(ctx)
+  const res = makeFakeRes()
+  await ctx.routes.get('/flyout-sidebar/open')({ url: '/flyout-sidebar/open' }, res)
+  const body = JSON.parse(res.body)
+  assert.equal(body.ok, false)
+  assert.equal(body.error, 'missing path')
 })
 
 test('host plugin: oversized text file is truncated without reading it all', async () => {

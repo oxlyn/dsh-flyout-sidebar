@@ -98,3 +98,16 @@ export const WrapIcon = ({ size }: IconProps) => (
     <path d="M11 10.6 9 13l2 2.4" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" transform="translate(0 -2.4)" />
   </svg>
 )
+
+/** 外开图标：方框 + 指向右上角的箭头（在系统编辑器打开） */
+export const ExternalIcon = ({ size }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true">
+    <path
+      d="M12.5 9v3.7a1.3 1.3 0 0 1-1.3 1.3H3.8a1.3 1.3 0 0 1-1.3-1.3V5.3A1.3 1.3 0 0 1 3.8 4H7.5"
+      stroke="currentColor"
+      strokeWidth={1.4}
+      strokeLinecap="round"
+    />
+    <path d="M10 2.5h3.5V6M13.2 2.8 8.2 7.8" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" />
+  </svg>
+)

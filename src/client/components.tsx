@@ -32,6 +32,7 @@ import {
   PanelCollapseIcon,
   PanelIcon,
   FlyoutIcon,
+  ExternalIcon,
   RefreshIcon,
   WrapIcon,
 } from './icons'
@@ -798,6 +799,20 @@ export function ArtifactsPanel(): ReactElement | null {
               </div>
             ))}
           </div>
+          <button
+            type="button"
+            className="artifacts-preview-hide"
+            title={t('openInEditor')}
+            onClick={() => {
+              if (!activeTab) return
+              host
+                .openInEditor(activeTab.path)
+                .then((res) => flash(res && res.ok ? t('openedInEditor') : t('openFailed') + ((res && res.error) ? '：' + res.error : '')))
+                .catch(() => flash(t('openFailed')))
+            }}
+          >
+            <ExternalIcon size={16} />
+          </button>
           <button
             type="button"
             className={'artifacts-preview-hide' + (settings.codeWrap ? ' is-active' : '')}

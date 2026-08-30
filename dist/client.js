@@ -46,6 +46,9 @@
 		},
 		searchFiles(query, sessionId) {
 			return getJson("/flyout-sidebar/search" + qs(["q", query], ["sessionId", sessionId]));
+		},
+		openInEditor(path) {
+			return getJson("/flyout-sidebar/open" + qs(["path", path]));
 		}
 	};
 	//#endregion
@@ -306,15 +309,28 @@ body[data-ds-dark-theme] .gd-del { color: #faa2c1; }
 .artifacts-langselect { border: 1px solid var(--dsw-alias-border-l2); background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); font: inherit; border-radius: 6px; padding: 4px 8px; cursor: pointer; }
 .artifacts-suffix { color: var(--dsw-alias-label-secondary); font-size: 14px; line-height: 22px; }
 .artifacts-code { display: flex; flex-direction: column; height: 100%; min-height: 0; }
-.artifacts-code-scroll { flex: 1; min-height: 0; overflow: auto; display: flex; align-items: flex-start; background: var(--shiki-background, var(--dsw-alias-markdown-code-block, var(--dsw-alias-bg-layer-1))); }
-.artifacts-code-gutter { flex: none; min-width: 2.2em; margin: 0; padding: 12px 6px 12px 8px; text-align: right; color: var(--dsw-alias-label-tertiary); border-right: 1px solid var(--dsw-alias-border-l1); position: sticky; left: 0; user-select: none; background: var(--shiki-background, var(--dsw-alias-markdown-code-block, var(--dsw-alias-bg-layer-1))); font: 12px/1.6 var(--dsh-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); white-space: pre; }
-.artifacts-code-pre { flex: 1; margin: 0; padding: 12px; background: var(--shiki-background, var(--dsw-alias-markdown-code-block, var(--dsw-alias-bg-layer-1))); color: var(--shiki-foreground, var(--dsw-alias-label-primary)); font: 12px/1.6 var(--dsh-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); white-space: pre; }
+/* 代码视图：逐行渲染（行 = 行号 + 代码），软换行时行号仍对齐 */
+.artifacts-code-scroll { flex: 1; min-height: 0; overflow: auto; padding: 12px 0; background: var(--shiki-background, var(--dsw-alias-markdown-code-block, var(--dsw-alias-bg-layer-1))); }
+.artifacts-code-line { display: flex; align-items: flex-start; min-width: fit-content; }
+.artifacts-code-line.is-match { background: rgba(65, 118, 230, 0.1); }
+.artifacts-code-gutter { flex: none; min-width: 2.2em; padding: 0 6px 0 8px; text-align: right; color: var(--dsw-alias-label-tertiary); border-right: 1px solid var(--dsw-alias-border-l1); position: sticky; left: 0; user-select: none; background: var(--shiki-background, var(--dsw-alias-markdown-code-block, var(--dsw-alias-bg-layer-1))); font: 12px/1.6 var(--dsh-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); }
+.artifacts-code-line.is-match .artifacts-code-gutter { color: var(--dsw-alias-state-business-primary); font-weight: 600; }
+.artifacts-code-pre { flex: 1 0 auto; margin: 0; padding: 0 12px; color: var(--shiki-foreground, var(--dsw-alias-label-primary)); font: 12px/1.6 var(--dsh-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); white-space: pre; }
 .artifacts-code-pre code { font: inherit; color: inherit; }
 .artifacts-code-wrap .artifacts-code-pre { white-space: pre-wrap; word-break: break-all; }
+.artifacts-findbar { flex: none; display: flex; align-items: center; gap: 4px; padding: 6px 10px; border-bottom: 1px solid var(--dsw-alias-border-l1); background: var(--dsw-alias-bg-layer-1); }
+.artifacts-find-input { flex: 1; min-width: 0; border: 1px solid var(--dsw-alias-border-l2); background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); font: inherit; font-size: 12px; border-radius: 6px; padding: 3px 8px; outline: none; }
+.artifacts-find-input:focus { border-color: var(--dsw-alias-button-primary-fill); }
+.artifacts-find-count { flex: none; color: var(--dsw-alias-label-tertiary); font: 11px/1 var(--dsh-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); padding: 0 2px; }
+.artifacts-find-btn { width: 22px; height: 22px; flex: none; display: inline-flex; align-items: center; justify-content: center; border: none; background: transparent; color: var(--dsw-alias-label-secondary); cursor: pointer; border-radius: 6px; padding: 0; font-size: 14px; }
+.artifacts-find-btn:hover:not(:disabled) { background: var(--dsw-alias-fill-hover, var(--dsw-alias-bg-layer-3)); color: var(--dsw-alias-label-primary); }
+.artifacts-find-btn:disabled { opacity: 0.4; cursor: default; }
+.artifacts-imgview { flex: 1; min-height: 0; overflow: auto; display: flex; align-items: center; justify-content: center; cursor: grab; user-select: none; }
+.artifacts-imgview.is-dragging { cursor: grabbing; }
+.artifacts-imgview .artifacts-img { flex: none; margin: 16px; transform-origin: center; will-change: transform; }
 .artifacts-git-stats { flex: none; display: inline-flex; gap: 4px; font: 11px/16px var(--dsh-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); }
 .artifacts-git-adds { color: var(--p-success-fg, #1a7f37); }
 .artifacts-git-dels { color: var(--p-error, #cf222e); }
-.artifacts-code-line { display: block; }
 .tok-comment { color: #868e96; }
 .tok-string { color: #2f9e44; }
 .tok-number, .tok-bool, .tok-variable, .tok-hex, .tok-attr { color: #e8590c; }
@@ -487,6 +503,12 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		setCodeWrap: "代码换行",
 		setCodeWrapDesc: "代码预览长行软换行；关闭则横向滚动。",
 		wordWrap: "自动换行",
+		findPlaceholder: "查找…",
+		prevMatch: "上一个匹配",
+		nextMatch: "下一个匹配",
+		openInEditor: "在系统编辑器打开",
+		openedInEditor: "已在编辑器打开",
+		openFailed: "打开失败",
 		setLang: "界面语言",
 		setLangDesc: "侧边栏与独立弹出页的显示语言；独立弹出页需刷新后生效。",
 		langAuto: "跟随浏览器",
@@ -567,6 +589,12 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		setCodeWrap: "Code wrap",
 		setCodeWrapDesc: "Soft-wrap long lines in code previews; when off they scroll horizontally.",
 		wordWrap: "Word wrap",
+		findPlaceholder: "Find…",
+		prevMatch: "Previous match",
+		nextMatch: "Next match",
+		openInEditor: "Open in system editor",
+		openedInEditor: "Opened in editor",
+		openFailed: "Failed to open",
 		setLang: "Interface language",
 		setLangDesc: "Display language for the sidebar and the standalone flyout page (flyout requires a reload).",
 		langAuto: "Auto (browser)",
@@ -1138,6 +1166,67 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		const fn = HL_ENGINES[hlLangOf(hint)];
 		return fn ? fn(String(src)) : escHtml(src);
 	}
+	/**
+	* 把 highlightCode 输出的 HTML 按源码行拆分成逐行 HTML 数组。跨行 token
+	* （块注释、Python 三引号串等）在行边界处闭合、下一行重新打开，保证逐行
+	* 渲染时着色与整块渲染一致。逐行渲染使行号与代码天然对齐（含软换行模式），
+	* 也是行级查找高亮的基础。
+	* @param {string} html highlightCode 的输出
+	* @returns {string[]}
+	*/
+	function splitHlLines(html) {
+		var lines = [];
+		var cur = "";
+		/** @type {string[]} */
+		var stack = [];
+		var i = 0;
+		var openAll = function() {
+			var s = "";
+			for (var k = 0; k < stack.length; k++) s += "<span class=\"" + stack[k] + "\">";
+			return s;
+		};
+		var closeAll = function() {
+			var s = "";
+			for (var k = 0; k < stack.length; k++) s += "</span>";
+			return s;
+		};
+		while (i < html.length) {
+			if (html.indexOf("<span class=\"", i) === i) {
+				var end = html.indexOf(">", i);
+				if (end < 0) {
+					cur += html.slice(i);
+					break;
+				}
+				cur += html.slice(i, end + 1);
+				stack.push(html.slice(i + 13, end - 1));
+				i = end + 1;
+				continue;
+			}
+			if (html.indexOf("</span>", i) === i) {
+				cur += "</span>";
+				stack.pop();
+				i += 7;
+				continue;
+			}
+			var nl = html.indexOf("\n", i);
+			var nextTag = html.indexOf("<", i);
+			if (nextTag >= 0 && (nl < 0 || nextTag < nl)) {
+				cur += html.slice(i, nextTag);
+				i = nextTag;
+				continue;
+			}
+			if (nl < 0) {
+				cur += html.slice(i);
+				break;
+			}
+			cur += html.slice(i, nl);
+			lines.push(cur + closeAll());
+			cur = openAll();
+			i = nl + 1;
+		}
+		lines.push(cur + closeAll());
+		return lines;
+	}
 	//#endregion
 	//#region src/shared/markdown.js
 	/**
@@ -1242,14 +1331,95 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 	function renderDiff(diff) {
 		return /* @__PURE__ */ h("div", { className: "artifacts-diff" }, diff && diff.before != null && diff.before !== "" ? /* @__PURE__ */ h("div", { className: "artifacts-diff-block artifacts-diff-del" }, /* @__PURE__ */ h("div", { className: "artifacts-diff-label" }, t("diffDeleted")), /* @__PURE__ */ h("pre", { className: "artifacts-diff-pre" }, diff.before)) : null, /* @__PURE__ */ h("div", { className: "artifacts-diff-block artifacts-diff-add" }, /* @__PURE__ */ h("div", { className: "artifacts-diff-label" }, t("diffAdded")), /* @__PURE__ */ h("pre", { className: "artifacts-diff-pre" }, diff && diff.after != null ? diff.after : "")));
 	}
-	/** 代码预览：行号栏 + 语法高亮代码（共享高亮器，语言取自扩展名）；wrap 为软换行 */
+	/** 代码预览：逐行渲染（行号 + 语法高亮同行内对齐，软换行也不串行）+ 查找条 */
 	function CodeView({ code, path, wrap }) {
-		const src = String(code || "");
-		const gutter = src.replace(/\n$/, "").split("\n").map((_, i) => String(i + 1)).join("\n");
-		return /* @__PURE__ */ h("div", { className: "artifacts-code" + (wrap ? " artifacts-code-wrap" : "") }, /* @__PURE__ */ h("div", { className: "artifacts-code-scroll" }, /* @__PURE__ */ h("pre", {
+		const src = String(code || "").replace(/\n$/, "");
+		const [query, setQuery] = React.useState("");
+		const [matchIdx, setMatchIdx] = React.useState(0);
+		const scrollRef = React.useRef(null);
+		const inputRef = React.useRef(null);
+		const rowRefs = React.useRef([]);
+		const hlLines = React.useMemo(() => splitHlLines(highlightCode(src, fileExt(path || ""))), [src, path]);
+		const matchLines = React.useMemo(() => {
+			const q = query.trim().toLowerCase();
+			if (!q) return [];
+			const out = [];
+			const lines = src.split("\n");
+			for (let i = 0; i < lines.length; i += 1) {
+				const line = lines[i];
+				if (line != null && line.toLowerCase().includes(q)) out.push(i);
+			}
+			return out;
+		}, [query, src]);
+		React.useEffect(() => {
+			setMatchIdx(0);
+			if (matchLines.length) jumpTo(0);
+		}, [query, matchLines]);
+		const jumpTo = (idx) => {
+			if (!matchLines.length) return;
+			const n = (idx % matchLines.length + matchLines.length) % matchLines.length;
+			setMatchIdx(n);
+			const row = rowRefs.current[matchLines[n] ?? -1];
+			const scroll = scrollRef.current;
+			if (row && scroll) scroll.scrollTop = row.offsetTop - scroll.clientHeight / 3;
+		};
+		React.useEffect(() => {
+			const onKey = (ev) => {
+				if ((ev.metaKey || ev.ctrlKey) && (ev.key === "f" || ev.key === "F")) {
+					ev.preventDefault();
+					ev.stopPropagation();
+					inputRef.current?.focus();
+					inputRef.current?.select();
+				}
+			};
+			document.addEventListener("keydown", onKey, true);
+			return () => document.removeEventListener("keydown", onKey, true);
+		}, []);
+		const matchSet = matchLines.length ? new Set(matchLines) : null;
+		return /* @__PURE__ */ h("div", { className: "artifacts-code" + (wrap ? " artifacts-code-wrap" : "") }, /* @__PURE__ */ h("div", { className: "artifacts-findbar" }, /* @__PURE__ */ h("input", {
+			ref: inputRef,
+			type: "text",
+			className: "artifacts-find-input",
+			placeholder: t("findPlaceholder"),
+			value: query,
+			onChange: (e) => setQuery(e.currentTarget.value),
+			onKeyDown: (ev) => {
+				if (ev.key === "Escape") {
+					setQuery("");
+					ev.currentTarget.blur();
+				} else if (ev.key === "Enter") {
+					ev.preventDefault();
+					jumpTo(ev.shiftKey ? matchIdx - 1 : matchIdx + 1);
+				}
+			}
+		}), query.trim() ? /* @__PURE__ */ h("span", { className: "artifacts-find-count" }, matchLines.length ? matchIdx + 1 + "/" + matchLines.length : "0") : null, /* @__PURE__ */ h("button", {
+			type: "button",
+			className: "artifacts-find-btn",
+			title: t("prevMatch"),
+			disabled: !matchLines.length,
+			onClick: () => jumpTo(matchIdx - 1)
+		}, "‹"), /* @__PURE__ */ h("button", {
+			type: "button",
+			className: "artifacts-find-btn",
+			title: t("nextMatch"),
+			disabled: !matchLines.length,
+			onClick: () => jumpTo(matchIdx + 1)
+		}, "›")), /* @__PURE__ */ h("div", {
+			className: "artifacts-code-scroll",
+			ref: scrollRef
+		}, hlLines.map((line, i) => /* @__PURE__ */ h("div", {
+			key: i,
+			ref: (el) => {
+				rowRefs.current[i] = el;
+			},
+			className: "artifacts-code-line" + (matchSet && matchSet.has(i) ? " is-match" : "")
+		}, /* @__PURE__ */ h("div", {
 			className: "artifacts-code-gutter",
 			"aria-hidden": "true"
-		}, gutter), /* @__PURE__ */ h("pre", { className: "artifacts-code-pre" }, /* @__PURE__ */ h("code", { dangerouslySetInnerHTML: { __html: highlightCode(src, fileExt(path || "")) } }))));
+		}, i + 1), /* @__PURE__ */ h("div", {
+			className: "artifacts-code-pre",
+			dangerouslySetInnerHTML: { __html: line || "&nbsp;" }
+		})))));
 	}
 	let pdfjsPromise = null;
 	function loadPdfjs() {
@@ -1434,6 +1604,77 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			className: "artifacts-pdfview-canvas"
 		})));
 	}
+	/** 图片预览：滚轮缩放 + 拖拽平移 + 双击复位 */
+	function ImageView({ path }) {
+		const [scale, setScale] = React.useState(1);
+		const [offset, setOffset] = React.useState({
+			x: 0,
+			y: 0
+		});
+		const [dragging, setDragging] = React.useState(false);
+		const dragRef = React.useRef(null);
+		const wrapRef = React.useRef(null);
+		const src = "/flyout-sidebar/media?path=" + encodeURIComponent(path);
+		React.useEffect(() => {
+			const wrap = wrapRef.current;
+			if (!wrap) return;
+			const onWheel = (ev) => {
+				ev.preventDefault();
+				const factor = ev.deltaY < 0 ? 1.15 : 1 / 1.15;
+				setScale((sc) => Math.max(.1, Math.min(12, sc * factor)));
+			};
+			wrap.addEventListener("wheel", onWheel, { passive: false });
+			return () => wrap.removeEventListener("wheel", onWheel);
+		}, []);
+		React.useEffect(() => {
+			if (!dragging) return;
+			const onMove = (ev) => {
+				const start = dragRef.current;
+				if (!start) return;
+				setOffset({
+					x: start.ox + (ev.clientX - start.x),
+					y: start.oy + (ev.clientY - start.y)
+				});
+			};
+			const onUp = () => {
+				setDragging(false);
+				dragRef.current = null;
+			};
+			document.addEventListener("mousemove", onMove);
+			document.addEventListener("mouseup", onUp);
+			return () => {
+				document.removeEventListener("mousemove", onMove);
+				document.removeEventListener("mouseup", onUp);
+			};
+		}, [dragging]);
+		return /* @__PURE__ */ h("div", {
+			ref: wrapRef,
+			className: "artifacts-imgview" + (dragging ? " is-dragging" : ""),
+			onMouseDown: (ev) => {
+				ev.preventDefault();
+				dragRef.current = {
+					x: ev.clientX,
+					y: ev.clientY,
+					ox: offset.x,
+					oy: offset.y
+				};
+				setDragging(true);
+			},
+			onDoubleClick: () => {
+				setScale(1);
+				setOffset({
+					x: 0,
+					y: 0
+				});
+			}
+		}, /* @__PURE__ */ h("img", {
+			className: "artifacts-img",
+			draggable: false,
+			src,
+			alt: path,
+			style: { transform: "translate(" + offset.x + "px," + offset.y + "px) scale(" + scale + ")" }
+		}));
+	}
 	/** 统一 git diff 渲染：meta/hunk/+/- 行着色，等宽可滚动 */
 	function GitDiffView({ diff }) {
 		const text = String(diff || "");
@@ -1456,11 +1697,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		if (p.git) return /* @__PURE__ */ h("div", { className: "artifacts-preview-body" }, /* @__PURE__ */ h(GitDiffView, { diff: p.diff }));
 		const type = p.type || extType(p.path);
 		let view;
-		if (type === "image") view = /* @__PURE__ */ h("img", {
-			className: "artifacts-img",
-			src: "/flyout-sidebar/media?path=" + encodeURIComponent(p.path || ""),
-			alt: p.path || ""
-		});
+		if (type === "image") view = /* @__PURE__ */ h(ImageView, { path: p.path || "" });
 		else if (type === "html") view = /* @__PURE__ */ h("iframe", {
 			className: "artifacts-iframe",
 			sandbox: "allow-scripts",
@@ -1653,6 +1890,24 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		strokeLinecap: "round",
 		strokeLinejoin: "round",
 		transform: "translate(0 -2.4)"
+	}));
+	/** 外开图标：方框 + 指向右上角的箭头（在系统编辑器打开） */
+	const ExternalIcon = ({ size }) => /* @__PURE__ */ h("svg", {
+		width: size,
+		height: size,
+		viewBox: "0 0 16 16",
+		fill: "none",
+		"aria-hidden": "true"
+	}, /* @__PURE__ */ h("path", {
+		d: "M12.5 9v3.7a1.3 1.3 0 0 1-1.3 1.3H3.8a1.3 1.3 0 0 1-1.3-1.3V5.3A1.3 1.3 0 0 1 3.8 4H7.5",
+		stroke: "currentColor",
+		strokeWidth: 1.4,
+		strokeLinecap: "round"
+	}), /* @__PURE__ */ h("path", {
+		d: "M10 2.5h3.5V6M13.2 2.8 8.2 7.8",
+		stroke: "currentColor",
+		strokeWidth: 1.4,
+		strokeLinecap: "round"
 	}));
 	//#endregion
 	//#region src/client/components.tsx
@@ -2267,6 +2522,14 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 				closeTab(tab.key);
 			}
 		}, "×")))), /* @__PURE__ */ h("button", {
+			type: "button",
+			className: "artifacts-preview-hide",
+			title: t("openInEditor"),
+			onClick: () => {
+				if (!activeTab) return;
+				host.openInEditor(activeTab.path).then((res) => flash(res && res.ok ? t("openedInEditor") : t("openFailed") + (res && res.error ? "：" + res.error : ""))).catch(() => flash(t("openFailed")));
+			}
+		}, /* @__PURE__ */ h(ExternalIcon, { size: 16 })), /* @__PURE__ */ h("button", {
 			type: "button",
 			className: "artifacts-preview-hide" + (settings.codeWrap ? " is-active" : ""),
 			title: t("wordWrap"),

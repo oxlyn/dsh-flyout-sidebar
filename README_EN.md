@@ -73,6 +73,9 @@ dsh --profile web --dump-config | grep dsh-flyout-sidebar   # this line should a
 - Bilingual UI (Chinese / English): follows the browser language by default, pinnable in settings; the flyout syncs the choice via `localStorage`
 - Code previews support soft wrap (⇋ icon in the preview bar or the setting), horizontal scrolling by default
 - `Esc` exits stepwise: closes the active preview tab first, then collapses the panel; open preview tabs are restored per session after a browser reload (sessionStorage)
+- Built-in find bar in code previews (⌘/Ctrl+F or click the input): matching lines are marked in the gutter, Enter/⇧Enter jump between matches; per-line rendering keeps line numbers aligned even with soft wrap
+- Image previews support wheel zoom, drag panning and double-click reset
+- The external-link icon in the preview bar opens the current file in the system editor/IDE (host side via `open`/`xdg-open`/`cmd start`, path anchored to the workspace)
 
 ![Flyout tab — full-window preview](snapshots/flyout-file-preview.png)
 

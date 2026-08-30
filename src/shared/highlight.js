@@ -234,3 +234,65 @@ export function highlightCode(src, hint) {
   const fn = HL_ENGINES[hlLangOf(hint)]
   return fn ? fn(String(src)) : escHtml(src)
 }
+
+/**
+ * 把 highlightCode 输出的 HTML 按源码行拆分成逐行 HTML 数组。跨行 token
+ * （块注释、Python 三引号串等）在行边界处闭合、下一行重新打开，保证逐行
+ * 渲染时着色与整块渲染一致。逐行渲染使行号与代码天然对齐（含软换行模式），
+ * 也是行级查找高亮的基础。
+ * @param {string} html highlightCode 的输出
+ * @returns {string[]}
+ */
+export function splitHlLines(html) {
+  var lines = []
+  var cur = ''
+  /** @type {string[]} */
+  var stack = [] // 打开中的 tok-* class 名
+  var i = 0
+  var openAll = function () {
+    var s = ''
+    for (var k = 0; k < stack.length; k++) s += '<span class="' + stack[k] + '">'
+    return s
+  }
+  var closeAll = function () {
+    var s = ''
+    for (var k = 0; k < stack.length; k++) s += '</span>'
+    return s
+  }
+  while (i < html.length) {
+    if (html.indexOf('<span class="', i) === i) {
+      var end = html.indexOf('>', i)
+      if (end < 0) {
+        cur += html.slice(i)
+        break
+      }
+      cur += html.slice(i, end + 1)
+      stack.push(html.slice(i + 13, end - 1))
+      i = end + 1
+      continue
+    }
+    if (html.indexOf('</span>', i) === i) {
+      cur += '</span>'
+      stack.pop()
+      i += 7
+      continue
+    }
+    var nl = html.indexOf('\n', i)
+    var nextTag = html.indexOf('<', i)
+    if (nextTag >= 0 && (nl < 0 || nextTag < nl)) {
+      cur += html.slice(i, nextTag)
+      i = nextTag
+      continue
+    }
+    if (nl < 0) {
+      cur += html.slice(i)
+      break
+    }
+    cur += html.slice(i, nl)
+    lines.push(cur + closeAll())
+    cur = openAll()
+    i = nl + 1
+  }
+  lines.push(cur + closeAll())
+  return lines
+}

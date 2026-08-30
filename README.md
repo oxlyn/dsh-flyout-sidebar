@@ -73,6 +73,9 @@ dsh --profile web --dump-config | grep dsh-flyout-sidebar   # 配置层含本行
 - 中英双语界面：默认跟随浏览器语言，可在设置中固定；独立弹出页经 `localStorage` 同步语言选择
 - 代码预览支持软换行（预览栏 ⇋ 图标或设置项），默认横向滚动
 - `Esc` 逐级退出：先关活动预览标签，再收起面板；浏览器刷新后按会话恢复打开的预览标签（sessionStorage）
+- 代码预览内置查找条（⌘/Ctrl+F 或点击输入框）：行号标记匹配行、Enter/⇧Enter 上下跳转；逐行渲染使行号在软换行下也对齐
+- 图片预览支持滚轮缩放、拖拽平移、双击复位
+- 预览栏 ↗（外开图标）可在系统默认编辑器/IDE 中打开当前文件（host 侧经 `open`/`xdg-open`/`cmd start`，路径锚定工作区）
 
 ![弹出页——独立窗口全屏预览](snapshots/flyout-file-preview.png)
 

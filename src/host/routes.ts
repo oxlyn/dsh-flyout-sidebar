@@ -10,6 +10,7 @@ import pdfjsWorkerSource from '../vendor/pdfjs/pdf.worker.min.js?raw'
 import type { DshFs, DshWebServer, HostContext } from './types'
 import { readFile, listDir, searchFiles } from './files'
 import { gitDiff, gitStatus } from './git'
+import { openInEditor } from './editor'
 import { removeFile, snapshotArtifacts } from './artifacts'
 import { buildFlyoutPage } from './page'
 
@@ -121,6 +122,15 @@ export function registerRoutes(ctx: HostContext, webServer: DshWebServer): void 
       sendJson(res, out, true)
     },
   }, 'artifacts: listdir route')
+
+  register({
+    kind: 'exact',
+    path: '/flyout-sidebar/open',
+    handler: async (req, res) => {
+      const out = await openInEditor(ctx, queryParams(req.url).get('path') ?? undefined)
+      sendJson(res, out, true)
+    },
+  }, 'artifacts: open route')
 
   register({
     kind: 'exact',
