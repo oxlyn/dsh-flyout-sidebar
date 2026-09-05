@@ -240,6 +240,9 @@ body[data-dsh-flyout-dragging] .artifacts-preview-overlay { transition: none; }
 .artifacts-markdown blockquote { border-left: 3px solid var(--dsw-alias-border-l2); margin: 8px 0; padding: 2px 12px; color: var(--dsw-alias-label-secondary); }
 .artifacts-markdown ul, .artifacts-markdown ol { padding-left: 24px; }
 .artifacts-markdown a { color: var(--dsw-alias-state-business-primary); }
+.artifacts-markdown table { display: block; overflow-x: auto; border-collapse: collapse; margin: 10px 0; }
+.artifacts-markdown th, .artifacts-markdown td { border: 1px solid var(--dsw-alias-border-l2); padding: 4px 10px; text-align: left; }
+.artifacts-markdown th { background: var(--dsw-alias-bg-layer-1); font-weight: 600; }
 .artifacts-diff { border-top: 1px solid var(--dsw-alias-border-l2); }
 .artifacts-diff-block { border-bottom: 1px solid var(--dsw-alias-border-l1); }
 .artifacts-diff-label { font-size: 11px; padding: 4px 12px; font-weight: 600; }
@@ -1305,6 +1308,39 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		s = s.replace(/\u0000(\d+)\u0000/g, (m, i) => codes[Number(i)] ?? "");
 		return s;
 	}
+	/**
+	* GFM 管道表格辅助：按未转义的 | 切分单元格（行内 \| 还原为字面量竖线），
+	* 并去掉首尾管道产生的空单元格。
+	* @param {string} line @returns {string[]}
+	*/
+	function mdSplitCells(line) {
+		const parts = String(line).replace(/\\\|/g, "").split("|");
+		for (let i = 0; i < parts.length; i += 1) parts[i] = (parts[i] || "").replace(/\u0002/g, "|").trim();
+		return parts;
+	}
+	/** @param {string[]} cells @returns {string[]} */
+	function mdTrimEdgeCells(cells) {
+		if (cells.length && cells[0] === "") cells.shift();
+		if (cells.length && cells[cells.length - 1] === "") cells.pop();
+		return cells;
+	}
+	/** @param {string[]} cells @returns {boolean} 是否为 GFM 分隔行（:--- / :---: / ---: 形态） */
+	function mdIsDelimiterRow(cells) {
+		return cells.length > 0 && cells.every((c) => /^:?-+:?$/.test(c));
+	}
+	/**
+	* @param {string} cell @returns {string} 'center' | 'right' | ''（left 与默认一致，不输出）
+	*/
+	function mdCellAlign(cell) {
+		if (/^:-+:$/.test(cell)) return "center";
+		if (/^:-+$/.test(cell)) return "left";
+		if (/^-+:$/.test(cell)) return "right";
+		return "";
+	}
+	/** @param {string} a @returns {string} 单元格对齐的内联样式属性 */
+	function mdAlignAttr(a) {
+		return a === "center" || a === "right" ? " style=\"text-align:" + a + "\"" : "";
+	}
 	/** @param {string} src @returns {string} HTML */
 	function mdToHtml(src) {
 		const lines = String(src || "").replace(/\r\n/g, "\n").split("\n");
@@ -1372,6 +1408,35 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			if (line.trim() === "") {
 				i += 1;
 				continue;
+			}
+			if (line.indexOf("|") >= 0 && i + 1 < lines.length) {
+				const head = mdTrimEdgeCells(mdSplitCells(line));
+				const delim = mdTrimEdgeCells(mdSplitCells(lines[i + 1]));
+				if (head.length && mdIsDelimiterRow(delim)) {
+					const aligns = delim.map(mdCellAlign);
+					const colCount = head.length;
+					/** @type {string[][]} */
+					const rows = [];
+					i += 2;
+					while (i < lines.length && lines[i].trim() !== "" && lines[i].indexOf("|") >= 0) {
+						const cells = mdTrimEdgeCells(mdSplitCells(lines[i]));
+						/** @type {string[]} */
+						const padded = [];
+						for (let c = 0; c < colCount; c += 1) padded.push(cells[c] || "");
+						rows.push(padded);
+						i += 1;
+					}
+					let table = "<table><thead><tr>";
+					for (let c = 0; c < colCount; c += 1) table += "<th" + mdAlignAttr(aligns[c] || "") + ">" + mdInline(mdEscape(head[c] || "")) + "</th>";
+					table += "</tr></thead><tbody>";
+					for (const cells of rows) {
+						table += "<tr>";
+						for (let c = 0; c < colCount; c += 1) table += "<td" + mdAlignAttr(aligns[c] || "") + ">" + mdInline(mdEscape(cells[c] || "")) + "</td>";
+						table += "</tr>";
+					}
+					out.push(table + "</tbody></table>");
+					continue;
+				}
 			}
 			out.push("<p>" + mdInline(mdEscape(line)) + "</p>");
 			i += 1;

@@ -44,6 +44,46 @@ function mdInline(s) {
   return s
 }
 
+/**
+ * GFM 管道表格辅助：按未转义的 | 切分单元格（行内 \| 还原为字面量竖线），
+ * 并去掉首尾管道产生的空单元格。
+ * @param {string} line @returns {string[]}
+ */
+function mdSplitCells(line) {
+  const parts = String(line).replace(/\\\|/g, '\u0002').split('|')
+  for (let i = 0; i < parts.length; i += 1) {
+    parts[i] = (parts[i] || '').replace(/\u0002/g, '|').trim()
+  }
+  return parts
+}
+
+/** @param {string[]} cells @returns {string[]} */
+function mdTrimEdgeCells(cells) {
+  if (cells.length && cells[0] === '') cells.shift()
+  if (cells.length && cells[cells.length - 1] === '') cells.pop()
+  return cells
+}
+
+/** @param {string[]} cells @returns {boolean} 是否为 GFM 分隔行（:--- / :---: / ---: 形态） */
+function mdIsDelimiterRow(cells) {
+  return cells.length > 0 && cells.every((c) => /^:?-+:?$/.test(c))
+}
+
+/**
+ * @param {string} cell @returns {string} 'center' | 'right' | ''（left 与默认一致，不输出）
+ */
+function mdCellAlign(cell) {
+  if (/^:-+:$/.test(cell)) return 'center'
+  if (/^:-+$/.test(cell)) return 'left'
+  if (/^-+:$/.test(cell)) return 'right'
+  return ''
+}
+
+/** @param {string} a @returns {string} 单元格对齐的内联样式属性 */
+function mdAlignAttr(a) {
+  return a === 'center' || a === 'right' ? ' style="text-align:' + a + '"' : ''
+}
+
 /** @param {string} src @returns {string} HTML */
 export function mdToHtml(src) {
   const lines = String(src || '').replace(/\r\n/g, '\n').split('\n')
@@ -111,6 +151,42 @@ export function mdToHtml(src) {
     if (line.trim() === '') {
       i += 1
       continue
+    }
+    // GFM 管道表格：表头行（含 |）+ 分隔行（:---/:---:/---:）+ 数据行，
+    // 空行或不含 | 的行结束；列数以表头为准，数据行多删少补，
+    // 单元格内容走 mdEscape + mdInline，对齐声明转成内联 text-align。
+    if (line.indexOf('|') >= 0 && i + 1 < lines.length) {
+      const head = mdTrimEdgeCells(mdSplitCells(line))
+      const delim = mdTrimEdgeCells(mdSplitCells(/** @type {string} */ (lines[i + 1])))
+      if (head.length && mdIsDelimiterRow(delim)) {
+        const aligns = delim.map(mdCellAlign)
+        const colCount = head.length
+        /** @type {string[][]} */
+        const rows = []
+        i += 2
+        while (i < lines.length && (/** @type {string} */ (lines[i])).trim() !== '' && (/** @type {string} */ (lines[i])).indexOf('|') >= 0) {
+          const cells = mdTrimEdgeCells(mdSplitCells(/** @type {string} */ (lines[i])))
+          /** @type {string[]} */
+          const padded = []
+          for (let c = 0; c < colCount; c += 1) padded.push(cells[c] || '')
+          rows.push(padded)
+          i += 1
+        }
+        let table = '<table><thead><tr>'
+        for (let c = 0; c < colCount; c += 1) {
+          table += '<th' + mdAlignAttr(aligns[c] || '') + '>' + mdInline(mdEscape(head[c] || '')) + '</th>'
+        }
+        table += '</tr></thead><tbody>'
+        for (const cells of rows) {
+          table += '<tr>'
+          for (let c = 0; c < colCount; c += 1) {
+            table += '<td' + mdAlignAttr(aligns[c] || '') + '>' + mdInline(mdEscape(cells[c] || '')) + '</td>'
+          }
+          table += '</tr>'
+        }
+        out.push(table + '</tbody></table>')
+        continue
+      }
     }
     out.push('<p>' + mdInline(mdEscape(line)) + '</p>')
     i += 1

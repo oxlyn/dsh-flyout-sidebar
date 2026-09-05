@@ -183,6 +183,9 @@ body[data-dsh-flyout-dragging] .artifacts-preview-overlay { transition: none; }
 .artifacts-markdown blockquote { border-left: 3px solid var(--dsw-alias-border-l2); margin: 8px 0; padding: 2px 12px; color: var(--dsw-alias-label-secondary); }
 .artifacts-markdown ul, .artifacts-markdown ol { padding-left: 24px; }
 .artifacts-markdown a { color: var(--dsw-alias-state-business-primary); }
+.artifacts-markdown table { display: block; overflow-x: auto; border-collapse: collapse; margin: 10px 0; }
+.artifacts-markdown th, .artifacts-markdown td { border: 1px solid var(--dsw-alias-border-l2); padding: 4px 10px; text-align: left; }
+.artifacts-markdown th { background: var(--dsw-alias-bg-layer-1); font-weight: 600; }
 .artifacts-diff { border-top: 1px solid var(--dsw-alias-border-l2); }
 .artifacts-diff-block { border-bottom: 1px solid var(--dsw-alias-border-l1); }
 .artifacts-diff-label { font-size: 11px; padding: 4px 12px; font-weight: 600; }

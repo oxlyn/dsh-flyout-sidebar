@@ -37,3 +37,39 @@ test('multiple code spans restore in order', () => {
   assert.ok(html.includes('<em>b</em>'))
   assert.ok(html.includes('<code>c</code>'))
 })
+
+test('GFM pipe table renders thead/tbody with alignment and inline cells', () => {
+  const html = mdToHtml('| a | b | c |\n| --- | :---: | ---: |\n| 1 | **2** | `x` |')
+  assert.ok(html.includes('<table><thead>'))
+  assert.ok(html.includes('<th>a</th>'))
+  assert.ok(html.includes('<th style="text-align:center">b</th>'))
+  assert.ok(html.includes('<th style="text-align:right">c</th>'))
+  assert.ok(html.includes('<td>1</td>'))
+  assert.ok(html.includes('<td style="text-align:center"><strong>2</strong></td>'))
+  assert.ok(html.includes('<td style="text-align:right"><code>x</code></td>'))
+})
+
+test('table ends at a blank line and later blocks render normally', () => {
+  const html = mdToHtml('| a |\n| --- |\n| 1 |\n\n- item')
+  assert.ok(html.includes('<td>1</td></tr></tbody></table>'))
+  assert.ok(html.includes('<ul><li>item</li></ul>'))
+})
+
+test('escaped pipe renders literally instead of splitting the cell', () => {
+  const html = mdToHtml('| a | b |\n| --- | --- |\n| x \\| y | z |')
+  assert.ok(html.includes('<td>x | y</td>'))
+  assert.ok(html.includes('<td>z</td>'))
+})
+
+test('a pipe line without a delimiter row stays a paragraph', () => {
+  const html = mdToHtml('a | b\nc | d')
+  assert.ok(!html.includes('<table>'))
+  assert.ok(html.includes('<p>a | b</p>'))
+})
+
+test('short body rows are padded, long rows truncated to header columns', () => {
+  const html = mdToHtml('| a | b |\n| --- | --- |\n| 1 |\n| 2 | 3 | 4 |')
+  assert.ok(html.includes('<td>1</td><td></td>'))
+  assert.ok(html.includes('<td>2</td><td>3</td>'))
+  assert.ok(!html.includes('4</td>'))
+})

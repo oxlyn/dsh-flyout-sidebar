@@ -173,6 +173,9 @@ export function buildFlyoutPage(): string {
   .markdown ul, .markdown ol { padding-left: 24px; }
   .markdown a { color: var(--p-accent); }
   .markdown hr { border: none; border-top: 1px solid var(--p-border-l2); margin: 16px 0; }
+  .markdown table { display: block; overflow-x: auto; border-collapse: collapse; margin: 12px 0; }
+  .markdown th, .markdown td { border: 1px solid var(--p-border-l2); padding: 4px 10px; text-align: left; }
+  .markdown th { background: var(--p-code-bg); font-weight: 600; }
   .diff { border-top: 1px solid var(--p-border-l2); }
   .diff-block { border-bottom: 1px solid var(--p-border-l1); }
   .diff-label { font-size: 11px; padding: 4px 12px; font-weight: 600; }
