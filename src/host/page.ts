@@ -136,7 +136,7 @@ export function buildFlyoutPage(): string {
   .badge.create { background: var(--p-success-bg); color: var(--p-success-fg); }
   .badge.edit { background: var(--p-warn-bg); color: var(--p-warn-fg); }
   .item .base { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .item .full { color: var(--p-text-tertiary); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .item .full { color: var(--p-text-tertiary); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Cascadia Mono", "Liberation Mono", monospace; }
   .item .time { color: var(--p-text-caption); font-size: 11px; flex: none; }
   .actions { display: flex; align-items: center; gap: 2px; padding-right: 6px; opacity: 0; }
   .item:hover .actions { opacity: 1; }
@@ -152,10 +152,15 @@ export function buildFlyoutPage(): string {
   .ptab-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .ptab-close { flex: none; width: 18px; height: 18px; padding: 0; line-height: 1; font-size: 13px; display: inline-flex; align-items: center; justify-content: center; border: none; background: transparent; color: inherit; cursor: pointer; border-radius: 4px; }
   .ptab-close:hover { background: rgba(128, 128, 128, 0.18); }
+  .ctx-menu-backdrop { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 9999; }
+  .ctx-menu { position: fixed; z-index: 10000; min-width: 140px; padding: 4px 0; background: var(--p-bg-layer-1); border: 1px solid var(--p-border-l2); border-radius: 8px; box-shadow: var(--p-shadow); font-size: 12px; }
+  .ctx-menu-item { display: block; width: 100%; padding: 6px 14px; border: none; background: transparent; color: var(--p-text); text-align: left; cursor: pointer; font: inherit; }
+  .ctx-menu-item:hover:not(:disabled) { background: var(--p-hover); }
+  .ctx-menu-item:disabled { color: var(--p-text-caption); cursor: default; }
   .preview .area { flex: 1; min-height: 0; overflow: auto; position: relative; }
-  .preview pre { margin: 0; padding: 16px; background: var(--p-code-bg); font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre; color: var(--p-code-fg); }
+  .preview pre { margin: 0; padding: 16px; background: var(--p-code-bg); font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, "Cascadia Mono", "Liberation Mono", monospace; white-space: pre; color: var(--p-code-fg); }
   .preview .hint { padding: 32px; color: var(--p-text-tertiary); text-align: center; }
-  .preview .err { padding: 24px; color: var(--p-error); font-family: ui-monospace, monospace; }
+  .preview .err { padding: 24px; color: var(--p-error); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Cascadia Mono", "Liberation Mono", monospace; }
   .preview-img { display: block; max-width: 100%; max-height: 80vh; object-fit: contain; margin: 16px; }
   /* iframe/embed are REPLACED elements: inset-0 keeps their intrinsic
      (small) size, so give them an explicit width/height 100% to fill the area. */
@@ -165,7 +170,7 @@ export function buildFlyoutPage(): string {
   .markdown h1, .markdown h2, .markdown h3, .markdown h4, .markdown h5, .markdown h6 { margin: 16px 0 8px; line-height: 1.3; }
   .markdown h1 { font-size: 1.5em; border-bottom: 1px solid var(--p-border-l2); padding-bottom: 6px; }
   .markdown h2 { font-size: 1.3em; border-bottom: 1px solid var(--p-border-l1); padding-bottom: 4px; }
-  .markdown code { background: var(--p-code-bg); color: var(--p-code-fg); padding: 1px 5px; border-radius: 4px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9em; }
+  .markdown code { background: var(--p-code-bg); color: var(--p-code-fg); padding: 1px 5px; border-radius: 4px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Cascadia Mono", "Liberation Mono", monospace; font-size: 0.9em; }
   .markdown pre { background: var(--p-code-bg); padding: 12px 14px; border-radius: 6px; overflow: auto; }
   .markdown pre code { background: transparent; padding: 0; }
   .markdown img { max-width: 100%; }
@@ -181,7 +186,7 @@ export function buildFlyoutPage(): string {
   .diff-label { font-size: 11px; padding: 4px 12px; font-weight: 600; }
   .diff-block.del .diff-label { color: var(--p-error); background: rgba(236,19,19,0.06); }
   .diff-block.add .diff-label { color: var(--p-success-fg); background: rgba(34,197,94,0.08); }
-  .diff-pre { margin: 0; padding: 8px 12px; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; word-break: break-word; }
+  .diff-pre { margin: 0; padding: 8px 12px; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, "Cascadia Mono", "Liberation Mono", monospace; white-space: pre-wrap; word-break: break-word; }
   .diff-block.del .diff-pre { background: rgba(236,19,19,0.05); }
   .diff-block.add .diff-pre { background: rgba(34,197,94,0.06); }
   .toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--p-bg-layer-1); border: 1px solid var(--p-border-l2); color: var(--p-text); padding: 6px 14px; border-radius: 8px; font-size: 12px; opacity: 0; transition: opacity .18s; pointer-events: none; box-shadow: var(--p-shadow); z-index: 10; }
@@ -202,18 +207,18 @@ export function buildFlyoutPage(): string {
   .searchbar input:focus { border-color: var(--p-accent); }
   .tree-sub { color: var(--p-text-tertiary); font-size: 11px; margin-left: 6px; }
   .gtoggle-btn.is-active { color: var(--p-accent); }
-  .git-badge { font-size: 10px; font-weight: 700; width: 16px; height: 16px; flex: none; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .git-badge { font-size: 10px; font-weight: 700; width: 16px; height: 16px; flex: none; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Cascadia Mono", "Liberation Mono", monospace; }
   .git-badge-M { background: var(--p-warn-bg); color: var(--p-warn-fg); }
   .git-badge-A { background: var(--p-success-bg); color: var(--p-success-fg); }
   .git-badge-D { background: rgba(236,19,19,0.1); color: var(--p-error); }
   .git-badge-R { background: rgba(65,118,230,0.1); color: var(--p-accent); }
   .git-badge-U { background: var(--p-hover); color: var(--p-text-tertiary); }
   .git-orig { color: var(--p-text-tertiary); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .git-stats { flex: none; display: inline-flex; gap: 4px; font: 11px/16px ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .git-stats { flex: none; display: inline-flex; gap: 4px; font: 11px/16px ui-monospace, SFMono-Regular, Menlo, Consolas, "Cascadia Mono", "Liberation Mono", monospace; }
   .git-adds { color: var(--p-success-fg); }
   .git-dels { color: var(--p-error); }
   .git-err { padding: 14px 12px; color: var(--p-error); word-break: break-all; }
-  .gd { font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .gd { font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, "Cascadia Mono", "Liberation Mono", monospace; }
   .gd-line { white-space: pre-wrap; word-break: break-all; padding: 0 12px; }
   .gd-meta { color: var(--p-text-tertiary); background: var(--p-code-bg); padding: 2px 12px; }
   .gd-hunk { color: var(--p-accent); background: rgba(65,118,230,0.08); padding: 2px 12px; }
@@ -247,8 +252,8 @@ export function buildFlyoutPage(): string {
   /* Code preview (syntax-highlighted): gutter + code, no banner chrome */
   .codeview { display: flex; flex-direction: column; height: 100%; min-height: 0; }
   .codeview-scroll { flex: 1; min-height: 0; overflow: auto; display: flex; align-items: flex-start; background: var(--p-code-bg); }
-  .codeview-gutter { flex: none; min-width: 2.2em; margin: 0; padding: 12px 6px 12px 8px; text-align: right; color: var(--p-text-caption); background: var(--p-code-bg); border-right: 1px solid var(--p-border-l1); position: sticky; left: 0; user-select: none; font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre; }
-  .codeview-pre { flex: 1; margin: 0; padding: 12px; background: var(--p-code-bg); font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre; }
+  .codeview-gutter { flex: none; min-width: 2.2em; margin: 0; padding: 12px 6px 12px 8px; text-align: right; color: var(--p-text-caption); background: var(--p-code-bg); border-right: 1px solid var(--p-border-l1); position: sticky; left: 0; user-select: none; font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, "Cascadia Mono", "Liberation Mono", monospace; white-space: pre; }
+  .codeview-pre { flex: 1; margin: 0; padding: 12px; background: var(--p-code-bg); font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, "Cascadia Mono", "Liberation Mono", monospace; white-space: pre; }
   .codeview-pre code { font: inherit; }
   .tok-comment { color: #868e96; }
   .tok-string { color: #2f9e44; }
@@ -528,6 +533,7 @@ ${sharedScript}
         x.addEventListener('click', function (ev) { ev.stopPropagation(); closeTab(t.key); });
         tab.appendChild(x);
         tab.addEventListener('click', function () { setActiveTab(t.key); });
+        tab.addEventListener('contextmenu', function (ev) { showTabContextMenu(ev, t.key); });
         scroll.appendChild(tab);
       });
       wrap.appendChild(scroll);
@@ -548,6 +554,58 @@ ${sharedScript}
       renderTabs();
       renderActive();
       refreshTreeSelection();
+    }
+    function closeOthers(key) {
+      var t = findTab(key);
+      if (!t) return;
+      tabs = [t];
+      activeKey = key;
+      renderTabs();
+      renderActive();
+      refreshTreeSelection();
+    }
+    function closeRight(key) {
+      var idx = -1;
+      for (var i = 0; i < tabs.length; i += 1) if (tabs[i].key === key) { idx = i; break; }
+      if (idx < 0) return;
+      var removedActive = false;
+      for (var j = tabs.length - 1; j > idx; j -= 1) {
+        if (tabs[j].key === activeKey) removedActive = true;
+        tabs.splice(j, 1);
+      }
+      if (removedActive) activeKey = key;
+      renderTabs();
+      renderActive();
+      refreshTreeSelection();
+    }
+    function closeContextMenu() {
+      var m = document.getElementById('ctxMenu');
+      if (m) m.remove();
+    }
+    function showTabContextMenu(ev, key) {
+      ev.preventDefault();
+      closeContextMenu();
+      var idx = -1;
+      for (var i = 0; i < tabs.length; i += 1) if (tabs[i].key === key) { idx = i; break; }
+      var menu = el('div', 'ctx-menu');
+      menu.id = 'ctxMenu';
+      menu.style.left = ev.clientX + 'px';
+      menu.style.top = ev.clientY + 'px';
+      function addItem(label, fn, disabled) {
+        var b = el('button', 'ctx-menu-item', label);
+        b.type = 'button';
+        if (disabled) { b.disabled = true; b.className += ' is-disabled'; }
+        b.addEventListener('click', function () { closeContextMenu(); fn(); });
+        menu.appendChild(b);
+      }
+      addItem(tr('closeTab'), function () { closeTab(key); }, false);
+      addItem(tr('closeOthers'), function () { closeOthers(key); }, tabs.length <= 1);
+      addItem(tr('closeRight'), function () { closeRight(key); }, idx >= tabs.length - 1);
+      var backdrop = el('div', 'ctx-menu-backdrop');
+      backdrop.addEventListener('click', closeContextMenu);
+      backdrop.addEventListener('contextmenu', function (e) { e.preventDefault(); closeContextMenu(); });
+      document.body.appendChild(backdrop);
+      document.body.appendChild(menu);
     }
     function patchTab(key, patch) {
       var t = findTab(key);

@@ -418,6 +418,8 @@ function usePreviewTabs(sessionId: string): {
   openFile: (path: string) => void
   openGitDiff: (path: string) => void
   closeTab: (key: string) => void
+  closeOthers: (key: string) => void
+  closeRight: (key: string) => void
 } {
   const [tabs, setTabs] = React.useState<PreviewTab[]>([])
   const [activeKey, setActiveKey] = React.useState<string | null>(null)
@@ -501,6 +503,20 @@ function usePreviewTabs(sessionId: string): {
     })
   }
 
+  const closeOthers = (key: string): void => {
+    setTabs((prev) => prev.filter((tb) => tb.key === key))
+    setActiveKey(key)
+  }
+
+  const closeRight = (key: string): void => {
+    const idx = tabsRef.current.findIndex((tb) => tb.key === key)
+    if (idx < 0) return
+    const removedKeys = new Set(tabsRef.current.slice(idx + 1).map((tb) => tb.key))
+    if (!removedKeys.size) return
+    setTabs((prev) => prev.slice(0, idx + 1))
+    setActiveKey((cur) => (cur && removedKeys.has(cur) ? key : cur))
+  }
+
   // closeTab 的 setActiveKey 读取最新 tabs 的镜像
   const tabsRef = React.useRef<PreviewTab[]>([])
   React.useEffect(() => {
@@ -571,7 +587,7 @@ function usePreviewTabs(sessionId: string): {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId])
 
-  return { tabs, activeKey, setActiveKey, previewHidden, setPreviewHidden, openFile, openGitDiff, closeTab }
+  return { tabs, activeKey, setActiveKey, previewHidden, setPreviewHidden, openFile, openGitDiff, closeTab, closeOthers, closeRight }
 }
 
 interface GitChangesListProps {
@@ -656,9 +672,12 @@ export function ArtifactsPanel(): ReactElement | null {
     openFile,
     openGitDiff,
     closeTab,
+    closeOthers,
+    closeRight,
   } = usePreviewTabs(sessionId)
   const activeTab = tabs.find((t) => t.key === activeKey) || null
   const [notice, setNotice] = React.useState('')
+  const [ctxMenu, setCtxMenu] = React.useState<{ x: number; y: number; key: string } | null>(null)
   // 窗口宽度（resize 时更新）：面板宽度以「可用宽度的比例」保存，窗口缩放
   // 后宽度按比例跟随，而不是停在拖拽时的固定像素。
   const [winW, setWinW] = React.useState(() => (typeof window !== 'undefined' ? window.innerWidth : 1400))
@@ -906,6 +925,10 @@ export function ArtifactsPanel(): ReactElement | null {
                 className={'artifacts-ptab' + (tab.key === activeKey ? ' is-active' : '')}
                 title={(tab.git ? t('diffTabPrefix') : '') + (tab.path || '')}
                 onClick={() => setActiveKey(tab.key)}
+                onContextMenu={(e) => {
+                  e.preventDefault()
+                  setCtxMenu({ x: e.clientX, y: e.clientY, key: tab.key })
+                }}
               >
                 <span className="artifacts-ptab-name">{basename(tab.path || '')}</span>
                 <button
@@ -927,6 +950,22 @@ export function ArtifactsPanel(): ReactElement | null {
           </button>
         </div>
         {activeTab ? renderPreview(activeTab, settings.codeWrap) : null}
+        {ctxMenu ? (
+          <>
+            <div className="artifacts-ctxmenu-backdrop" onClick={() => setCtxMenu(null)} onContextMenu={(e) => { e.preventDefault(); setCtxMenu(null) }} />
+            <div className="artifacts-ctxmenu" style={{ left: ctxMenu.x, top: ctxMenu.y }}>
+              <button type="button" className="artifacts-ctxmenu-item" onClick={() => { closeTab(ctxMenu.key); setCtxMenu(null) }}>
+                {t('closeTab')}
+              </button>
+              <button type="button" className="artifacts-ctxmenu-item" onClick={() => { closeOthers(ctxMenu.key); setCtxMenu(null) }} disabled={tabs.length <= 1}>
+                {t('closeOthers')}
+              </button>
+              <button type="button" className="artifacts-ctxmenu-item" onClick={() => { closeRight(ctxMenu.key); setCtxMenu(null) }} disabled={tabs.findIndex((tb) => tb.key === ctxMenu.key) >= tabs.length - 1}>
+                {t('closeRight')}
+              </button>
+            </div>
+          </>
+        ) : null}
       </div>
     ) : null
 
