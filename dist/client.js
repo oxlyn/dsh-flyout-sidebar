@@ -2429,6 +2429,43 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		const activeTab = tabs.find((t) => t.key === activeKey) || null;
 		const [notice, setNotice] = React.useState("");
 		const [ctxMenu, setCtxMenu] = React.useState(null);
+		React.useEffect(() => {
+			if (!ctxMenu) return;
+			const idx = tabs.findIndex((tb) => tb.key === ctxMenu.key);
+			const menu = document.createElement("div");
+			menu.className = "artifacts-ctxmenu";
+			menu.style.left = ctxMenu.x + "px";
+			menu.style.top = ctxMenu.y + "px";
+			const close = () => setCtxMenu(null);
+			const addItem = (label, fn, disabled) => {
+				const b = document.createElement("button");
+				b.type = "button";
+				b.className = "artifacts-ctxmenu-item";
+				b.textContent = label;
+				if (disabled) b.disabled = true;
+				b.addEventListener("click", () => {
+					close();
+					fn();
+				});
+				menu.appendChild(b);
+			};
+			addItem(t("closeTab"), () => closeTab(ctxMenu.key), false);
+			addItem(t("closeOthers"), () => closeOthers(ctxMenu.key), tabs.length <= 1);
+			addItem(t("closeRight"), () => closeRight(ctxMenu.key), idx >= tabs.length - 1);
+			const backdrop = document.createElement("div");
+			backdrop.className = "artifacts-ctxmenu-backdrop";
+			backdrop.addEventListener("click", close);
+			backdrop.addEventListener("contextmenu", (e) => {
+				e.preventDefault();
+				close();
+			});
+			document.body.appendChild(backdrop);
+			document.body.appendChild(menu);
+			return () => {
+				menu.remove();
+				backdrop.remove();
+			};
+		}, [ctxMenu]);
 		const [winW, setWinW] = React.useState(() => typeof window !== "undefined" ? window.innerWidth : 1400);
 		const [gitFiles, setGitFiles] = React.useState(null);
 		const [gitError, setGitError] = React.useState(null);
@@ -2656,43 +2693,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			className: "artifacts-preview-hide",
 			title: t("hidePreview"),
 			onClick: () => setPreviewHidden(true)
-		}, /* @__PURE__ */ h(PanelCollapseIcon, { size: 16 }))), activeTab ? renderPreview(activeTab, settings.codeWrap) : null, ctxMenu ? /* @__PURE__ */ h(Fragment, null, /* @__PURE__ */ h("div", {
-			className: "artifacts-ctxmenu-backdrop",
-			onClick: () => setCtxMenu(null),
-			onContextMenu: (e) => {
-				e.preventDefault();
-				setCtxMenu(null);
-			}
-		}), /* @__PURE__ */ h("div", {
-			className: "artifacts-ctxmenu",
-			style: {
-				left: ctxMenu.x,
-				top: ctxMenu.y
-			}
-		}, /* @__PURE__ */ h("button", {
-			type: "button",
-			className: "artifacts-ctxmenu-item",
-			onClick: () => {
-				closeTab(ctxMenu.key);
-				setCtxMenu(null);
-			}
-		}, t("closeTab")), /* @__PURE__ */ h("button", {
-			type: "button",
-			className: "artifacts-ctxmenu-item",
-			onClick: () => {
-				closeOthers(ctxMenu.key);
-				setCtxMenu(null);
-			},
-			disabled: tabs.length <= 1
-		}, t("closeOthers")), /* @__PURE__ */ h("button", {
-			type: "button",
-			className: "artifacts-ctxmenu-item",
-			onClick: () => {
-				closeRight(ctxMenu.key);
-				setCtxMenu(null);
-			},
-			disabled: tabs.findIndex((tb) => tb.key === ctxMenu.key) >= tabs.length - 1
-		}, t("closeRight")))) : null) : null;
+		}, /* @__PURE__ */ h(PanelCollapseIcon, { size: 16 }))), activeTab ? renderPreview(activeTab, settings.codeWrap) : null) : null;
 		return /* @__PURE__ */ h(Fragment, null, previewOverlay, /* @__PURE__ */ h("div", {
 			className: "artifacts-panel" + (slidOut ? " artifacts-slid-out" : "") + (resizing ? " artifacts-resizing" : ""),
 			style: { width: widthPx },

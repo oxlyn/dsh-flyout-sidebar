@@ -678,6 +678,42 @@ export function ArtifactsPanel(): ReactElement | null {
   const activeTab = tabs.find((t) => t.key === activeKey) || null
   const [notice, setNotice] = React.useState('')
   const [ctxMenu, setCtxMenu] = React.useState<{ x: number; y: number; key: string } | null>(null)
+  // 右键标签菜单：以原生 DOM 直挂 document.body，规避宿主 overlay 容器的
+  // transform 使 position: fixed 失效、菜单错位到左下角的问题 —— 与 host
+  // 侧 page.ts 的实现保持一致，菜单在右键点击位置弹出。
+  React.useEffect(() => {
+    if (!ctxMenu) return
+    const idx = tabs.findIndex((tb) => tb.key === ctxMenu.key)
+    const menu = document.createElement('div')
+    menu.className = 'artifacts-ctxmenu'
+    menu.style.left = ctxMenu.x + 'px'
+    menu.style.top = ctxMenu.y + 'px'
+    const close = () => setCtxMenu(null)
+    const addItem = (label: string, fn: () => void, disabled: boolean) => {
+      const b = document.createElement('button')
+      b.type = 'button'
+      b.className = 'artifacts-ctxmenu-item'
+      b.textContent = label
+      if (disabled) b.disabled = true
+      b.addEventListener('click', () => { close(); fn() })
+      menu.appendChild(b)
+    }
+    addItem(t('closeTab'), () => closeTab(ctxMenu.key), false)
+    addItem(t('closeOthers'), () => closeOthers(ctxMenu.key), tabs.length <= 1)
+    addItem(t('closeRight'), () => closeRight(ctxMenu.key), idx >= tabs.length - 1)
+    const backdrop = document.createElement('div')
+    backdrop.className = 'artifacts-ctxmenu-backdrop'
+    backdrop.addEventListener('click', close)
+    backdrop.addEventListener('contextmenu', (e) => { e.preventDefault(); close() })
+    document.body.appendChild(backdrop)
+    document.body.appendChild(menu)
+    return () => {
+      menu.remove()
+      backdrop.remove()
+    }
+    // 菜单是短暂 UI：创建瞬间捕获 tabs/文案/操作的快照即可，与 page.ts 一致。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ctxMenu])
   // 窗口宽度（resize 时更新）：面板宽度以「可用宽度的比例」保存，窗口缩放
   // 后宽度按比例跟随，而不是停在拖拽时的固定像素。
   const [winW, setWinW] = React.useState(() => (typeof window !== 'undefined' ? window.innerWidth : 1400))
@@ -950,22 +986,6 @@ export function ArtifactsPanel(): ReactElement | null {
           </button>
         </div>
         {activeTab ? renderPreview(activeTab, settings.codeWrap) : null}
-        {ctxMenu ? (
-          <>
-            <div className="artifacts-ctxmenu-backdrop" onClick={() => setCtxMenu(null)} onContextMenu={(e) => { e.preventDefault(); setCtxMenu(null) }} />
-            <div className="artifacts-ctxmenu" style={{ left: ctxMenu.x, top: ctxMenu.y }}>
-              <button type="button" className="artifacts-ctxmenu-item" onClick={() => { closeTab(ctxMenu.key); setCtxMenu(null) }}>
-                {t('closeTab')}
-              </button>
-              <button type="button" className="artifacts-ctxmenu-item" onClick={() => { closeOthers(ctxMenu.key); setCtxMenu(null) }} disabled={tabs.length <= 1}>
-                {t('closeOthers')}
-              </button>
-              <button type="button" className="artifacts-ctxmenu-item" onClick={() => { closeRight(ctxMenu.key); setCtxMenu(null) }} disabled={tabs.findIndex((tb) => tb.key === ctxMenu.key) >= tabs.length - 1}>
-                {t('closeRight')}
-              </button>
-            </div>
-          </>
-        ) : null}
       </div>
     ) : null
 

@@ -311,6 +311,17 @@ ${sharedScript}
     var _sm = /[?&]sessionId=([^&]+)/.exec(location.search);
     var _urlSessionId = _sm ? decodeURIComponent(_sm[1]) : '';
     var SESSION_KEY = 'dsh-flyout-sidebar:session';
+    var TREE_EXPANDED_KEY = 'dsh-flyout-sidebar:tree-expanded';
+    function loadTreeExpanded() {
+      try {
+        var v = JSON.parse(localStorage.getItem(TREE_EXPANDED_KEY) || '{}');
+        if (v && typeof v === 'object') return v;
+      } catch (e) {}
+      return {};
+    }
+    function saveTreeExpanded() {
+      try { localStorage.setItem(TREE_EXPANDED_KEY, JSON.stringify(treeExpanded)); } catch (e) {}
+    }
     function currentSessionId() {
       try {
         var v = localStorage.getItem(SESSION_KEY);
@@ -335,7 +346,7 @@ ${sharedScript}
     var gitSig = null; // 上次渲染的变更签名；轮询数据未变时跳过重渲染，避免冲掉刷新动画
     var treeRoot = null;
     var treeChildren = {};
-    var treeExpanded = {};
+    var treeExpanded = loadTreeExpanded();
     var treeError = null;
     var currentView = 'tree';
 
@@ -581,6 +592,9 @@ ${sharedScript}
     function closeContextMenu() {
       var m = document.getElementById('ctxMenu');
       if (m) m.remove();
+      // 全屏遮罩必须一并移除，否则残留会拦截后续所有点击
+      var b = document.getElementById('ctxMenuBackdrop');
+      if (b) b.remove();
     }
     function showTabContextMenu(ev, key) {
       ev.preventDefault();
@@ -602,6 +616,7 @@ ${sharedScript}
       addItem(tr('closeOthers'), function () { closeOthers(key); }, tabs.length <= 1);
       addItem(tr('closeRight'), function () { closeRight(key); }, idx >= tabs.length - 1);
       var backdrop = el('div', 'ctx-menu-backdrop');
+      backdrop.id = 'ctxMenuBackdrop';
       backdrop.addEventListener('click', closeContextMenu);
       backdrop.addEventListener('contextmenu', function (e) { e.preventDefault(); closeContextMenu(); });
       document.body.appendChild(backdrop);
@@ -736,7 +751,8 @@ ${sharedScript}
       treeRoot = null;
       treeError = null;
       treeChildren = {};
-      treeExpanded = {};
+      // 重载树时保留用户展开的目录，而不是全部折叠
+      treeExpanded = loadTreeExpanded();
       var bodyEl = document.getElementById('treeBody');
       bodyEl.textContent = '';
       bodyEl.appendChild(el('div', 'tree-loading', tr('loadingTree')));
@@ -910,9 +926,11 @@ ${sharedScript}
       if (treeExpanded[path]) {
         treeExpanded[path] = false;
         renderTree();
+        saveTreeExpanded();
         return;
       }
       treeExpanded[path] = true;
+      saveTreeExpanded();
       if (!treeChildren[path]) {
         treeChildren[path] = { loading: true };
         renderTree();
