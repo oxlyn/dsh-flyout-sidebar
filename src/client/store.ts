@@ -132,6 +132,7 @@ export interface Settings {
   showFileTree: boolean
   defaultOpen: boolean
   codeWrap: boolean
+  contentFontSize: number
 }
 
 const SETTINGS_KEY = 'dsh-flyout-sidebar:settings'
@@ -141,6 +142,7 @@ const DEFAULT_SETTINGS: Settings = {
   showFileTree: true, // 面板内显示文件树标签页
   defaultOpen: true, // 页面加载后默认展开
   codeWrap: false, // 代码预览软换行（默认横向滚动）
+  contentFontSize: 13, // 内容区（代码/diff/markdown）基准字号
 }
 
 function loadSettings(): Settings {

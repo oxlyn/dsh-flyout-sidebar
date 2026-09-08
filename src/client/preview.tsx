@@ -405,7 +405,7 @@ export function GitDiffView({ diff }: { diff?: string }): ReactElement {
   return <div className="artifacts-gitdiff">{rows}</div>
 }
 
-export function renderPreview(p: PreviewTab, codeWrap = false): ReactElement {
+export function renderPreview(p: PreviewTab, codeWrap = false, contentFontSize?: number): ReactElement {
   if (p.loading) return <div className="artifacts-hint">{t('loading')}</div>
   if (p.ok === false) return <div className="artifacts-error">{p.error || t('readFailed')}</div>
   if (p.git) {
@@ -437,8 +437,9 @@ export function renderPreview(p: PreviewTab, codeWrap = false): ReactElement {
   }
   // 编辑型 diff 片段（write/edit 记录）前置显示；git diff 走上面的 GitDiffView。
   const diffBlock = p.diff && typeof p.diff === 'object' ? renderDiff(p.diff) : null
+  // 内容区字号：容器设为基准 px，区内正文用 em 相对单位联动缩放
   return (
-    <div className="artifacts-preview-body">
+    <div className="artifacts-preview-body" style={{ fontSize: contentFontSize ? contentFontSize + 'px' : undefined }}>
       {diffBlock}
       {view}
     </div>

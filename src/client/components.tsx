@@ -985,7 +985,7 @@ export function ArtifactsPanel(): ReactElement | null {
             <PanelCollapseIcon size={16} />
           </button>
         </div>
-        {activeTab ? renderPreview(activeTab, settings.codeWrap) : null}
+        {activeTab ? renderPreview(activeTab, settings.codeWrap, settings.contentFontSize) : null}
       </div>
     ) : null
 
@@ -1197,6 +1197,32 @@ export function SettingsSection(): ReactElement {
               }}
             />
             <span className="artifacts-suffix">%</span>
+          </div>
+        </div>
+        <div className="artifacts-setrow">
+          <div className="artifacts-settext">
+            <div className="artifacts-settitle">{t('setContentFontSize')}</div>
+            <div className="artifacts-setdesc">{t('setContentFontSizeDesc')}</div>
+          </div>
+          <div className="artifacts-setcontrol">
+            <input
+              type="number"
+              className="artifacts-widthinput"
+              min={11}
+              max={20}
+              value={settings.contentFontSize}
+              onChange={(e) => {
+                const n = parseInt(e.currentTarget.value, 10)
+                if (Number.isNaN(n)) return
+                set('contentFontSize', Math.max(11, Math.min(20, n)))
+              }}
+              onBlur={(e) => {
+                // 离开输入框时把空值/越界值归一到合法范围，避免停留无效状态
+                const n = parseInt(e.currentTarget.value, 10)
+                set('contentFontSize', Number.isNaN(n) ? 13 : Math.max(11, Math.min(20, n)))
+              }}
+            />
+            <span className="artifacts-suffix">px</span>
           </div>
         </div>
         <div className="artifacts-setrow">

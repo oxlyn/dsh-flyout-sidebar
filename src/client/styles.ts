@@ -158,7 +158,7 @@ body[data-dsh-flyout-dragging] .artifacts-preview-overlay { transition: none; }
   pointer-events: none;
 }
 .artifacts-corner-btn:hover { color: var(--dsw-alias-label-primary); }
-.artifacts-preview-body { flex: 1; min-height: 0; overflow-y: auto; position: relative; }
+.artifacts-preview-body { flex: 1; min-height: 0; overflow-y: auto; position: relative; font-size: 13px; }
 .artifacts-img { display: block; max-width: 100%; max-height: 70vh; object-fit: contain; margin: 12px; }
 .artifacts-iframe { width: 100%; height: 100%; min-height: 360px; border: 0; background: #fff; }
 .artifacts-pdf { width: 100%; height: 100%; min-height: 360px; border: 0; background: #fff; display: block; }
@@ -172,7 +172,7 @@ body[data-dsh-flyout-dragging] .artifacts-preview-overlay { transition: none; }
 .artifacts-pdfview-spacer { flex: 1; }
 .artifacts-pdfview-scroll { flex: 1; min-height: 0; overflow: auto; padding: 12px; }
 .artifacts-pdfview-canvas { display: block; margin: 0 auto; background: #fff; box-shadow: 0 2px 10px rgba(0,0,0,.35); }
-.artifacts-markdown { padding: 12px 14px; line-height: 1.6; word-wrap: break-word; font-size: 13px; }
+.artifacts-markdown { padding: 12px 14px; line-height: 1.6; word-wrap: break-word; }
 .artifacts-markdown h1, .artifacts-markdown h2, .artifacts-markdown h3, .artifacts-markdown h4, .artifacts-markdown h5, .artifacts-markdown h6 { margin: 14px 0 8px; line-height: 1.3; }
 .artifacts-markdown h1 { font-size: 1.45em; border-bottom: 1px solid var(--dsw-alias-border-l2); padding-bottom: 6px; }
 .artifacts-markdown h2 { font-size: 1.25em; border-bottom: 1px solid var(--dsw-alias-border-l1); padding-bottom: 4px; }
@@ -191,7 +191,7 @@ body[data-dsh-flyout-dragging] .artifacts-preview-overlay { transition: none; }
 .artifacts-diff-label { font-size: 11px; padding: 4px 12px; font-weight: 600; }
 .artifacts-diff-del .artifacts-diff-label { color: var(--dsw-alias-state-error-primary); background: rgba(236,19,19,0.06); }
 .artifacts-diff-add .artifacts-diff-label { color: var(--dsw-alias-state-success-primary); background: rgba(34,197,94,0.08); }
-.artifacts-diff-pre { margin: 0; padding: 8px 12px; font: 12px/1.5 var(--dsh-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, "Cascadia Mono", "Liberation Mono", monospace); white-space: pre-wrap; word-break: break-word; color: var(--dsw-alias-label-secondary); }
+.artifacts-diff-pre { margin: 0; padding: 8px 12px; font: 0.92em/1.5 var(--dsh-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, "Cascadia Mono", "Liberation Mono", monospace); white-space: pre-wrap; word-break: break-word; color: var(--dsw-alias-label-secondary); }
 .artifacts-diff-del .artifacts-diff-pre { background: rgba(236,19,19,0.05); }
 .artifacts-diff-add .artifacts-diff-pre { background: rgba(34,197,94,0.06); }
 .artifacts-resize { position: absolute; left: -4px; top: 0; bottom: 0; width: 8px; cursor: col-resize; z-index: 3; touch-action: none; }
@@ -208,7 +208,7 @@ body[data-dsh-flyout-dragging] .artifacts-preview-overlay { transition: none; }
 .artifacts-git-badge-U { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-tertiary); }
 .artifacts-git-orig { font-size: 11px; color: var(--dsw-alias-label-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .artifacts-git-error { padding: 14px 12px; word-break: break-all; }
-.artifacts-gitdiff { font-family: var(--dsh-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, "Cascadia Mono", "Liberation Mono", monospace); font-size: 12px; line-height: 1.6; }
+.artifacts-gitdiff { font-family: var(--dsh-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, "Cascadia Mono", "Liberation Mono", monospace); font-size: 0.92em; line-height: 1.6; }
 .gd-line { white-space: pre-wrap; word-break: break-all; padding: 0 12px; }
 .gd-meta { color: var(--dsw-alias-label-tertiary); background: var(--dsw-alias-bg-layer-1); padding: 2px 12px; }
 .gd-hunk { color: var(--dsw-alias-state-business-primary); background: var(--dsw-alias-state-business-tertiary, rgba(65,118,230,0.08)); padding: 2px 12px; }
@@ -273,8 +273,8 @@ body[data-ds-dark-theme] .gd-del { color: #faa2c1; }
 /* 代码视图：逐行渲染（行 = 行号 + 代码），软换行时行号仍对齐 */
 .artifacts-code-scroll { flex: 1; min-height: 0; overflow: auto; padding: 12px 0; background: var(--shiki-background, var(--dsw-alias-markdown-code-block, var(--dsw-alias-bg-layer-1))); }
 .artifacts-code-line { display: flex; align-items: flex-start; min-width: fit-content; }
-.artifacts-code-gutter { flex: none; min-width: 2.2em; padding: 0 6px 0 8px; text-align: right; color: var(--dsw-alias-label-tertiary); border-right: 1px solid var(--dsw-alias-border-l1); position: sticky; left: 0; user-select: none; background: var(--shiki-background, var(--dsw-alias-markdown-code-block, var(--dsw-alias-bg-layer-1))); font: 12px/1.6 var(--dsh-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, "Cascadia Mono", "Liberation Mono", monospace); }
-.artifacts-code-pre { flex: 1 0 auto; margin: 0; padding: 0 12px; color: var(--shiki-foreground, var(--dsw-alias-label-primary)); font: 12px/1.6 var(--dsh-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, "Cascadia Mono", "Liberation Mono", monospace); white-space: pre; }
+.artifacts-code-gutter { flex: none; min-width: 2.2em; padding: 0 6px 0 8px; text-align: right; color: var(--dsw-alias-label-tertiary); border-right: 1px solid var(--dsw-alias-border-l1); position: sticky; left: 0; user-select: none; background: var(--shiki-background, var(--dsw-alias-markdown-code-block, var(--dsw-alias-bg-layer-1))); font: 0.92em/1.6 var(--dsh-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, "Cascadia Mono", "Liberation Mono", monospace); }
+.artifacts-code-pre { flex: 1 0 auto; margin: 0; padding: 0 12px; color: var(--shiki-foreground, var(--dsw-alias-label-primary)); font: 0.92em/1.6 var(--dsh-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, "Cascadia Mono", "Liberation Mono", monospace); white-space: pre; }
 .artifacts-code-pre code { font: inherit; color: inherit; }
 .artifacts-code-wrap .artifacts-code-pre { white-space: pre-wrap; word-break: break-all; }
 .artifacts-imgview { flex: 1; min-height: 0; overflow: auto; display: flex; align-items: center; justify-content: center; cursor: grab; user-select: none; }
