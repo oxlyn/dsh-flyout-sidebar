@@ -6,7 +6,7 @@
  * - currentSessionId / quoteToComposer：读取客户端会话库、把 @path 引用
  *   写入会话输入框。
  */
-import { getLang, getExplicitLang, setLang as setI18nLang, subscribeLang } from '../shared/i18n.js'
+import { getLang, subscribeLang } from '../shared/i18n.js'
 import type { SessionListLike } from './runtime'
 import { ctx } from './runtime'
 import { React } from './jsx'
@@ -129,9 +129,7 @@ export interface SlideState {
 export interface Settings {
   autoRefresh: boolean
   minPanelWidth: number
-  showFileTree: boolean
   defaultOpen: boolean
-  codeWrap: boolean
   contentFontSize: number
 }
 
@@ -139,9 +137,7 @@ const SETTINGS_KEY = 'dsh-flyout-sidebar:settings'
 const DEFAULT_SETTINGS: Settings = {
   autoRefresh: true, // 面板打开时轮询刷新
   minPanelWidth: 20, // 面板最小宽度（占窗口宽度百分比）
-  showFileTree: true, // 面板内显示文件树标签页
   defaultOpen: true, // 页面加载后默认展开
-  codeWrap: false, // 代码预览软换行（默认横向滚动）
   contentFontSize: 13, // 内容区（代码/diff/markdown）基准字号
 }
 
@@ -254,8 +250,8 @@ export function useSessionId(): string {
 }
 
 /**
- * 界面语言：订阅 i18n 的语言变更，语言切换时强制订阅组件重渲染（组件内的
- * t() 调用随之取到新语言文案）。返回值用于设置区判断下拉框选项。
+ * 界面语言：订阅 i18n 的语言变更（宿主界面语言切换时），强制订阅组件重渲染，
+ * 组件内的 t() 调用随之取到新语言文案。
  */
 export function useLang(): 'zh' | 'en' {
   const [, force] = React.useReducer((n: number) => n + 1, 0)
@@ -265,9 +261,3 @@ export function useLang(): 'zh' | 'en' {
   }, [])
   return getLang()
 }
-
-/** 当前设置语言：'zh' / 'en'（显式）或 null（跟随浏览器自动判定） */
-export const getLanguageSetting = getExplicitLang
-
-/** 设置界面语言并持久化；null = 恢复跟随浏览器 */
-export const setLanguage = setI18nLang

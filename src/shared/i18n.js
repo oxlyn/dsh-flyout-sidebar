@@ -7,9 +7,10 @@
  * 2. tsdown 构建期经 `?raw` 读入原始文本，内联进独立弹出页 /flyout-sidebar
  *    的经典 <script>（见 src/host/page.ts）。
  *
- * 语言选择：localStorage `dsh-flyout-sidebar:lang`（'zh' | 'en'，主面板的
- * 设置项写入、弹出页读取），未设置时按浏览器语言自动判定。`t(key)` 取当前
- * 语言文案，缺失时回退另一语言、再回退 key 本身。
+ * 语言选择：跟随 DSH 宿主界面语言。应用内侧边栏观察 `<html lang>`（宿主
+ * 已设置语言时），把 'zh'/'en' 通过 localStorage `dsh-flyout-sidebar:lang`
+ * 发布；独立弹出页 / 各入口读取该值，未发布时按浏览器语言自动判定。
+ * `t(key)` 取当前语言文案，缺失时回退另一语言、再回退 key 本身。
  */
 
 /** @type {Record<string, string>} */
@@ -89,23 +90,14 @@ const ZH = {
   setDefaultOpenDesc: '页面加载后侧边栏默认展开；关闭则默认收起，点右上角图标再打开。',
   setAutoRefresh: '自动刷新',
   setAutoRefreshDesc: '开启后侧边栏展开时将即时同步并更新产物列表',
-  setFileTree: '文件树',
-  setFileTreeDesc: '在侧边栏显示「文件树」标签页，浏览工作区目录。',
   setMinWidth: '最短面板宽度',
   setMinWidthDesc: '面板的最小宽度（占窗口宽度的百分比，20–60）；更宽可通过拖动面板左边缘调整。',
-  setCodeWrap: '代码换行',
-  setCodeWrapDesc: '代码预览长行软换行；关闭则横向滚动。',
   setContentFontSize: '内容字号',
   setContentFontSizeDesc: '代码 / diff / Markdown 预览的字体大小（px），文件树等界面字号不受影响。',
   wordWrap: '自动换行',
   openInEditor: '在系统编辑器打开',
   openedInEditor: '已在编辑器打开',
   openFailed: '打开失败',
-  setLang: '界面语言',
-  setLangDesc: '侧边栏与独立弹出页的显示语言；独立弹出页需刷新后生效。',
-  langAuto: '跟随浏览器',
-  langZh: '中文',
-  langEn: 'English',
 }
 
 /** @type {Record<string, string>} */
@@ -179,23 +171,14 @@ const EN = {
   setDefaultOpenDesc: 'Expand the sidebar on page load; when off it stays collapsed until the corner icon is clicked.',
   setAutoRefresh: 'Auto refresh',
   setAutoRefreshDesc: 'Keep the artifact list in sync while the sidebar is open',
-  setFileTree: 'File tree',
-  setFileTreeDesc: 'Show the "File tree" tab in the sidebar to browse the workspace directory.',
-  setMinWidth: 'Minimum panel width',
-  setMinWidthDesc: 'Minimum width of the panel (percentage of window width, 20–60); drag the panel edge to go wider.',
-  setCodeWrap: 'Code wrap',
-  setCodeWrapDesc: 'Soft-wrap long lines in code previews; when off they scroll horizontally.',
+  setMinWidth: 'Min panel width',
+  setMinWidthDesc: 'Min panel width as a percentage of the window (20–60); drag the panel edge to make it wider.',
   setContentFontSize: 'Content font size',
   setContentFontSizeDesc: 'Font size (px) for code / diff / Markdown previews; UI text such as the file tree is unaffected.',
   wordWrap: 'Word wrap',
   openInEditor: 'Open in system editor',
   openedInEditor: 'Opened in editor',
   openFailed: 'Failed to open',
-  setLang: 'Interface language',
-  setLangDesc: 'Display language for the sidebar and the standalone flyout page (flyout requires a reload).',
-  langAuto: 'Auto (browser)',
-  langZh: '中文',
-  langEn: 'English',
 }
 
 /** @type {Record<string, Record<string, string>>} */
@@ -203,12 +186,13 @@ const DICTS = { zh: ZH, en: EN }
 
 const LANG_KEY = 'dsh-flyout-sidebar:lang'
 
-/** @type {'zh' | 'en' | null} 已显式选择的语言（null = 跟随浏览器自动判定） */
-let explicitLang = null
+/** @type {'zh' | 'en' | null} 已发布的主界面语言（null = 宿主未发布，按浏览器判定） */
+let publishedLang = null
 /** @type {Array<(lang: string) => void>} */
 let listeners = []
 
-function readStoredLang() {
+/** @returns {'zh' | 'en' | null} 主面板发布到 localStorage 的语言，无效时 null */
+function readPublishedLang() {
   try {
     var v = localStorage.getItem(LANG_KEY)
     return v === 'zh' || v === 'en' ? v : null
@@ -233,8 +217,8 @@ function autoLang() {
 }
 
 function currentLang() {
-  if (explicitLang === null) explicitLang = readStoredLang()
-  return explicitLang || autoLang()
+  if (publishedLang === null) publishedLang = readPublishedLang()
+  return publishedLang || autoLang()
 }
 
 /**
@@ -255,21 +239,15 @@ export function getLang() {
   return currentLang()
 }
 
-/** @returns {'zh' | 'en' | null} 用户显式选择的语言（null = 跟随浏览器） */
-export function getExplicitLang() {
-  if (explicitLang === null) explicitLang = readStoredLang()
-  return explicitLang
-}
-
 /**
- * 显式设置语言并持久化（null = 恢复跟随浏览器）。
- * @param {'zh' | 'en' | null} lang
+ * 发布语言：主面板观察宿主界面语言后调用，写入 localStorage 供独立弹出页
+ * 读取，并通知本页订阅者重渲染。
+ * @param {'zh' | 'en'} lang
  */
 export function setLang(lang) {
-  explicitLang = lang
+  publishedLang = lang
   try {
-    if (lang === null) localStorage.removeItem(LANG_KEY)
-    else localStorage.setItem(LANG_KEY, lang)
+    localStorage.setItem(LANG_KEY, lang)
   } catch (e) {
     // localStorage 不可用时仅保存在内存
   }
@@ -278,7 +256,7 @@ export function setLang(lang) {
     var fn = next[i]
     if (!fn) continue
     try {
-      fn(currentLang())
+      fn(lang)
     } catch (e) {
       // 单个订阅者异常不阻断其余
     }

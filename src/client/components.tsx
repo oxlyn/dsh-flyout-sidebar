@@ -3,26 +3,12 @@
  */
 import { Fragment, h, React } from './jsx'
 import { extType } from '../shared/ext.js'
-import { t } from '../shared/i18n.js'
+import { setLang, t } from '../shared/i18n.js'
 import { basename, gitLabel, gitTitle } from '../shared/gitui.js'
 import type { ReactElement, ReactNode } from 'react'
 
 import { ctx, host, type GitStatusEntry, type ListEntry } from './runtime'
-import {
-  currentSessionId,
-  fallbackCopy,
-  getLanguageSetting,
-  quoteToComposer,
-  setLanguage,
-  store,
-  settingsStore,
-  useLang,
-  useOpen,
-  useSessionId,
-  useSettings,
-  useSlide,
-  type Settings,
-} from './store'
+import { currentSessionId, fallbackCopy, quoteToComposer, store, settingsStore, useLang, useOpen, useSessionId, useSettings, useSlide, type Settings } from './store'
 import { renderPreview, type PreviewTab } from './preview'
 import {
   FileCodeIcon,
@@ -721,7 +707,7 @@ export function ArtifactsPanel(): ReactElement | null {
   const [gitError, setGitError] = React.useState<string | null>(null)
   const [panelFrac, setPanelFrac] = React.useState<number | null>(null) // 占可用宽度的比例；null = 用最小宽度
   const [resizing, setResizing] = React.useState(false)
-  const [activeView, setActiveView] = React.useState<'tree' | 'git'>(() => (settings.showFileTree ? 'tree' : 'git'))
+  const [activeView, setActiveView] = React.useState<'tree' | 'git'>(() => 'tree')
   const [treeRefresh, setTreeRefresh] = React.useState(0) // 头部刷新按钮递增
   // 文件搜索框显隐：默认隐藏，由头部刷新按钮左侧的搜索按钮切换
   const [searchOpen, setSearchOpen] = React.useState(false)
@@ -822,6 +808,25 @@ export function ArtifactsPanel(): ReactElement | null {
     const opts: MutationObserverInit = { attributes: true, attributeFilter: ['data-ds-dark-theme'] }
     obs.observe(document.documentElement, opts)
     if (document.body) obs.observe(document.body, opts)
+    return () => obs.disconnect()
+  }, [])
+
+  // 跟随 DSH 宿主界面语言：观察 <html lang>（宿主设置界面语言后更改），
+  // 映射为 'zh'/'en' 发布到 i18n（写入 localStorage 供独立弹出页读取）。
+  React.useEffect(() => {
+    const mapLang = (raw: string | null): 'zh' | 'en' | null => {
+      const l = (raw || '').toLowerCase()
+      if (!l) return null // 宿主未标注语言 → 保持浏览器自动判定
+      return l.indexOf('zh') === 0 ? 'zh' : 'en'
+    }
+    const sync = (): void => {
+      const mapped = mapLang(document.documentElement.getAttribute('lang'))
+      if (mapped) setLang(mapped)
+    }
+    sync()
+    if (typeof MutationObserver !== 'function') return
+    const obs = new MutationObserver(sync)
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['lang'] })
     return () => obs.disconnect()
   }, [])
 
@@ -985,7 +990,7 @@ export function ArtifactsPanel(): ReactElement | null {
             <PanelCollapseIcon size={16} />
           </button>
         </div>
-        {activeTab ? renderPreview(activeTab, settings.codeWrap, settings.contentFontSize) : null}
+        {activeTab ? renderPreview(activeTab, true, settings.contentFontSize) : null}
       </div>
     ) : null
 
@@ -1018,7 +1023,7 @@ export function ArtifactsPanel(): ReactElement | null {
           </div>
           <span className="artifacts-spacer" />
           {notice ? <span className="artifacts-notice">{notice}</span> : null}
-          {activeView === 'tree' && settings.showFileTree ? (
+          {activeView === 'tree' ? (
             <button
               type="button"
               className={'artifacts-toggle artifacts-search-toggle' + (searchOpen ? ' is-active' : '')}
@@ -1044,8 +1049,7 @@ export function ArtifactsPanel(): ReactElement | null {
           >
             <RefreshIcon size={16} />
           </button>
-          {settings.showFileTree ? (
-            <button
+          <button
               type="button"
               className={'artifacts-iconbtn artifacts-viewbtn' + (activeView === 'git' ? ' is-active' : '')}
               title={activeView === 'tree' ? t('viewGit') : t('backToFiles')}
@@ -1054,7 +1058,6 @@ export function ArtifactsPanel(): ReactElement | null {
             >
               {activeView === 'tree' ? <GitBranchIcon size={16} /> : <FolderClosedIcon size={16} />}
             </button>
-          ) : null}
         </div>
         <div className="artifacts-main">
           <div
@@ -1063,7 +1066,7 @@ export function ArtifactsPanel(): ReactElement | null {
           >
             {/* 面板常驻 DOM，但树/列表内容仅打开时挂载：隐藏期间不发请求，
                 行为与旧版「关闭即卸载」一致 */}
-            {open ? (activeView === 'tree' && settings.showFileTree ? (
+            {open ? (activeView === 'tree' ? (
               <FileTree
                 onOpen={openFile}
                 selectedPath={activeTab && !activeTab.git ? activeTab.path : null}
@@ -1161,18 +1164,6 @@ export function SettingsSection(): ReactElement {
           value={settings.autoRefresh}
           onToggle={(v) => set('autoRefresh', v)}
         />
-        <SettingsToggle
-          label={t('setFileTree')}
-          desc={t('setFileTreeDesc')}
-          value={settings.showFileTree}
-          onToggle={(v) => set('showFileTree', v)}
-        />
-        <SettingsToggle
-          label={t('setCodeWrap')}
-          desc={t('setCodeWrapDesc')}
-          value={settings.codeWrap}
-          onToggle={(v) => set('codeWrap', v)}
-        />
         <div className="artifacts-setrow">
           <div className="artifacts-settext">
             <div className="artifacts-settitle">{t('setMinWidth')}</div>
@@ -1223,26 +1214,6 @@ export function SettingsSection(): ReactElement {
               }}
             />
             <span className="artifacts-suffix">px</span>
-          </div>
-        </div>
-        <div className="artifacts-setrow">
-          <div className="artifacts-settext">
-            <div className="artifacts-settitle">{t('setLang')}</div>
-            <div className="artifacts-setdesc">{t('setLangDesc')}</div>
-          </div>
-          <div className="artifacts-setcontrol">
-            <select
-              className="artifacts-langselect"
-              value={getLanguageSetting() || ''}
-              onChange={(e) => {
-                const v = e.currentTarget.value
-                setLanguage(v === 'zh' || v === 'en' ? (v as 'zh' | 'en') : null)
-              }}
-            >
-              <option value="">{t('langAuto')}</option>
-              <option value="zh">{t('langZh')}</option>
-              <option value="en">{t('langEn')}</option>
-            </select>
           </div>
         </div>
       </div>

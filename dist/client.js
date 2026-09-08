@@ -319,7 +319,6 @@ body[data-ds-dark-theme] .gd-del { color: #faa2c1; }
 .artifacts-switch input:focus-visible + .artifacts-switch-track { outline: 2px solid var(--dsw-alias-state-business-primary); outline-offset: 2px; }
 .artifacts-setcontrol { flex: none; align-items: center; gap: 6px; display: flex; }
 .artifacts-widthinput { width: 76px; border: 1px solid var(--dsw-alias-border-l2); background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); font: inherit; border-radius: 6px; padding: 4px 8px; }
-.artifacts-langselect { border: 1px solid var(--dsw-alias-border-l2); background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); font: inherit; border-radius: 6px; padding: 4px 8px; cursor: pointer; }
 .artifacts-suffix { color: var(--dsw-alias-label-secondary); font-size: 14px; line-height: 22px; }
 .artifacts-ctxmenu-backdrop { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 10001; }
 .artifacts-ctxmenu { position: fixed; z-index: 10002; min-width: 140px; padding: 4px 0; background: var(--dsw-alias-bg-base); border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; box-shadow: var(--dsw-shadow-lv2); font-size: 12px; }
@@ -434,9 +433,10 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 	* 2. tsdown 构建期经 `?raw` 读入原始文本，内联进独立弹出页 /flyout-sidebar
 	*    的经典 <script>（见 src/host/page.ts）。
 	*
-	* 语言选择：localStorage `dsh-flyout-sidebar:lang`（'zh' | 'en'，主面板的
-	* 设置项写入、弹出页读取），未设置时按浏览器语言自动判定。`t(key)` 取当前
-	* 语言文案，缺失时回退另一语言、再回退 key 本身。
+	* 语言选择：跟随 DSH 宿主界面语言。应用内侧边栏观察 `<html lang>`（宿主
+	* 已设置语言时），把 'zh'/'en' 通过 localStorage `dsh-flyout-sidebar:lang`
+	* 发布；独立弹出页 / 各入口读取该值，未发布时按浏览器语言自动判定。
+	* `t(key)` 取当前语言文案，缺失时回退另一语言、再回退 key 本身。
 	*/
 	/** @type {Record<string, string>} */
 	const ZH = {
@@ -509,23 +509,14 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		setDefaultOpenDesc: "页面加载后侧边栏默认展开；关闭则默认收起，点右上角图标再打开。",
 		setAutoRefresh: "自动刷新",
 		setAutoRefreshDesc: "开启后侧边栏展开时将即时同步并更新产物列表",
-		setFileTree: "文件树",
-		setFileTreeDesc: "在侧边栏显示「文件树」标签页，浏览工作区目录。",
 		setMinWidth: "最短面板宽度",
 		setMinWidthDesc: "面板的最小宽度（占窗口宽度的百分比，20–60）；更宽可通过拖动面板左边缘调整。",
-		setCodeWrap: "代码换行",
-		setCodeWrapDesc: "代码预览长行软换行；关闭则横向滚动。",
 		setContentFontSize: "内容字号",
 		setContentFontSizeDesc: "代码 / diff / Markdown 预览的字体大小（px），文件树等界面字号不受影响。",
 		wordWrap: "自动换行",
 		openInEditor: "在系统编辑器打开",
 		openedInEditor: "已在编辑器打开",
-		openFailed: "打开失败",
-		setLang: "界面语言",
-		setLangDesc: "侧边栏与独立弹出页的显示语言；独立弹出页需刷新后生效。",
-		langAuto: "跟随浏览器",
-		langZh: "中文",
-		langEn: "English"
+		openFailed: "打开失败"
 	};
 	/** @type {Record<string, string>} */
 	const EN = {
@@ -598,23 +589,14 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		setDefaultOpenDesc: "Expand the sidebar on page load; when off it stays collapsed until the corner icon is clicked.",
 		setAutoRefresh: "Auto refresh",
 		setAutoRefreshDesc: "Keep the artifact list in sync while the sidebar is open",
-		setFileTree: "File tree",
-		setFileTreeDesc: "Show the \"File tree\" tab in the sidebar to browse the workspace directory.",
-		setMinWidth: "Minimum panel width",
-		setMinWidthDesc: "Minimum width of the panel (percentage of window width, 20–60); drag the panel edge to go wider.",
-		setCodeWrap: "Code wrap",
-		setCodeWrapDesc: "Soft-wrap long lines in code previews; when off they scroll horizontally.",
+		setMinWidth: "Min panel width",
+		setMinWidthDesc: "Min panel width as a percentage of the window (20–60); drag the panel edge to make it wider.",
 		setContentFontSize: "Content font size",
 		setContentFontSizeDesc: "Font size (px) for code / diff / Markdown previews; UI text such as the file tree is unaffected.",
 		wordWrap: "Word wrap",
 		openInEditor: "Open in system editor",
 		openedInEditor: "Opened in editor",
-		openFailed: "Failed to open",
-		setLang: "Interface language",
-		setLangDesc: "Display language for the sidebar and the standalone flyout page (flyout requires a reload).",
-		langAuto: "Auto (browser)",
-		langZh: "中文",
-		langEn: "English"
+		openFailed: "Failed to open"
 	};
 	/** @type {Record<string, Record<string, string>>} */
 	const DICTS = {
@@ -622,11 +604,12 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		en: EN
 	};
 	const LANG_KEY = "dsh-flyout-sidebar:lang";
-	/** @type {'zh' | 'en' | null} 已显式选择的语言（null = 跟随浏览器自动判定） */
-	let explicitLang = null;
+	/** @type {'zh' | 'en' | null} 已发布的主界面语言（null = 宿主未发布，按浏览器判定） */
+	let publishedLang = null;
 	/** @type {Array<(lang: string) => void>} */
 	let listeners = [];
-	function readStoredLang() {
+	/** @returns {'zh' | 'en' | null} 主面板发布到 localStorage 的语言，无效时 null */
+	function readPublishedLang() {
 		try {
 			var v = localStorage.getItem(LANG_KEY);
 			return v === "zh" || v === "en" ? v : null;
@@ -647,8 +630,8 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		return "en";
 	}
 	function currentLang() {
-		if (explicitLang === null) explicitLang = readStoredLang();
-		return explicitLang || autoLang();
+		if (publishedLang === null) publishedLang = readPublishedLang();
+		return publishedLang || autoLang();
 	}
 	/**
 	* @param {string} key 文案键
@@ -666,27 +649,22 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 	function getLang() {
 		return currentLang();
 	}
-	/** @returns {'zh' | 'en' | null} 用户显式选择的语言（null = 跟随浏览器） */
-	function getExplicitLang() {
-		if (explicitLang === null) explicitLang = readStoredLang();
-		return explicitLang;
-	}
 	/**
-	* 显式设置语言并持久化（null = 恢复跟随浏览器）。
-	* @param {'zh' | 'en' | null} lang
+	* 发布语言：主面板观察宿主界面语言后调用，写入 localStorage 供独立弹出页
+	* 读取，并通知本页订阅者重渲染。
+	* @param {'zh' | 'en'} lang
 	*/
 	function setLang(lang) {
-		explicitLang = lang;
+		publishedLang = lang;
 		try {
-			if (lang === null) localStorage.removeItem(LANG_KEY);
-			else localStorage.setItem(LANG_KEY, lang);
+			localStorage.setItem(LANG_KEY, lang);
 		} catch (e) {}
 		var next = listeners.slice();
 		for (var i = 0; i < next.length; i++) {
 			var fn = next[i];
 			if (!fn) continue;
 			try {
-				fn(currentLang());
+				fn(lang);
 			} catch (e) {}
 		}
 	}
@@ -849,9 +827,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 	const DEFAULT_SETTINGS = {
 		autoRefresh: true,
 		minPanelWidth: 20,
-		showFileTree: true,
 		defaultOpen: true,
-		codeWrap: false,
 		contentFontSize: 13
 	};
 	function loadSettings() {
@@ -949,8 +925,8 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		return sessionId;
 	}
 	/**
-	* 界面语言：订阅 i18n 的语言变更，语言切换时强制订阅组件重渲染（组件内的
-	* t() 调用随之取到新语言文案）。返回值用于设置区判断下拉框选项。
+	* 界面语言：订阅 i18n 的语言变更（宿主界面语言切换时），强制订阅组件重渲染，
+	* 组件内的 t() 调用随之取到新语言文案。
 	*/
 	function useLang() {
 		const [, force] = React.useReducer((n) => n + 1, 0);
@@ -960,10 +936,6 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		}, []);
 		return getLang();
 	}
-	/** 当前设置语言：'zh' / 'en'（显式）或 null（跟随浏览器自动判定） */
-	const getLanguageSetting = getExplicitLang;
-	/** 设置界面语言并持久化；null = 恢复跟随浏览器 */
-	const setLanguage = setLang;
 	//#endregion
 	//#region src/shared/highlight.js
 	/**
@@ -2480,7 +2452,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		const [gitError, setGitError] = React.useState(null);
 		const [panelFrac, setPanelFrac] = React.useState(null);
 		const [resizing, setResizing] = React.useState(false);
-		const [activeView, setActiveView] = React.useState(() => settings.showFileTree ? "tree" : "git");
+		const [activeView, setActiveView] = React.useState(() => "tree");
 		const [treeRefresh, setTreeRefresh] = React.useState(0);
 		const [searchOpen, setSearchOpen] = React.useState(false);
 		const [gitRefresh, setGitRefresh] = React.useState(0);
@@ -2569,6 +2541,25 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			};
 			obs.observe(document.documentElement, opts);
 			if (document.body) obs.observe(document.body, opts);
+			return () => obs.disconnect();
+		}, []);
+		React.useEffect(() => {
+			const mapLang = (raw) => {
+				const l = (raw || "").toLowerCase();
+				if (!l) return null;
+				return l.indexOf("zh") === 0 ? "zh" : "en";
+			};
+			const sync = () => {
+				const mapped = mapLang(document.documentElement.getAttribute("lang"));
+				if (mapped) setLang(mapped);
+			};
+			sync();
+			if (typeof MutationObserver !== "function") return;
+			const obs = new MutationObserver(sync);
+			obs.observe(document.documentElement, {
+				attributes: true,
+				attributeFilter: ["lang"]
+			});
 			return () => obs.disconnect();
 		}, []);
 		React.useEffect(() => {
@@ -2702,7 +2693,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			className: "artifacts-preview-hide",
 			title: t("hidePreview"),
 			onClick: () => setPreviewHidden(true)
-		}, /* @__PURE__ */ h(PanelCollapseIcon, { size: 16 }))), activeTab ? renderPreview(activeTab, settings.codeWrap, settings.contentFontSize) : null) : null;
+		}, /* @__PURE__ */ h(PanelCollapseIcon, { size: 16 }))), activeTab ? renderPreview(activeTab, true, settings.contentFontSize) : null) : null;
 		return /* @__PURE__ */ h(Fragment, null, previewOverlay, /* @__PURE__ */ h("div", {
 			className: "artifacts-panel" + (slidOut ? " artifacts-slid-out" : "") + (resizing ? " artifacts-resizing" : ""),
 			style: { width: widthPx },
@@ -2723,7 +2714,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			target: "_blank",
 			rel: "noreferrer noopener",
 			title: t("flyoutOpen")
-		}, /* @__PURE__ */ h(FlyoutIcon, { size: 16 }))), /* @__PURE__ */ h("span", { className: "artifacts-spacer" }), notice ? /* @__PURE__ */ h("span", { className: "artifacts-notice" }, notice) : null, activeView === "tree" && settings.showFileTree ? /* @__PURE__ */ h("button", {
+		}, /* @__PURE__ */ h(FlyoutIcon, { size: 16 }))), /* @__PURE__ */ h("span", { className: "artifacts-spacer" }), notice ? /* @__PURE__ */ h("span", { className: "artifacts-notice" }, notice) : null, activeView === "tree" ? /* @__PURE__ */ h("button", {
 			type: "button",
 			className: "artifacts-toggle artifacts-search-toggle" + (searchOpen ? " is-active" : ""),
 			title: t("searchToggle"),
@@ -2741,16 +2732,16 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 					setGitRefresh((n) => n + 1);
 				}
 			}
-		}, /* @__PURE__ */ h(RefreshIcon, { size: 16 })), settings.showFileTree ? /* @__PURE__ */ h("button", {
+		}, /* @__PURE__ */ h(RefreshIcon, { size: 16 })), /* @__PURE__ */ h("button", {
 			type: "button",
 			className: "artifacts-iconbtn artifacts-viewbtn" + (activeView === "git" ? " is-active" : ""),
 			title: activeView === "tree" ? t("viewGit") : t("backToFiles"),
 			"aria-pressed": activeView === "git",
 			onClick: () => setActiveView(activeView === "tree" ? "git" : "tree")
-		}, activeView === "tree" ? /* @__PURE__ */ h(GitBranchIcon, { size: 16 }) : /* @__PURE__ */ h(FolderClosedIcon, { size: 16 })) : null), /* @__PURE__ */ h("div", { className: "artifacts-main" }, /* @__PURE__ */ h("div", {
+		}, activeView === "tree" ? /* @__PURE__ */ h(GitBranchIcon, { size: 16 }) : /* @__PURE__ */ h(FolderClosedIcon, { size: 16 }))), /* @__PURE__ */ h("div", { className: "artifacts-main" }, /* @__PURE__ */ h("div", {
 			className: "artifacts-body" + (activeView === "git" && gitRefreshing ? " artifacts-refreshing" : ""),
 			style: { flex: "1 1 auto" }
-		}, open ? activeView === "tree" && settings.showFileTree ? /* @__PURE__ */ h(FileTree, {
+		}, open ? activeView === "tree" ? /* @__PURE__ */ h(FileTree, {
 			onOpen: openFile,
 			selectedPath: activeTab && !activeTab.git ? activeTab.path : null,
 			refreshToken: treeRefresh,
@@ -2802,16 +2793,6 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			desc: t("setAutoRefreshDesc"),
 			value: settings.autoRefresh,
 			onToggle: (v) => set("autoRefresh", v)
-		}), /* @__PURE__ */ h(SettingsToggle, {
-			label: t("setFileTree"),
-			desc: t("setFileTreeDesc"),
-			value: settings.showFileTree,
-			onToggle: (v) => set("showFileTree", v)
-		}), /* @__PURE__ */ h(SettingsToggle, {
-			label: t("setCodeWrap"),
-			desc: t("setCodeWrapDesc"),
-			value: settings.codeWrap,
-			onToggle: (v) => set("codeWrap", v)
 		}), /* @__PURE__ */ h("div", { className: "artifacts-setrow" }, /* @__PURE__ */ h("div", { className: "artifacts-settext" }, /* @__PURE__ */ h("div", { className: "artifacts-settitle" }, t("setMinWidth")), /* @__PURE__ */ h("div", { className: "artifacts-setdesc" }, t("setMinWidthDesc"))), /* @__PURE__ */ h("div", { className: "artifacts-setcontrol" }, /* @__PURE__ */ h("input", {
 			type: "number",
 			className: "artifacts-widthinput",
@@ -2842,14 +2823,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 				const n = parseInt(e.currentTarget.value, 10);
 				set("contentFontSize", Number.isNaN(n) ? 13 : Math.max(11, Math.min(20, n)));
 			}
-		}), /* @__PURE__ */ h("span", { className: "artifacts-suffix" }, "px"))), /* @__PURE__ */ h("div", { className: "artifacts-setrow" }, /* @__PURE__ */ h("div", { className: "artifacts-settext" }, /* @__PURE__ */ h("div", { className: "artifacts-settitle" }, t("setLang")), /* @__PURE__ */ h("div", { className: "artifacts-setdesc" }, t("setLangDesc"))), /* @__PURE__ */ h("div", { className: "artifacts-setcontrol" }, /* @__PURE__ */ h("select", {
-			className: "artifacts-langselect",
-			value: getLanguageSetting() || "",
-			onChange: (e) => {
-				const v = e.currentTarget.value;
-				setLanguage(v === "zh" || v === "en" ? v : null);
-			}
-		}, /* @__PURE__ */ h("option", { value: "" }, t("langAuto")), /* @__PURE__ */ h("option", { value: "zh" }, t("langZh")), /* @__PURE__ */ h("option", { value: "en" }, t("langEn")))))));
+		}), /* @__PURE__ */ h("span", { className: "artifacts-suffix" }, "px")))));
 	}
 	//#endregion
 	//#region src/client/index.tsx
