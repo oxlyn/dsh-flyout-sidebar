@@ -262,7 +262,6 @@ body[data-ds-dark-theme] .gd-del { color: #faa2c1; }
 .artifacts-switch input:focus-visible + .artifacts-switch-track { outline: 2px solid var(--dsw-alias-state-business-primary); outline-offset: 2px; }
 .artifacts-setcontrol { flex: none; align-items: center; gap: 6px; display: flex; }
 .artifacts-widthinput { width: 76px; border: 1px solid var(--dsw-alias-border-l2); background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); font: inherit; border-radius: 6px; padding: 4px 8px; }
-.artifacts-langselect { border: 1px solid var(--dsw-alias-border-l2); background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); font: inherit; border-radius: 6px; padding: 4px 8px; cursor: pointer; }
 .artifacts-suffix { color: var(--dsw-alias-label-secondary); font-size: 14px; line-height: 22px; }
 .artifacts-ctxmenu-backdrop { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 10001; }
 .artifacts-ctxmenu { position: fixed; z-index: 10002; min-width: 140px; padding: 4px 0; background: var(--dsw-alias-bg-base); border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; box-shadow: var(--dsw-shadow-lv2); font-size: 12px; }
