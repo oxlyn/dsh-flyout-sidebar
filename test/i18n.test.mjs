@@ -2,10 +2,9 @@
 // 直接 import 可移植源码（JSDoc 模块，无构建步骤）。
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { t, getLang, getExplicitLang, setLang, subscribeLang } from '../src/shared/i18n.js'
+import { t, getLang, setLang, subscribeLang } from '../src/shared/i18n.js'
 
 test('i18n: defaults to English when no stored lang and navigator is unavailable', () => {
-  assert.equal(getExplicitLang(), null)
   // node 环境：无 localStorage / navigator → 自动判定回退 en
   assert.equal(getLang(), 'en')
   assert.equal(t('noChanges'), 'No uncommitted changes')

@@ -11,8 +11,32 @@ import { attachGitTracking, gitDiff, gitStatus } from './host/git'
 import { openInEditor } from './host/editor'
 import { registerRoutes } from './host/routes'
 import type { DshWebServer, HostContext } from './host/types'
+import Schema from '@deepseek-ai/schemastery'
 
 export const name = 'dsh-flyout-sidebar'
+
+/**
+ * 插件配置（DSH 插件管理渲染的配置表单，值经 cordis 校验后注入 apply）。
+ * client 侧的默认值常量与其保持一致，配置在主机侧生效后经 /flyout-sidebar/config
+ * 分发给应用内面板与独立弹出页。
+ */
+export interface Config {
+  /** 面板打开时轮询刷新产物与 git 变更 */
+  autoRefresh: boolean
+  /** 面板最小宽度（占窗口宽度的百分比，20–60） */
+  minPanelWidth: number
+  /** 页面加载后默认展开面板 */
+  defaultOpen: boolean
+  /** 内容区（代码/diff/markdown）基准字号（px） */
+  contentFontSize: number
+}
+
+export const Config: Schema<Config> = Schema.object({
+  autoRefresh: Schema.boolean().default(true).description('打开面板时自动刷新产物与 git 变更'),
+  minPanelWidth: Schema.number().min(20).max(60).default(20).description('最短面板宽度（占窗口宽度百分比）'),
+  defaultOpen: Schema.boolean().default(true).description('页面加载后默认展开面板'),
+  contentFontSize: Schema.number().min(11).max(20).default(13).description('内容区字体大小（px），界面文字不受影响'),
+})
 
 // 硬依赖：等 webServer 就绪再注册路由（loader 各挂载点并发启动，不注入的话
 // apply 可能先于 webServer 执行而静默漏掉全部路由）。sessionQuery 用于文件
@@ -20,7 +44,7 @@ export const name = 'dsh-flyout-sidebar'
 // 提供 ctx.interval（git 状态兜底轮询）。
 export const inject = ['webServer', 'sessionQuery', 'timer']
 
-export function apply(ctx: HostContext): void {
+export function apply(ctx: HostContext, config: Config): void {
   // 产物跟踪（write/edit + shell 快照 diff）与 git 状态的事件驱动刷新
   attachArtifactTracking(ctx)
   attachGitTracking(ctx)
@@ -40,6 +64,6 @@ export function apply(ctx: HostContext): void {
 
   const webServer = ctx.get<DshWebServer>('webServer')
   if (webServer) {
-    registerRoutes(ctx, webServer)
+    registerRoutes(ctx, webServer, config)
   }
 }

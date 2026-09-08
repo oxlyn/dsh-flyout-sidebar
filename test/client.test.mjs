@@ -110,16 +110,15 @@ test('client bundle: self-contained IIFE, registers via __ModuleLoader__', () =>
   assert.equal(typeof plugin.apply, 'function')
 })
 
-test('client bundle: apply inserts styles and registers three slots', () => {
+test('client bundle: apply inserts styles and registers two overlay slots', () => {
   const { plugin, created } = loadClientBundle()
   const ctx = makeClientCtx()
   plugin.apply(ctx)
   assert.ok(created.some((el) => el.tag === 'style' && el.id === 'dsh-flyout-sidebar-styles'), '样式应被注入')
-  assert.equal(ctx.registered.length, 3)
-  const [trigger, panel, settings] = ctx.registered.map((r) => r.definition)
+  assert.equal(ctx.registered.length, 2)
+  const [trigger, panel] = ctx.registered.map((r) => r.definition)
   assert.deepEqual(trigger, { name: 'shell.overlay', id: 'artifacts-sidebar-trigger', order: 40, label: 'Artifacts' })
   assert.deepEqual(panel, { name: 'shell.overlay', id: 'artifacts-sidebar-panel', order: 50, label: 'Artifacts Panel' })
-  assert.deepEqual(settings, { name: 'settings.section', id: 'artifacts-sidebar', order: 90, label: 'Flyout Sidebar' })
 })
 
 test('client bundle: ArtifactsPanel renders file tree panel', () => {
@@ -135,19 +134,6 @@ test('client bundle: ArtifactsPanel renders file tree panel', () => {
   assert.ok(html.includes('artifacts-search-toggle'), '头部应有搜索开关按钮')
   assert.ok(html.includes('flyout-sidebar?sessionId=sess-1'), '弹出链接应携带会话 id')
   assert.ok(html.includes('artifacts-resize'), '应有拖拽手柄')
-})
-
-test('client bundle: SettingsSection renders all toggles', () => {
-  const { plugin } = loadClientBundle()
-  const ctx = makeClientCtx()
-  plugin.apply(ctx)
-  const settingsEntry = ctx.registered.find((r) => r.definition.id === 'artifacts-sidebar')
-  const html = renderToString(React.createElement(settingsEntry.component))
-  for (const label of ['Open by default', 'Auto refresh', 'File tree', 'Minimum panel width', 'Interface language']) {
-    assert.ok(html.includes(label), '设置项缺失：' + label)
-  }
-  assert.ok(html.includes('artifacts-switch'), '应有开关组件')
-  assert.ok(html.includes('artifacts-langselect'), '应有语言下拉框')
 })
 
 test('client bundle: CornerButton hidden while panel is open (default-open settings applied)', () => {

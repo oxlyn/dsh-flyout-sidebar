@@ -1,5 +1,5 @@
 /**
- * Client 侧：UI 组件 —— 文件树、多标签预览侧边面板、角落触发按钮、设置区。
+ * Client 侧：UI 组件 —— 文件树、多标签预览侧边面板、角落触发按钮。
  */
 import { Fragment, h, React } from './jsx'
 import { extType } from '../shared/ext.js'
@@ -761,6 +761,12 @@ export function ArtifactsPanel(): ReactElement | null {
     }
   }, [open, activeView, settings.autoRefresh, gitRefresh, sessionId])
 
+  // 每次面板摊开时重拉宿主侧插件配置（用户在 DSH 插件管理改配置后热重载，
+  // 面板重新打开即用新值）。
+  React.useEffect(() => {
+    if (open) settingsStore.load()
+  }, [open])
+
   // 把当前会话 id 发布到 localStorage：独立弹出标签页没有客户端会话库，
   // 靠它把文件树根植到活动工作区并实时跟随切换。
   React.useEffect(() => {
@@ -1113,110 +1119,4 @@ export function CornerButton(): ReactElement {
   )
 }
 
-interface SettingsToggleProps {
-  label: string
-  desc: string
-  value: boolean
-  onToggle: (v: boolean) => void
-}
 
-function SettingsToggle({ label, desc, value, onToggle }: SettingsToggleProps): ReactElement {
-  return (
-    <div className="artifacts-setrow">
-      <div className="artifacts-settext">
-        <div className="artifacts-settitle">{label}</div>
-        <div className="artifacts-setdesc">{desc}</div>
-      </div>
-      <label className="artifacts-switch">
-        <input
-          type="checkbox"
-          checked={value}
-          aria-label={label}
-          onChange={(e) => onToggle(e.currentTarget.checked)}
-        />
-        <span className="artifacts-switch-track" aria-hidden="true">
-          <span className="artifacts-switch-thumb" />
-        </span>
-      </label>
-    </div>
-  )
-}
-
-export function SettingsSection(): ReactElement {
-  const settings = useSettings()
-  // 订阅语言变更：切换时本组件重渲染，下拉框与文案随之更新。
-  useLang()
-  const set = (key: keyof Settings, value: boolean | number): void => settingsStore.set(key, value)
-
-  return (
-    <div className="artifacts-settings">
-      <p className="artifacts-setintro">{t('settingsIntro')}</p>
-      <div className="artifacts-setgroup">
-        <SettingsToggle
-          label={t('setDefaultOpen')}
-          desc={t('setDefaultOpenDesc')}
-          value={settings.defaultOpen}
-          onToggle={(v) => set('defaultOpen', v)}
-        />
-        <SettingsToggle
-          label={t('setAutoRefresh')}
-          desc={t('setAutoRefreshDesc')}
-          value={settings.autoRefresh}
-          onToggle={(v) => set('autoRefresh', v)}
-        />
-        <div className="artifacts-setrow">
-          <div className="artifacts-settext">
-            <div className="artifacts-settitle">{t('setMinWidth')}</div>
-            <div className="artifacts-setdesc">{t('setMinWidthDesc')}</div>
-          </div>
-          <div className="artifacts-setcontrol">
-            <input
-              type="number"
-              className="artifacts-widthinput"
-              min={20}
-              max={60}
-              value={settings.minPanelWidth}
-              onChange={(e) => {
-                const n = parseInt(e.currentTarget.value, 10)
-                if (Number.isNaN(n)) return
-                set('minPanelWidth', Math.max(20, Math.min(60, n)))
-              }}
-              onBlur={(e) => {
-                // 离开输入框时把空值/越界值归一到合法范围，避免停留无效状态
-                const n = parseInt(e.currentTarget.value, 10)
-                set('minPanelWidth', Number.isNaN(n) ? 20 : Math.max(20, Math.min(60, n)))
-              }}
-            />
-            <span className="artifacts-suffix">%</span>
-          </div>
-        </div>
-        <div className="artifacts-setrow">
-          <div className="artifacts-settext">
-            <div className="artifacts-settitle">{t('setContentFontSize')}</div>
-            <div className="artifacts-setdesc">{t('setContentFontSizeDesc')}</div>
-          </div>
-          <div className="artifacts-setcontrol">
-            <input
-              type="number"
-              className="artifacts-widthinput"
-              min={11}
-              max={20}
-              value={settings.contentFontSize}
-              onChange={(e) => {
-                const n = parseInt(e.currentTarget.value, 10)
-                if (Number.isNaN(n)) return
-                set('contentFontSize', Math.max(11, Math.min(20, n)))
-              }}
-              onBlur={(e) => {
-                // 离开输入框时把空值/越界值归一到合法范围，避免停留无效状态
-                const n = parseInt(e.currentTarget.value, 10)
-                set('contentFontSize', Number.isNaN(n) ? 13 : Math.max(11, Math.min(20, n)))
-              }}
-            />
-            <span className="artifacts-suffix">px</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}

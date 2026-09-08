@@ -38,7 +38,11 @@
   "engines": {
     "node": ">=20"
   },
+  "peerDependencies": {
+    "@deepseek-ai/schemastery": "^3.18.1"
+  },
   "devDependencies": {
+    "@deepseek-ai/schemastery": "^3.18.2",
     "@types/node": "^26.4.0",
     "@types/react": "^19.2.18",
     "happy-dom": "^20.11.10",

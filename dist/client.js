@@ -301,25 +301,6 @@ body[data-ds-dark-theme] .gd-del { color: #faa2c1; }
 }
 .artifacts-retry:hover { background: var(--dsw-alias-interactive-bg-hover); }
 @keyframes artifacts-row-in { 0% { opacity: 0 } }
-.artifacts-settings { display: flex; flex-direction: column; gap: 14px; width: 100%; height: 100%; min-height: 0; overflow-y: auto; padding-bottom: 24px; }
-.artifacts-setintro { color: var(--dsw-alias-label-tertiary); margin: 0; padding: 0 2px; font-size: 13px; line-height: 20px; }
-.artifacts-setgroup { border: 1px solid var(--dsw-alias-border-l2); background: var(--dsw-alias-bg-layer-3); border-radius: 16px; padding: 6px 20px; display: flex; flex-direction: column; flex: none; }
-.artifacts-setrow { border-bottom: 1px solid var(--dsw-alias-border-l2); justify-content: space-between; align-items: center; gap: 16px; padding: 12px 2px; display: flex; }
-.artifacts-setrow:last-child { border-bottom: none; }
-.artifacts-settext { flex-direction: column; gap: 4px; min-width: 0; display: flex; }
-.artifacts-settitle { color: var(--dsw-alias-label-primary); font-size: 14px; line-height: 22px; }
-.artifacts-setdesc { color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 18px; }
-.artifacts-switch { cursor: pointer; flex: none; display: inline-flex; position: relative; }
-.artifacts-switch input { opacity: 0; width: 1px; height: 1px; margin: 0; position: absolute; }
-.artifacts-switch-track { box-sizing: border-box; border: 1px solid var(--dsw-alias-border-l2); background: var(--dsw-alias-bg-layer-1); border-radius: 10px; align-items: center; width: 36px; height: 20px; padding: 2px; transition: background .15s, border-color .15s; display: inline-flex; }
-.artifacts-switch-thumb { background: var(--dsw-alias-label-secondary); border-radius: 50%; width: 14px; height: 14px; transition: transform .15s, background .15s; display: block; }
-.artifacts-switch:hover .artifacts-switch-track { border-color: var(--dsw-alias-label-dimmed); }
-.artifacts-switch input:checked + .artifacts-switch-track { border-color: var(--dsw-alias-button-primary-fill); background: var(--dsw-alias-button-primary-fill); }
-.artifacts-switch input:checked + .artifacts-switch-track .artifacts-switch-thumb { background: var(--dsw-alias-bg-layer-3); transform: translate(16px); }
-.artifacts-switch input:focus-visible + .artifacts-switch-track { outline: 2px solid var(--dsw-alias-state-business-primary); outline-offset: 2px; }
-.artifacts-setcontrol { flex: none; align-items: center; gap: 6px; display: flex; }
-.artifacts-widthinput { width: 76px; border: 1px solid var(--dsw-alias-border-l2); background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); font: inherit; border-radius: 6px; padding: 4px 8px; }
-.artifacts-suffix { color: var(--dsw-alias-label-secondary); font-size: 14px; line-height: 22px; }
 .artifacts-ctxmenu-backdrop { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 10001; }
 .artifacts-ctxmenu { position: fixed; z-index: 10002; min-width: 140px; padding: 4px 0; background: var(--dsw-alias-bg-base); border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; box-shadow: var(--dsw-shadow-lv2); font-size: 12px; }
 .artifacts-ctxmenu-item { display: block; width: 100%; padding: 6px 14px; border: none; background: transparent; color: var(--dsw-alias-label-primary); text-align: left; cursor: pointer; font: inherit; }
@@ -504,16 +485,6 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		zoomIn: "放大",
 		prevPage: "上一页",
 		nextPage: "下一页",
-		settingsIntro: "管理「Flyout Sidebar」的显示与行为。",
-		setDefaultOpen: "默认展开",
-		setDefaultOpenDesc: "页面加载后侧边栏默认展开；关闭则默认收起，点右上角图标再打开。",
-		setAutoRefresh: "自动刷新",
-		setAutoRefreshDesc: "开启后侧边栏展开时将即时同步并更新产物列表",
-		setMinWidth: "最短面板宽度",
-		setMinWidthDesc: "面板的最小宽度（占窗口宽度的百分比，20–60）；更宽可通过拖动面板左边缘调整。",
-		setContentFontSize: "内容字号",
-		setContentFontSizeDesc: "代码 / diff / Markdown 预览的字体大小（px），文件树等界面字号不受影响。",
-		wordWrap: "自动换行",
 		openInEditor: "在系统编辑器打开",
 		openedInEditor: "已在编辑器打开",
 		openFailed: "打开失败"
@@ -584,16 +555,6 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		zoomIn: "Zoom in",
 		prevPage: "Previous page",
 		nextPage: "Next page",
-		settingsIntro: "Manage the display and behavior of \"Flyout Sidebar\".",
-		setDefaultOpen: "Open by default",
-		setDefaultOpenDesc: "Expand the sidebar on page load; when off it stays collapsed until the corner icon is clicked.",
-		setAutoRefresh: "Auto refresh",
-		setAutoRefreshDesc: "Keep the artifact list in sync while the sidebar is open",
-		setMinWidth: "Min panel width",
-		setMinWidthDesc: "Min panel width as a percentage of the window (20–60); drag the panel edge to make it wider.",
-		setContentFontSize: "Content font size",
-		setContentFontSizeDesc: "Font size (px) for code / diff / Markdown previews; UI text such as the file tree is unaffected.",
-		wordWrap: "Word wrap",
 		openInEditor: "Open in system editor",
 		openedInEditor: "Opened in editor",
 		openFailed: "Failed to open"
@@ -738,8 +699,9 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 	/**
 	* Client 侧：共享状态与工具函数。
 	*
-	* - store / settingsStore：面板开关与功能设置（localStorage 持久化），
-	*   触发按钮与面板等组件通过 useOpen / useSettings 订阅。
+	* - store / settingsStore：面板开关与功能设置（配置保存在宿主侧，经
+	*   /flyout-sidebar/config 拉取），触发按钮与面板等组件通过 useOpen /
+	*   useSettings 订阅。
 	* - currentSessionId / quoteToComposer：读取客户端会话库、把 @path 引用
 	*   写入会话输入框。
 	*/
@@ -823,7 +785,6 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		React.useEffect(() => store.subscribe(setOpen), []);
 		return open;
 	};
-	const SETTINGS_KEY = "dsh-flyout-sidebar:settings";
 	const DEFAULT_SETTINGS = {
 		autoRefresh: true,
 		minPanelWidth: 20,
@@ -831,16 +792,6 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		contentFontSize: 13
 	};
 	function loadSettings() {
-		try {
-			const raw = localStorage.getItem(SETTINGS_KEY);
-			if (raw) {
-				const parsed = JSON.parse(raw);
-				if (parsed && typeof parsed === "object") return {
-					...DEFAULT_SETTINGS,
-					...parsed
-				};
-			}
-		} catch {}
 		return { ...DEFAULT_SETTINGS };
 	}
 	const settingsStore = {
@@ -849,18 +800,25 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		get() {
 			return this.data;
 		},
-		set(key, value) {
-			const next = {
-				...this.data,
-				[key]: value
-			};
-			this.data = next;
-			try {
-				localStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
-			} catch {}
-			for (const fn of this.listeners) try {
-				fn(next);
-			} catch {}
+		/**
+		* 从宿主拉取插件配置（config 已由 cordis 校验填充默认值）并通知订阅者。
+		* 配置保存在宿主侧，页面内不持久化；面板打开即用最新值。
+		*/
+		load() {
+			fetch("/flyout-sidebar/config").then((res) => res.ok ? res.json() : Promise.reject(/* @__PURE__ */ new Error("HTTP " + res.status))).then((out) => {
+				const next = {
+					...this.data,
+					...out.config || {}
+				};
+				this.data = next;
+				for (const fn of this.listeners) try {
+					fn(next);
+				} catch {}
+				if (typeof next.defaultOpen === "boolean" && next.defaultOpen !== store.open) {
+					store.open = next.defaultOpen;
+					setSlide({ slidOut: !next.defaultOpen });
+				}
+			}).catch(() => {});
 		},
 		subscribe(fn) {
 			this.listeners.push(fn);
@@ -1923,7 +1881,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 	//#endregion
 	//#region src/client/components.tsx
 	/**
-	* Client 侧：UI 组件 —— 文件树、多标签预览侧边面板、角落触发按钮、设置区。
+	* Client 侧：UI 组件 —— 文件树、多标签预览侧边面板、角落触发按钮。
 	*/
 	function FileTree({ onOpen, selectedPath, refreshToken, searchOpen = false, onCloseSearch }) {
 		const [root, setRoot] = React.useState(null);
@@ -2502,6 +2460,9 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			sessionId
 		]);
 		React.useEffect(() => {
+			if (open) settingsStore.load();
+		}, [open]);
+		React.useEffect(() => {
 			const KEY = "dsh-flyout-sidebar:session";
 			const write = () => {
 				try {
@@ -2768,63 +2729,6 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			onClick: () => store.toggle()
 		}, /* @__PURE__ */ h(PanelIcon, { size: 18 }));
 	}
-	function SettingsToggle({ label, desc, value, onToggle }) {
-		return /* @__PURE__ */ h("div", { className: "artifacts-setrow" }, /* @__PURE__ */ h("div", { className: "artifacts-settext" }, /* @__PURE__ */ h("div", { className: "artifacts-settitle" }, label), /* @__PURE__ */ h("div", { className: "artifacts-setdesc" }, desc)), /* @__PURE__ */ h("label", { className: "artifacts-switch" }, /* @__PURE__ */ h("input", {
-			type: "checkbox",
-			checked: value,
-			"aria-label": label,
-			onChange: (e) => onToggle(e.currentTarget.checked)
-		}), /* @__PURE__ */ h("span", {
-			className: "artifacts-switch-track",
-			"aria-hidden": "true"
-		}, /* @__PURE__ */ h("span", { className: "artifacts-switch-thumb" }))));
-	}
-	function SettingsSection() {
-		const settings = useSettings();
-		useLang();
-		const set = (key, value) => settingsStore.set(key, value);
-		return /* @__PURE__ */ h("div", { className: "artifacts-settings" }, /* @__PURE__ */ h("p", { className: "artifacts-setintro" }, t("settingsIntro")), /* @__PURE__ */ h("div", { className: "artifacts-setgroup" }, /* @__PURE__ */ h(SettingsToggle, {
-			label: t("setDefaultOpen"),
-			desc: t("setDefaultOpenDesc"),
-			value: settings.defaultOpen,
-			onToggle: (v) => set("defaultOpen", v)
-		}), /* @__PURE__ */ h(SettingsToggle, {
-			label: t("setAutoRefresh"),
-			desc: t("setAutoRefreshDesc"),
-			value: settings.autoRefresh,
-			onToggle: (v) => set("autoRefresh", v)
-		}), /* @__PURE__ */ h("div", { className: "artifacts-setrow" }, /* @__PURE__ */ h("div", { className: "artifacts-settext" }, /* @__PURE__ */ h("div", { className: "artifacts-settitle" }, t("setMinWidth")), /* @__PURE__ */ h("div", { className: "artifacts-setdesc" }, t("setMinWidthDesc"))), /* @__PURE__ */ h("div", { className: "artifacts-setcontrol" }, /* @__PURE__ */ h("input", {
-			type: "number",
-			className: "artifacts-widthinput",
-			min: 20,
-			max: 60,
-			value: settings.minPanelWidth,
-			onChange: (e) => {
-				const n = parseInt(e.currentTarget.value, 10);
-				if (Number.isNaN(n)) return;
-				set("minPanelWidth", Math.max(20, Math.min(60, n)));
-			},
-			onBlur: (e) => {
-				const n = parseInt(e.currentTarget.value, 10);
-				set("minPanelWidth", Number.isNaN(n) ? 20 : Math.max(20, Math.min(60, n)));
-			}
-		}), /* @__PURE__ */ h("span", { className: "artifacts-suffix" }, "%"))), /* @__PURE__ */ h("div", { className: "artifacts-setrow" }, /* @__PURE__ */ h("div", { className: "artifacts-settext" }, /* @__PURE__ */ h("div", { className: "artifacts-settitle" }, t("setContentFontSize")), /* @__PURE__ */ h("div", { className: "artifacts-setdesc" }, t("setContentFontSizeDesc"))), /* @__PURE__ */ h("div", { className: "artifacts-setcontrol" }, /* @__PURE__ */ h("input", {
-			type: "number",
-			className: "artifacts-widthinput",
-			min: 11,
-			max: 20,
-			value: settings.contentFontSize,
-			onChange: (e) => {
-				const n = parseInt(e.currentTarget.value, 10);
-				if (Number.isNaN(n)) return;
-				set("contentFontSize", Math.max(11, Math.min(20, n)));
-			},
-			onBlur: (e) => {
-				const n = parseInt(e.currentTarget.value, 10);
-				set("contentFontSize", Number.isNaN(n) ? 13 : Math.max(11, Math.min(20, n)));
-			}
-		}), /* @__PURE__ */ h("span", { className: "artifacts-suffix" }, "px")))));
-	}
 	//#endregion
 	//#region src/client/index.tsx
 	window.__ModuleLoader__.load({
@@ -2850,12 +2754,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 						order: 50,
 						label: "Artifacts Panel"
 					}, () => /* @__PURE__ */ h(ArtifactsPanel, null)));
-					slots.inject("settings.section", () => slots.register({
-						name: "settings.section",
-						id: "artifacts-sidebar",
-						order: 90,
-						label: "Flyout Sidebar"
-					}, SettingsSection));
+					settingsStore.load();
 				}
 			};
 		}

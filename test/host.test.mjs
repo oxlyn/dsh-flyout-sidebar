@@ -119,6 +119,7 @@ test('host plugin: apply registers routes, events and intervals', async () => {
   const expectedRoutes = [
     '/flyout-sidebar',
     '/flyout-sidebar/data',
+    '/flyout-sidebar/config',
     '/flyout-sidebar/content',
     '/flyout-sidebar/media',
     '/flyout-sidebar/listdir',

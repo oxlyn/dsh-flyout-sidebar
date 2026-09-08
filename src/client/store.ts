@@ -1,8 +1,9 @@
 /**
  * Client 侧：共享状态与工具函数。
  *
- * - store / settingsStore：面板开关与功能设置（localStorage 持久化），
- *   触发按钮与面板等组件通过 useOpen / useSettings 订阅。
+ * - store / settingsStore：面板开关与功能设置（配置保存在宿主侧，经
+ *   /flyout-sidebar/config 拉取），触发按钮与面板等组件通过 useOpen /
+ *   useSettings 订阅。
  * - currentSessionId / quoteToComposer：读取客户端会话库、把 @path 引用
  *   写入会话输入框。
  */
@@ -125,7 +126,7 @@ export interface SlideState {
   slidOut: boolean
 }
 
-/** 功能设置，localStorage 持久化，刷新后仍生效 */
+/** 功能设置：保存在宿主侧插件配置（DSH 插件管理），面板打开时拉取最新值 */
 export interface Settings {
   autoRefresh: boolean
   minPanelWidth: number
@@ -133,7 +134,7 @@ export interface Settings {
   contentFontSize: number
 }
 
-const SETTINGS_KEY = 'dsh-flyout-sidebar:settings'
+// 配置保存在宿主侧（cordis Config schema）；默认值常量与 src/index.ts 对齐。
 const DEFAULT_SETTINGS: Settings = {
   autoRefresh: true, // 面板打开时轮询刷新
   minPanelWidth: 20, // 面板最小宽度（占窗口宽度百分比）
@@ -142,15 +143,7 @@ const DEFAULT_SETTINGS: Settings = {
 }
 
 function loadSettings(): Settings {
-  try {
-    const raw = localStorage.getItem(SETTINGS_KEY)
-    if (raw) {
-      const parsed: unknown = JSON.parse(raw)
-      if (parsed && typeof parsed === 'object') return { ...DEFAULT_SETTINGS, ...(parsed as Partial<Settings>) }
-    }
-  } catch {
-    // 解析失败按默认设置处理
-  }
+  // 初始以默认值渲染，随后 load() 从宿主 /flyout-sidebar/config 拉取真实配置。
   return { ...DEFAULT_SETTINGS }
 }
 
@@ -162,21 +155,32 @@ export const settingsStore = {
   get(): Settings {
     return this.data
   },
-  set(key: keyof Settings, value: boolean | number): void {
-    const next: Settings = { ...this.data, [key]: value }
-    this.data = next
-    try {
-      localStorage.setItem(SETTINGS_KEY, JSON.stringify(next))
-    } catch {
-      // localStorage 不可用时仅保存在内存
-    }
-    for (const fn of this.listeners) {
-      try {
-        fn(next)
-      } catch {
-        // 单个订阅者异常不阻断其余
-      }
-    }
+  /**
+   * 从宿主拉取插件配置（config 已由 cordis 校验填充默认值）并通知订阅者。
+   * 配置保存在宿主侧，页面内不持久化；面板打开即用最新值。
+   */
+  load(): void {
+    fetch('/flyout-sidebar/config')
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error('HTTP ' + res.status))))
+      .then((out: { config?: Partial<Settings> }) => {
+        const next = { ...this.data, ...(out.config || {}) }
+        this.data = next
+        for (const fn of this.listeners) {
+          try {
+            fn(next)
+          } catch {
+            // 单个订阅者异常不阻断其余
+          }
+        }
+        // 配置里的 defaultOpen 与初始打开状态不一致时，联动更新开合与 slide
+        if (typeof next.defaultOpen === 'boolean' && next.defaultOpen !== store.open) {
+          store.open = next.defaultOpen
+          setSlide({ slidOut: !next.defaultOpen })
+        }
+      })
+      .catch(() => {
+        // 拉取失败保持默认配置；应用内面板下次打开会重试
+      })
   },
   subscribe(fn: SettingsListener): () => void {
     this.listeners.push(fn)

@@ -40,8 +40,8 @@ function sendText(res: ServerResponse, status: number, body: string): void {
   res.end(body)
 }
 
-export function registerRoutes(ctx: HostContext, webServer: DshWebServer): void {
-  const page = buildFlyoutPage()
+export function registerRoutes(ctx: HostContext, webServer: DshWebServer, config: import('../index.js').Config): void {
+  const page = buildFlyoutPage(config)
 
   const register = (route: Parameters<DshWebServer['register']>[0], label: string): void => {
     ctx.effect(() => webServer.register(route), label)
@@ -78,6 +78,16 @@ export function registerRoutes(ctx: HostContext, webServer: DshWebServer): void 
       sendJson(res, { artifacts: snapshotArtifacts() }, true)
     },
   }, 'artifacts: data route')
+
+  register({
+    kind: 'exact',
+    path: '/flyout-sidebar/config',
+    handler(req, res) {
+      // 插件配置：config 已由 cordis loader 校验并填充默认值，直接下发；
+      // 热重载后新实例的 /config 即时反映，面板刷新即生效。
+      sendJson(res, { config })
+    },
+  }, 'artifacts: config route')
 
   register({
     kind: 'exact',

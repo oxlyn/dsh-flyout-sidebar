@@ -8,7 +8,8 @@ import type * as ReactNS from 'react'
 import { h, initReact } from './jsx'
 import { initClient, type ClientContext } from './runtime'
 import { insertStyles } from './styles'
-import { ArtifactsPanel, CornerButton, SettingsSection } from './components'
+import { ArtifactsPanel, CornerButton } from './components'
+import { settingsStore } from './store'
 
 declare global {
   interface Window {
@@ -63,12 +64,9 @@ window.__ModuleLoader__.load({
           ),
         )
 
-        slots.inject('settings.section', () =>
-          slots.register(
-            { name: 'settings.section', id: 'artifacts-sidebar', order: 90, label: 'Flyout Sidebar' },
-            SettingsSection,
-          ),
-        )
+        // 插件配置改由 DSH 插件管理维护：拉取宿主侧 Config，供面板使用。
+        // 每次面板摊开（ArtifactsPanel 打开时）会重新拉取，热重载后即生效。
+        settingsStore.load()
       },
     }
   },
