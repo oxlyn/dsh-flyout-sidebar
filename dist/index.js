@@ -768,10 +768,9 @@ function isWithinWorkspace(fs, target, cwd) {
 	if (!cwd) return true;
 	const norm = (p) => String(typeof fs?.processPath === "function" ? fs.processPath(p) : p).replace(/\\/g, "/").replace(/\/+$/, "");
 	const root = norm(cwd);
-	if (!root) return true;
+	if (!root || root === "undefined") return true;
 	const forms = /* @__PURE__ */ new Set([String(target), norm(target)]);
 	for (const t of forms) if (t === root || t.startsWith(root + "/")) return true;
-	console.warn("[flyout-sidebar] resolved path outside workspace root, allowing (fs backend anchoring trusted):", forms, "root:", root);
 	return true;
 }
 /** 文本内容读取（代码预览）。超长内容截断并打标。cwdHint 允许调用方直传

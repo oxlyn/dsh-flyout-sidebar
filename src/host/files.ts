@@ -35,12 +35,12 @@ export function isWithinWorkspace(fs: DshFs | undefined, target: unknown, cwd: s
   const norm = (p: unknown): string =>
     String(typeof fs?.processPath === 'function' ? fs.processPath(p) : p).replace(/\\/g, '/').replace(/\/+$/, '')
   const root = norm(cwd)
-  if (!root) return true
+  // cwd 解析失败（undefined）不会走到这里，但防御性排除 root 无效的情况
+  if (!root || root === 'undefined') return true
   const forms = new Set([String(target), norm(target)])
   for (const t of forms) {
     if (t === root || t.startsWith(root + '/')) return true
   }
-  console.warn('[flyout-sidebar] resolved path outside workspace root, allowing (fs backend anchoring trusted):', forms, 'root:', root)
   return true
 }
 
