@@ -334,6 +334,51 @@ body[data-ds-dark-theme] .tok-keyword, body[data-ds-dark-theme] .tok-important, 
 body[data-ds-dark-theme] .tok-function, body[data-ds-dark-theme] .tok-decorator { color: #b197fc; }
 body[data-ds-dark-theme] .tok-class, body[data-ds-dark-theme] .tok-builtin, body[data-ds-dark-theme] .tok-tag, body[data-ds-dark-theme] .tok-key { color: #74c0fc; }
 body[data-ds-dark-theme] .tok-property { color: #ced4da; }
+
+/* Settings 卡片（Settings → Plugins → Plugin configuration） */
+.fs-settings-card {
+  list-style: none;
+  border: 1px solid var(--dsw-alias-border-subtle, #e0e0e0);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+body[data-ds-dark-theme] .fs-settings-card {
+  border-color: var(--dsw-alias-border-subtle, #2d2d2d);
+}
+.fs-settings-head {
+  display: flex; align-items: center; justify-content: space-between;
+  width: 100%; padding: 10px 12px; cursor: pointer;
+  background: var(--dsw-alias-bg-raised, transparent);
+  border: none; color: inherit; font: inherit; text-align: left;
+}
+.fs-settings-head:hover { background: var(--dsw-alias-bg-hover, rgba(0,0,0,0.04)); }
+.fs-settings-headtext { display: flex; flex-direction: column; gap: 2px; }
+.fs-settings-name { font-weight: 600; font-size: 13px; }
+.fs-settings-desc { font-size: 12px; opacity: 0.65; }
+.fs-settings-chevron { transition: transform 150ms ease; flex-shrink: 0; opacity: 0.5; }
+.fs-settings-card.fs-open .fs-settings-chevron { transform: rotate(180deg); }
+.fs-settings-body { padding: 8px 12px 12px; display: flex; flex-direction: column; gap: 10px; }
+.fs-settings-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.fs-settings-label { font-size: 13px; }
+.fs-settings-input {
+  width: 64px; padding: 4px 6px; border-radius: 4px;
+  border: 1px solid var(--dsw-alias-border-subtle, #ccc);
+  background: var(--dsw-alias-bg-base, transparent);
+  color: inherit; font: inherit; font-size: 13px; text-align: right;
+}
+.fs-settings-toggle {
+  position: relative; width: 36px; height: 20px; border-radius: 10px;
+  border: none; cursor: pointer; padding: 0;
+  background: var(--dsw-alias-fill-secondary, #ccc); transition: background 150ms ease;
+}
+.fs-settings-toggle[data-on="true"] { background: var(--dsw-alias-accent-primary, #2a7fbf); }
+.fs-settings-toggle::after {
+  content: ""; position: absolute; top: 2px; left: 2px;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: #fff; transition: transform 150ms ease;
+}
+.fs-settings-toggle[data-on="true"]::after { transform: translateX(16px); }
 `;
 	/** 注入样式（幂等：已存在则跳过） */
 	function insertStyles() {
@@ -487,7 +532,13 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		nextPage: "下一页",
 		openInEditor: "在系统编辑器打开",
 		openedInEditor: "已在编辑器打开",
-		openFailed: "打开失败"
+		openFailed: "打开失败",
+		settingsTitle: "弹出式侧边栏",
+		settingsDesc: "侧边栏面板偏好设置",
+		settingsAutoRefresh: "打开面板时自动刷新",
+		settingsMinWidth: "面板最小宽度（%）",
+		settingsDefaultOpen: "页面加载后默认展开",
+		settingsFontSize: "内容区字号（px）"
 	};
 	/** @type {Record<string, string>} */
 	const EN = {
@@ -557,7 +608,13 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		nextPage: "Next page",
 		openInEditor: "Open in system editor",
 		openedInEditor: "Opened in editor",
-		openFailed: "Failed to open"
+		openFailed: "Failed to open",
+		settingsTitle: "Flyout Sidebar",
+		settingsDesc: "Sidebar panel preferences",
+		settingsAutoRefresh: "Auto-refresh on panel open",
+		settingsMinWidth: "Min panel width (%)",
+		settingsDefaultOpen: "Open by default on page load",
+		settingsFontSize: "Content font size (px)"
 	};
 	/** @type {Record<string, Record<string, string>>} */
 	const DICTS = {
@@ -2729,8 +2786,95 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			onClick: () => store.toggle()
 		}, /* @__PURE__ */ h(PanelIcon, { size: 18 }));
 	}
+	function ToggleRow(props) {
+		return /* @__PURE__ */ h("div", { className: "fs-settings-row" }, /* @__PURE__ */ h("span", { className: "fs-settings-label" }, props.label), /* @__PURE__ */ h("button", {
+			type: "button",
+			className: "fs-settings-toggle",
+			"data-on": props.value ? "true" : "false",
+			disabled: props.disabled,
+			"aria-pressed": props.value,
+			onClick: () => {
+				if (!props.disabled) props.onToggle(!props.value);
+			}
+		}));
+	}
+	function NumberRow(props) {
+		return /* @__PURE__ */ h("div", { className: "fs-settings-row" }, /* @__PURE__ */ h("span", { className: "fs-settings-label" }, props.label), /* @__PURE__ */ h("input", {
+			type: "number",
+			className: "fs-settings-input",
+			value: props.value,
+			min: props.min,
+			max: props.max,
+			disabled: props.disabled,
+			onChange: (e) => {
+				const v = Number(e.currentTarget.value);
+				if (Number.isFinite(v)) props.onChange(v);
+			}
+		}));
+	}
+	function SettingsCard(props) {
+		const [open, setOpen] = React.useState(false);
+		useLang();
+		const snap = typeof props.useSettingsSnapshot === "function" ? props.useSettingsSnapshot((s) => s) : void 0;
+		if (snap === void 0 || snap.status === "unavailable") return null;
+		const disabled = snap.status !== "ready" || !snap.writable;
+		const v = snap.value ?? {};
+		return /* @__PURE__ */ h("li", { className: "fs-settings-card" + (open ? " fs-open" : "") }, /* @__PURE__ */ h("button", {
+			type: "button",
+			className: "fs-settings-head",
+			"aria-expanded": open,
+			onClick: () => {
+				setOpen(!open);
+			}
+		}, /* @__PURE__ */ h("span", { className: "fs-settings-headtext" }, /* @__PURE__ */ h("span", { className: "fs-settings-name" }, t("settingsTitle")), /* @__PURE__ */ h("span", { className: "fs-settings-desc" }, t("settingsDesc"))), /* @__PURE__ */ h("svg", {
+			className: "fs-settings-chevron",
+			width: "14",
+			height: "14",
+			viewBox: "0 0 14 14",
+			fill: "none"
+		}, /* @__PURE__ */ h("path", {
+			d: "M3 5L7 9L11 5",
+			stroke: "currentColor",
+			strokeWidth: "1.5",
+			strokeLinecap: "round",
+			strokeLinejoin: "round"
+		}))), open ? /* @__PURE__ */ h("div", { className: "fs-settings-body" }, /* @__PURE__ */ h(ToggleRow, {
+			label: t("settingsAutoRefresh"),
+			value: !!v.autoRefresh,
+			disabled,
+			onToggle: (val) => {
+				props.setField?.("autoRefresh", val);
+			}
+		}), /* @__PURE__ */ h(ToggleRow, {
+			label: t("settingsDefaultOpen"),
+			value: !!v.defaultOpen,
+			disabled,
+			onToggle: (val) => {
+				props.setField?.("defaultOpen", val);
+			}
+		}), /* @__PURE__ */ h(NumberRow, {
+			label: t("settingsMinWidth"),
+			value: v.minPanelWidth ?? 20,
+			min: 20,
+			max: 60,
+			disabled,
+			onChange: (val) => {
+				props.setField?.("minPanelWidth", val);
+			}
+		}), /* @__PURE__ */ h(NumberRow, {
+			label: t("settingsFontSize"),
+			value: v.contentFontSize ?? 13,
+			min: 11,
+			max: 20,
+			disabled,
+			onChange: (val) => {
+				props.setField?.("contentFontSize", val);
+			}
+		})) : null);
+	}
 	//#endregion
 	//#region src/client/index.tsx
+	const SETTINGS_NAMESPACE = "dsh-flyout-sidebar";
 	window.__ModuleLoader__.load({
 		id: "dsh-flyout-sidebar",
 		factory: (require) => {
@@ -2755,6 +2899,29 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 						label: "Artifacts Panel"
 					}, () => /* @__PURE__ */ h(ArtifactsPanel, null)));
 					settingsStore.load();
+					ctx.inject(["settingsScope"], (sctx) => {
+						const binder = sctx.get("settingsScope");
+						if (!binder) return;
+						const scope = binder.bind({ namespace: SETTINGS_NAMESPACE });
+						const scopedSlots = sctx.get("slots");
+						if (!scopedSlots) return;
+						sctx.effect(() => scope.subscribe(() => settingsStore.load()), "flyout: settings scope");
+						const useSettingsSnapshot = (selector) => {
+							return selector(scope.getSnapshot());
+						};
+						const setField = (field, value) => {
+							scope.set(field, value);
+						};
+						scopedSlots.inject("settings.plugin.item", () => scopedSlots.register({
+							name: "settings.plugin.item",
+							key: SETTINGS_NAMESPACE,
+							locale: SETTINGS_NAMESPACE,
+							inject: () => ({
+								useSettingsSnapshot,
+								setField
+							})
+						}, (props) => h(SettingsCard, props)));
+					});
 				}
 			};
 		}

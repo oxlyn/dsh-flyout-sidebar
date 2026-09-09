@@ -99,6 +99,9 @@ function makeCtx(workspace) {
       intervals.push(fn)
       return () => {}
     },
+    inject(deps, callback) {
+      // 测试环境无 settings 服务，动态注入回调不执行
+    },
   }
   return ctx
 }

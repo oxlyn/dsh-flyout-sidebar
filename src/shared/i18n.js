@@ -87,6 +87,13 @@ const ZH = {
   openInEditor: '在系统编辑器打开',
   openedInEditor: '已在编辑器打开',
   openFailed: '打开失败',
+  // 设置卡片
+  settingsTitle: '弹出式侧边栏',
+  settingsDesc: '侧边栏面板偏好设置',
+  settingsAutoRefresh: '打开面板时自动刷新',
+  settingsMinWidth: '面板最小宽度（%）',
+  settingsDefaultOpen: '页面加载后默认展开',
+  settingsFontSize: '内容区字号（px）',
 }
 
 /** @type {Record<string, string>} */
@@ -158,6 +165,13 @@ const EN = {
   openInEditor: 'Open in system editor',
   openedInEditor: 'Opened in editor',
   openFailed: 'Failed to open',
+  // Settings card
+  settingsTitle: 'Flyout Sidebar',
+  settingsDesc: 'Sidebar panel preferences',
+  settingsAutoRefresh: 'Auto-refresh on panel open',
+  settingsMinWidth: 'Min panel width (%)',
+  settingsDefaultOpen: 'Open by default on page load',
+  settingsFontSize: 'Content font size (px)',
 }
 
 /** @type {Record<string, Record<string, string>>} */

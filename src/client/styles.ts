@@ -277,6 +277,51 @@ body[data-ds-dark-theme] .tok-keyword, body[data-ds-dark-theme] .tok-important, 
 body[data-ds-dark-theme] .tok-function, body[data-ds-dark-theme] .tok-decorator { color: #b197fc; }
 body[data-ds-dark-theme] .tok-class, body[data-ds-dark-theme] .tok-builtin, body[data-ds-dark-theme] .tok-tag, body[data-ds-dark-theme] .tok-key { color: #74c0fc; }
 body[data-ds-dark-theme] .tok-property { color: #ced4da; }
+
+/* Settings 卡片（Settings → Plugins → Plugin configuration） */
+.fs-settings-card {
+  list-style: none;
+  border: 1px solid var(--dsw-alias-border-subtle, #e0e0e0);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+body[data-ds-dark-theme] .fs-settings-card {
+  border-color: var(--dsw-alias-border-subtle, #2d2d2d);
+}
+.fs-settings-head {
+  display: flex; align-items: center; justify-content: space-between;
+  width: 100%; padding: 10px 12px; cursor: pointer;
+  background: var(--dsw-alias-bg-raised, transparent);
+  border: none; color: inherit; font: inherit; text-align: left;
+}
+.fs-settings-head:hover { background: var(--dsw-alias-bg-hover, rgba(0,0,0,0.04)); }
+.fs-settings-headtext { display: flex; flex-direction: column; gap: 2px; }
+.fs-settings-name { font-weight: 600; font-size: 13px; }
+.fs-settings-desc { font-size: 12px; opacity: 0.65; }
+.fs-settings-chevron { transition: transform 150ms ease; flex-shrink: 0; opacity: 0.5; }
+.fs-settings-card.fs-open .fs-settings-chevron { transform: rotate(180deg); }
+.fs-settings-body { padding: 8px 12px 12px; display: flex; flex-direction: column; gap: 10px; }
+.fs-settings-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.fs-settings-label { font-size: 13px; }
+.fs-settings-input {
+  width: 64px; padding: 4px 6px; border-radius: 4px;
+  border: 1px solid var(--dsw-alias-border-subtle, #ccc);
+  background: var(--dsw-alias-bg-base, transparent);
+  color: inherit; font: inherit; font-size: 13px; text-align: right;
+}
+.fs-settings-toggle {
+  position: relative; width: 36px; height: 20px; border-radius: 10px;
+  border: none; cursor: pointer; padding: 0;
+  background: var(--dsw-alias-fill-secondary, #ccc); transition: background 150ms ease;
+}
+.fs-settings-toggle[data-on="true"] { background: var(--dsw-alias-accent-primary, #2a7fbf); }
+.fs-settings-toggle::after {
+  content: ""; position: absolute; top: 2px; left: 2px;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: #fff; transition: transform 150ms ease;
+}
+.fs-settings-toggle[data-on="true"]::after { transform: translateX(16px); }
 `
 
 /** 注入样式（幂等：已存在则跳过） */

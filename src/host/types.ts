@@ -73,6 +73,19 @@ export interface ToolResult {
   isError?: boolean
 }
 
+/** settings 服务注册返回的 scope（`ctx.settings.register` 返回值） */
+export interface SettingsScope {
+  get(): unknown
+  watch(cb: () => void): () => void
+  update(patch: Record<string, unknown>): Promise<void>
+  replace(section: Record<string, unknown>): Promise<void>
+}
+
+/** DSH 用户设置服务（`ctx.get('settings')` 或 `ctx.inject(['settings'], ...)`） */
+export interface DshSettings {
+  register(ns: string, schema: unknown, options?: { base?: Record<string, unknown> }): SettingsScope
+}
+
 /** host 插件上下文（cordis 注入的最小面） */
 export interface HostContext {
   get<T = unknown>(id: string): T | undefined
@@ -85,6 +98,8 @@ export interface HostContext {
   effect(dispose: () => unknown, label?: string): void
   /** 由注入的 `timer` 服务提供：周期回调，返回注销函数 */
   interval(fn: () => void, ms: number): () => void
+  /** 动态注入：等待依赖服务就绪后执行回调（cordis ctx.inject） */
+  inject(deps: string[], callback: (ctx: HostContext) => void): void
 }
 
 /** 动态插件宿主（仅 cordis_define 动态运行时存在，静态 bundle 没有） */

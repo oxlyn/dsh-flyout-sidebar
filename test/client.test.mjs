@@ -100,6 +100,12 @@ function makeClientCtx() {
       intervals.push(fn)
       return () => {}
     },
+    inject(deps, callback) {
+      // 测试环境无 settingsScope 服务，动态注入回调不执行
+    },
+    effect(dispose) {
+      if (typeof dispose === 'function') dispose()
+    },
   }
 }
 

@@ -10,6 +10,10 @@ export interface ClientContext {
   get<T = unknown>(id: string): T | undefined
   /** 由注入的 `timer` 服务提供：周期回调，返回注销函数 */
   interval(fn: () => void, ms: number): () => void
+  /** 动态注入：等待依赖服务就绪后执行回调 */
+  inject(deps: string[], callback: (ctx: ClientContext) => void): void
+  /** 注册清理回调 */
+  effect(dispose: () => unknown, label?: string): void
 }
 
 export interface SessionListLike {

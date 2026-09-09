@@ -1119,4 +1119,134 @@ export function CornerButton(): ReactElement {
   )
 }
 
+/**
+ * DSH Settings → Plugins → Plugin configuration 卡片。
+ *
+ * 经 settings.plugin.item slot 注册，由 settingsScope 服务提供读写能力。
+ * 卡片渲染 autoRefresh / defaultOpen（开关）与 minPanelWidth /
+ * contentFontSize（数字输入），值变更即时写入 settings namespace，面板
+ * 下次打开 /flyout-sidebar/config 即反映最新值。
+ */
+export interface SettingsCardProps {
+  /** settingsScope bound scope 的快照订阅 hook（DSH Settings shell 注入） */
+  useSettingsSnapshot?: <T>(selector: (state: { status: string; value: unknown; writable: boolean }) => T) => T
+  /** 写入单个字段（settingsScope.set 的包装） */
+  setField?: (field: string, value: unknown) => void
+}
+
+interface ToggleRowProps {
+  label: string
+  value: boolean
+  disabled: boolean
+  onToggle: (v: boolean) => void
+}
+
+function ToggleRow(props: ToggleRowProps): ReactElement {
+  return (
+    <div className="fs-settings-row">
+      <span className="fs-settings-label">{props.label}</span>
+      <button
+        type="button"
+        className="fs-settings-toggle"
+        data-on={props.value ? 'true' : 'false'}
+        disabled={props.disabled}
+        aria-pressed={props.value}
+        onClick={() => { if (!props.disabled) props.onToggle(!props.value) }}
+      />
+    </div>
+  )
+}
+
+interface NumberRowProps {
+  label: string
+  value: number
+  min: number
+  max: number
+  disabled: boolean
+  onChange: (v: number) => void
+}
+
+function NumberRow(props: NumberRowProps): ReactElement {
+  return (
+    <div className="fs-settings-row">
+      <span className="fs-settings-label">{props.label}</span>
+      <input
+        type="number"
+        className="fs-settings-input"
+        value={props.value}
+        min={props.min}
+        max={props.max}
+        disabled={props.disabled}
+        onChange={(e) => {
+          const v = Number(e.currentTarget.value)
+          if (Number.isFinite(v)) props.onChange(v)
+        }}
+      />
+    </div>
+  )
+}
+
+export function SettingsCard(props: SettingsCardProps): ReactElement | null {
+  const [open, setOpen] = React.useState(false)
+  useLang()
+  const snap = typeof props.useSettingsSnapshot === 'function'
+    ? props.useSettingsSnapshot((s) => s)
+    : undefined
+  if (snap === undefined || snap.status === 'unavailable') return null
+  const disabled = snap.status !== 'ready' || !snap.writable
+  const v = (snap.value ?? {}) as Partial<Settings>
+  return (
+    <li className={'fs-settings-card' + (open ? ' fs-open' : '')}>
+      <button
+        type="button"
+        className="fs-settings-head"
+        aria-expanded={open}
+        onClick={() => { setOpen(!open) }}
+      >
+        <span className="fs-settings-headtext">
+          <span className="fs-settings-name">{t('settingsTitle')}</span>
+          <span className="fs-settings-desc">{t('settingsDesc')}</span>
+        </span>
+        <svg className="fs-settings-chevron" width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <path d="M3 5L7 9L11 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+      {open
+        ? (
+          <div className="fs-settings-body">
+            <ToggleRow
+              label={t('settingsAutoRefresh')}
+              value={!!v.autoRefresh}
+              disabled={disabled}
+              onToggle={(val) => { props.setField?.('autoRefresh', val) }}
+            />
+            <ToggleRow
+              label={t('settingsDefaultOpen')}
+              value={!!v.defaultOpen}
+              disabled={disabled}
+              onToggle={(val) => { props.setField?.('defaultOpen', val) }}
+            />
+            <NumberRow
+              label={t('settingsMinWidth')}
+              value={v.minPanelWidth ?? 20}
+              min={20}
+              max={60}
+              disabled={disabled}
+              onChange={(val) => { props.setField?.('minPanelWidth', val) }}
+            />
+            <NumberRow
+              label={t('settingsFontSize')}
+              value={v.contentFontSize ?? 13}
+              min={11}
+              max={20}
+              disabled={disabled}
+              onChange={(val) => { props.setField?.('contentFontSize', val) }}
+            />
+          </div>
+        )
+        : null}
+    </li>
+  )
+}
+
 
