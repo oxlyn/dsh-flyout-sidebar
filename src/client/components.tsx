@@ -642,6 +642,21 @@ export function GitChangesList({ files, error, activeDiffPath, flashKey, onOpen,
   return <>{rows}</>
 }
 
+/** 定位 DSH AppFrame：CSS Grid 容器，内联 style 设 gridTemplateColumns，
+ *  第一列即左侧栏宽（折叠时为 0px）。 */
+function findAppFrame(): HTMLElement | null {
+  const nodes = document.querySelectorAll<HTMLElement>('#root *')
+  for (let i = 0; i < nodes.length; i++) {
+    const el = nodes[i]
+    const cols = el.style.gridTemplateColumns
+    if (cols) {
+      const first = cols.split(/\s+/)[0]
+      if (first && first.endsWith('px')) return el
+    }
+  }
+  return null
+}
+
 export function ArtifactsPanel(): ReactElement | null {
   const open = useOpen()
   const settings = useSettings()
@@ -891,18 +906,6 @@ export function ArtifactsPanel(): ReactElement | null {
   // 第一列即左侧栏宽（折叠时为 0px）。
   React.useEffect(() => {
     const root = document.documentElement
-    const findAppFrame = (): HTMLElement | null => {
-      const nodes = document.querySelectorAll<HTMLElement>('#root *')
-      for (let i = 0; i < nodes.length; i++) {
-        const el = nodes[i]
-        const cols = el.style.gridTemplateColumns
-        if (cols) {
-          const first = cols.split(/\s+/)[0]
-          if (first && first.endsWith('px')) return el
-        }
-      }
-      return null
-    }
     const readAndSet = (frame: HTMLElement | null): number => {
       if (!frame) return 0
       const cols = frame.style.gridTemplateColumns
@@ -956,7 +959,11 @@ export function ArtifactsPanel(): ReactElement | null {
   const widthPx = panelFrac != null ? Math.max(minWidthPx, Math.round(panelFrac * avail)) : minWidthPx
 
   // 发布面板宽度到 CSS 变量：供预览覆盖层定位和 header padding 使用。
-  // 面板为覆盖模式（不推挤 AppFrame），变量仅影响覆盖层和 header 的避让。
+  // 推挤模式：面板打开时给 AppFrame grid 追加一个显式轨道（面板宽），
+  // center(minmax(0,1fr)) 自动让出该宽度 → 工作区随面板展开内移，而不是
+  // 被 fixed 面板盖住；关闭时剥离轨道恢复原布局，拖宽时更新轨道。宿主
+  // 折叠/展开/details 拖拽会整体重写 grid（不含追加轨道），由 styleObs
+  // 补回；AppFrame 重建则重找后继续。
   React.useEffect(() => {
     const root = document.documentElement
     root.style.setProperty('--dsh-flyout-sidebar-width', open ? widthPx + 'px' : '0px')
@@ -964,7 +971,54 @@ export function ArtifactsPanel(): ReactElement | null {
     // （如 better-sidebar 折叠态会给 header 强加 78px），确保面板打开时
     // 右上角 session 日志等按钮一定给面板让位。
     document.body.classList.toggle('dsh-flyout-sidebar-open', open)
+
+    const push = { frame: null as HTMLElement | null, suffix: null as string | null }
+    const applyPush = (frame: HTMLElement | null, w: number): void => {
+      if (!frame) return
+      push.frame = frame
+      let cols = frame.style.gridTemplateColumns || ''
+      // 先剥离上一次追加的轨道（宿主重写 grid 时不带它，endsWith 不匹配
+      // 即视为宿主已整体重写过，直接以当前值为基准）
+      if (push.suffix && cols.endsWith(push.suffix)) {
+        cols = cols.slice(0, cols.length - push.suffix.length)
+      }
+      const next = w > 0 ? (cols.trim() !== '' ? cols + ' ' + w + 'px' : w + 'px') : cols
+      push.suffix = w > 0 ? ' ' + w + 'px' : null
+      if (frame.style.gridTemplateColumns !== next) frame.style.gridTemplateColumns = next
+    }
+    const observeFrame = (frame: HTMLElement | null): MutationObserver | null => {
+      if (!frame) return null
+      const obs = new MutationObserver(() => {
+        if (frame && document.contains(frame)) applyPush(frame, open ? widthPx : 0)
+      })
+      obs.observe(frame, { attributes: true, attributeFilter: ['style'] })
+      return obs
+    }
+
+    let frame = findAppFrame()
+    applyPush(frame, open ? widthPx : 0)
+    let styleObs = observeFrame(frame)
+
+    // AppFrame 可能在挂载后才出现或被重建：监听 #root 子树，找不到时重找
+    let subtreeObs: MutationObserver | null = null
+    if (typeof MutationObserver === 'function') {
+      subtreeObs = new MutationObserver(() => {
+        if (!frame || !document.contains(frame)) {
+          styleObs?.disconnect()
+          frame = findAppFrame()
+          if (frame) {
+            applyPush(frame, open ? widthPx : 0)
+            styleObs = observeFrame(frame)
+          }
+        }
+      })
+      subtreeObs.observe(document.body, { childList: true, subtree: true, attributes: false })
+    }
+
     return () => {
+      styleObs?.disconnect()
+      subtreeObs?.disconnect()
+      applyPush(push.frame, 0)
       root.style.setProperty('--dsh-flyout-sidebar-width', '0px')
       document.body.classList.remove('dsh-flyout-sidebar-open')
     }

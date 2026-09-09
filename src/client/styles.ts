@@ -5,12 +5,20 @@
  * --dsw-alias-* 设计令牌，深浅主题自动跟随。
  */
 export const styleCss = `
-/* 面板关闭时不对 host header 做任何干预：session 日志等按钮保持宿主默认
-   位置（不额外留白、不错位）。触发按钮是 fixed 透明覆盖层，不占布局。 */
-/* 面板打开时：以面板宽度精确避让右上角按钮。用 !important 压过宿主/其它
-   插件对同一 header 的 padding 规则（如 better-sidebar 折叠态强加的 78px）。 */
+/* 面板关闭时:corner 触发按钮滑回右上角(占 right 12~48px 区间),左上角
+   panel 不动,日志按钮让位留白 —— 与 better-sidebar 折叠态给右上角按钮组
+   让位(right 10→70px)的思路一致,避免两块按钮挤在一起(见下方 64px 规则)。 */
+/* 面板打开时:以面板宽度精确避让右上角按钮,并在面板左侧留 16px 间距,日志
+   按钮不紧贴面板边框。用 !important 压过宿主/其它插件对同一 header 的
+   padding 规则(如 better-sidebar 折叠态强加的 78px)。 */
 body.dsh-flyout-sidebar-open header:has([data-slot="conversation.session.header.utilities"]) {
-  padding-right: var(--dsh-flyout-sidebar-width, 0px) !important;
+  padding-right: calc(var(--dsh-flyout-sidebar-width, 0px) + 16px) !important;
+  transition: padding-right var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease);
+}
+/* 面板收起:日志按钮让位到 64px(= corner 按钮 48px 左缘 + 16px 间距)。
+   声明在 open 规则之后,同特异性时保证 open 状态生效。 */
+body:not(.dsh-flyout-sidebar-open) header:has([data-slot="conversation.session.header.utilities"]) {
+  padding-right: 64px !important;
   transition: padding-right var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease);
 }
 body[data-dsh-flyout-dragging] header:has([data-slot="conversation.session.header.utilities"]) {

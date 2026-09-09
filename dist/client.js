@@ -62,12 +62,20 @@
 	* --dsw-alias-* 设计令牌，深浅主题自动跟随。
 	*/
 	const styleCss = `
-/* 面板关闭时不对 host header 做任何干预：session 日志等按钮保持宿主默认
-   位置（不额外留白、不错位）。触发按钮是 fixed 透明覆盖层，不占布局。 */
-/* 面板打开时：以面板宽度精确避让右上角按钮。用 !important 压过宿主/其它
-   插件对同一 header 的 padding 规则（如 better-sidebar 折叠态强加的 78px）。 */
+/* 面板关闭时:corner 触发按钮滑回右上角(占 right 12~48px 区间),左上角
+   panel 不动,日志按钮让位留白 —— 与 better-sidebar 折叠态给右上角按钮组
+   让位(right 10→70px)的思路一致,避免两块按钮挤在一起(见下方 64px 规则)。 */
+/* 面板打开时:以面板宽度精确避让右上角按钮,并在面板左侧留 16px 间距,日志
+   按钮不紧贴面板边框。用 !important 压过宿主/其它插件对同一 header 的
+   padding 规则(如 better-sidebar 折叠态强加的 78px)。 */
 body.dsh-flyout-sidebar-open header:has([data-slot="conversation.session.header.utilities"]) {
-  padding-right: var(--dsh-flyout-sidebar-width, 0px) !important;
+  padding-right: calc(var(--dsh-flyout-sidebar-width, 0px) + 16px) !important;
+  transition: padding-right var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease);
+}
+/* 面板收起:日志按钮让位到 64px(= corner 按钮 48px 左缘 + 16px 间距)。
+   声明在 open 规则之后,同特异性时保证 open 状态生效。 */
+body:not(.dsh-flyout-sidebar-open) header:has([data-slot="conversation.session.header.utilities"]) {
+  padding-right: 64px !important;
   transition: padding-right var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease);
 }
 body[data-dsh-flyout-dragging] header:has([data-slot="conversation.session.header.utilities"]) {
@@ -2429,6 +2437,20 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		});
 		return /* @__PURE__ */ h(Fragment, null, rows);
 	}
+	/** 定位 DSH AppFrame：CSS Grid 容器，内联 style 设 gridTemplateColumns，
+	*  第一列即左侧栏宽（折叠时为 0px）。 */
+	function findAppFrame() {
+		const nodes = document.querySelectorAll("#root *");
+		for (let i = 0; i < nodes.length; i++) {
+			const el = nodes[i];
+			const cols = el.style.gridTemplateColumns;
+			if (cols) {
+				const first = cols.split(/\s+/)[0];
+				if (first && first.endsWith("px")) return el;
+			}
+		}
+		return null;
+	}
 	function ArtifactsPanel() {
 		const open = useOpen();
 		const settings = useSettings();
@@ -2634,18 +2656,6 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		}, []);
 		React.useEffect(() => {
 			const root = document.documentElement;
-			const findAppFrame = () => {
-				const nodes = document.querySelectorAll("#root *");
-				for (let i = 0; i < nodes.length; i++) {
-					const el = nodes[i];
-					const cols = el.style.gridTemplateColumns;
-					if (cols) {
-						const first = cols.split(/\s+/)[0];
-						if (first && first.endsWith("px")) return el;
-					}
-				}
-				return null;
-			};
 			const readAndSet = (frame) => {
 				if (!frame) return 0;
 				const cols = frame.style.gridTemplateColumns;
@@ -2700,7 +2710,55 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			const root = document.documentElement;
 			root.style.setProperty("--dsh-flyout-sidebar-width", open ? widthPx + "px" : "0px");
 			document.body.classList.toggle("dsh-flyout-sidebar-open", open);
+			const push = {
+				frame: null,
+				suffix: null
+			};
+			const applyPush = (frame, w) => {
+				if (!frame) return;
+				push.frame = frame;
+				let cols = frame.style.gridTemplateColumns || "";
+				if (push.suffix && cols.endsWith(push.suffix)) cols = cols.slice(0, cols.length - push.suffix.length);
+				const next = w > 0 ? cols.trim() !== "" ? cols + " " + w + "px" : w + "px" : cols;
+				push.suffix = w > 0 ? " " + w + "px" : null;
+				if (frame.style.gridTemplateColumns !== next) frame.style.gridTemplateColumns = next;
+			};
+			const observeFrame = (frame) => {
+				if (!frame) return null;
+				const obs = new MutationObserver(() => {
+					if (frame && document.contains(frame)) applyPush(frame, open ? widthPx : 0);
+				});
+				obs.observe(frame, {
+					attributes: true,
+					attributeFilter: ["style"]
+				});
+				return obs;
+			};
+			let frame = findAppFrame();
+			applyPush(frame, open ? widthPx : 0);
+			let styleObs = observeFrame(frame);
+			let subtreeObs = null;
+			if (typeof MutationObserver === "function") {
+				subtreeObs = new MutationObserver(() => {
+					if (!frame || !document.contains(frame)) {
+						styleObs?.disconnect();
+						frame = findAppFrame();
+						if (frame) {
+							applyPush(frame, open ? widthPx : 0);
+							styleObs = observeFrame(frame);
+						}
+					}
+				});
+				subtreeObs.observe(document.body, {
+					childList: true,
+					subtree: true,
+					attributes: false
+				});
+			}
 			return () => {
+				styleObs?.disconnect();
+				subtreeObs?.disconnect();
+				applyPush(push.frame, 0);
 				root.style.setProperty("--dsh-flyout-sidebar-width", "0px");
 				document.body.classList.remove("dsh-flyout-sidebar-open");
 			};
