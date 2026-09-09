@@ -1098,8 +1098,7 @@ function sendText(res, status, body) {
 	res.writeHead(status, { "Content-Type": "text/plain; charset=utf-8" });
 	res.end(body);
 }
-function registerRoutes(ctx, webServer, config, getConfig) {
-	const page = buildFlyoutPage(config);
+function registerRoutes(ctx, webServer, _config, getConfig) {
 	const register = (route, label) => {
 		ctx.effect(() => webServer.register(route), label);
 	};
@@ -1117,12 +1116,13 @@ function registerRoutes(ctx, webServer, config, getConfig) {
 				"frame-src 'self'",
 				"connect-src 'self'"
 			].join("; ");
+			const livePage = buildFlyoutPage(getConfig());
 			res.writeHead(200, {
 				"Content-Type": "text/html; charset=utf-8",
 				"Cache-Control": "no-store",
 				"Content-Security-Policy": csp
 			});
-			res.end(page);
+			res.end(livePage);
 		}
 	}, "artifacts: page route");
 	register({

@@ -43,11 +43,9 @@ function sendText(res: ServerResponse, status: number, body: string): void {
 export function registerRoutes(
   ctx: HostContext,
   webServer: DshWebServer,
-  config: import('../index.js').Config,
+  _config: import('../index.js').Config,
   getConfig: () => import('../index.js').Config,
 ): void {
-  const page = buildFlyoutPage(config)
-
   const register = (route: Parameters<DshWebServer['register']>[0], label: string): void => {
     ctx.effect(() => webServer.register(route), label)
   }
@@ -67,12 +65,15 @@ export function registerRoutes(
         "frame-src 'self'",
         "connect-src 'self'",
       ].join('; ')
+      // 每次请求重建 HTML：把 getConfig() 的最新 contentFontSize 等内联进
+      // FLYOUT_CONFIG，避免启动期缓存值与用户在 Settings 卡片改的值不一致。
+      const livePage = buildFlyoutPage(getConfig())
       res.writeHead(200, {
         'Content-Type': 'text/html; charset=utf-8',
         'Cache-Control': 'no-store',
         'Content-Security-Policy': csp,
       })
-      res.end(page)
+      res.end(livePage)
     },
   }, 'artifacts: page route')
 
