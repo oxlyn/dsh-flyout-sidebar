@@ -885,6 +885,66 @@ export function ArtifactsPanel(): ReactElement | null {
     return () => window.removeEventListener('resize', onResize)
   }, [])
 
+  // 跟踪 DSH 左侧栏宽度，发布为 --dsh-app-sidebar-width 供预览覆盖层的
+  // left 使用（内容区向左只展开到左侧栏右边框，不覆盖左侧栏）。
+  // DSH AppFrame 是 CSS Grid，内联 style 设 gridTemplateColumns，
+  // 第一列即左侧栏宽（折叠时为 0px）。
+  React.useEffect(() => {
+    const root = document.documentElement
+    const findAppFrame = (): HTMLElement | null => {
+      const nodes = document.querySelectorAll<HTMLElement>('#root *')
+      for (let i = 0; i < nodes.length; i++) {
+        const el = nodes[i]
+        const cols = el.style.gridTemplateColumns
+        if (cols) {
+          const first = cols.split(/\s+/)[0]
+          if (first && first.endsWith('px')) return el
+        }
+      }
+      return null
+    }
+    const readAndSet = (frame: HTMLElement | null): number => {
+      if (!frame) return 0
+      const cols = frame.style.gridTemplateColumns
+      if (!cols) return 0
+      const first = cols.split(/\s+/)[0]
+      const w = first && first.endsWith('px') ? parseFloat(first) : 0
+      root.style.setProperty('--dsh-app-sidebar-width', (Number.isFinite(w) ? w : 0) + 'px')
+      return w
+    }
+
+    let frame = findAppFrame()
+    readAndSet(frame)
+
+    // 观察 AppFrame 的 style 属性变化（折叠/展开/拖拽改 gridTemplateColumns）
+    const styleObs = frame ? new MutationObserver(() => readAndSet(frame)) : null
+    if (frame && styleObs) styleObs.observe(frame, { attributes: true, attributeFilter: ['style'] })
+
+    // AppFrame 可能在挂载后才出现或被重建：监听 #root 子树，找不到时重找
+    let subtreeObs: MutationObserver | null = null
+    if (typeof MutationObserver === 'function') {
+      subtreeObs = new MutationObserver(() => {
+        if (!frame || !document.contains(frame)) {
+          styleObs?.disconnect()
+          frame = findAppFrame()
+          if (frame) {
+            readAndSet(frame)
+            styleObs?.observe(frame, { attributes: true, attributeFilter: ['style'] })
+          }
+        } else {
+          readAndSet(frame)
+        }
+      })
+      subtreeObs.observe(document.body, { childList: true, subtree: true, attributes: false })
+    }
+
+    return () => {
+      styleObs?.disconnect()
+      subtreeObs?.disconnect()
+      root.style.removeProperty('--dsh-app-sidebar-width')
+    }
+  }, [])
+
   // 面板宽度（px）：至少 minPanelWidth% 窗口宽，拖左边缘可更宽。panelFrac
   // 保存拖拽结果（占可用宽度的比例）；null → 用配置的最小值。
   const rightOffset = (() => {

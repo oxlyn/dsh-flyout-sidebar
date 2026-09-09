@@ -79,7 +79,7 @@ header:has([data-slot="conversation.session.header.utilities"]) {
   .artifacts-preview-overlay, .artifacts-panel, .artifacts-corner-btn { transition: none; }
 }
 .artifacts-preview-overlay {
-  position: fixed; top: 0; bottom: 0; left: 0;
+  position: fixed; top: 0; bottom: 0; left: var(--dsh-app-sidebar-width, 0px);
   right: calc(var(--dsh-sidebar-width, 0px) + var(--dsh-flyout-sidebar-width, 0px));
   z-index: 9998;
   display: flex; flex-direction: column; min-width: 0;
@@ -90,7 +90,8 @@ header:has([data-slot="conversation.session.header.utilities"]) {
   pointer-events: auto;
   font-family: var(--dsw-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif);
   font-size: 13px; line-height: 1.5;
-  transition: right var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease),
+  transition: left var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease),
+    right var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease),
     transform var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease);
 }
 .artifacts-preview-overlay.artifacts-slid-out,
@@ -2615,6 +2616,63 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			const onResize = () => setWinW(window.innerWidth);
 			window.addEventListener("resize", onResize);
 			return () => window.removeEventListener("resize", onResize);
+		}, []);
+		React.useEffect(() => {
+			const root = document.documentElement;
+			const findAppFrame = () => {
+				const nodes = document.querySelectorAll("#root *");
+				for (let i = 0; i < nodes.length; i++) {
+					const el = nodes[i];
+					const cols = el.style.gridTemplateColumns;
+					if (cols) {
+						const first = cols.split(/\s+/)[0];
+						if (first && first.endsWith("px")) return el;
+					}
+				}
+				return null;
+			};
+			const readAndSet = (frame) => {
+				if (!frame) return 0;
+				const cols = frame.style.gridTemplateColumns;
+				if (!cols) return 0;
+				const first = cols.split(/\s+/)[0];
+				const w = first && first.endsWith("px") ? parseFloat(first) : 0;
+				root.style.setProperty("--dsh-app-sidebar-width", (Number.isFinite(w) ? w : 0) + "px");
+				return w;
+			};
+			let frame = findAppFrame();
+			readAndSet(frame);
+			const styleObs = frame ? new MutationObserver(() => readAndSet(frame)) : null;
+			if (frame && styleObs) styleObs.observe(frame, {
+				attributes: true,
+				attributeFilter: ["style"]
+			});
+			let subtreeObs = null;
+			if (typeof MutationObserver === "function") {
+				subtreeObs = new MutationObserver(() => {
+					if (!frame || !document.contains(frame)) {
+						styleObs?.disconnect();
+						frame = findAppFrame();
+						if (frame) {
+							readAndSet(frame);
+							styleObs?.observe(frame, {
+								attributes: true,
+								attributeFilter: ["style"]
+							});
+						}
+					} else readAndSet(frame);
+				});
+				subtreeObs.observe(document.body, {
+					childList: true,
+					subtree: true,
+					attributes: false
+				});
+			}
+			return () => {
+				styleObs?.disconnect();
+				subtreeObs?.disconnect();
+				root.style.removeProperty("--dsh-app-sidebar-width");
+			};
 		}, []);
 		const rightOffset = (() => {
 			const n = parseFloat(document.documentElement.style.getPropertyValue("--dsh-sidebar-width"));

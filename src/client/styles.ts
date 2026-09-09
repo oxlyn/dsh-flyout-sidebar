@@ -22,7 +22,7 @@ header:has([data-slot="conversation.session.header.utilities"]) {
   .artifacts-preview-overlay, .artifacts-panel, .artifacts-corner-btn { transition: none; }
 }
 .artifacts-preview-overlay {
-  position: fixed; top: 0; bottom: 0; left: 0;
+  position: fixed; top: 0; bottom: 0; left: var(--dsh-app-sidebar-width, 0px);
   right: calc(var(--dsh-sidebar-width, 0px) + var(--dsh-flyout-sidebar-width, 0px));
   z-index: 9998;
   display: flex; flex-direction: column; min-width: 0;
@@ -33,7 +33,8 @@ header:has([data-slot="conversation.session.header.utilities"]) {
   pointer-events: auto;
   font-family: var(--dsw-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif);
   font-size: 13px; line-height: 1.5;
-  transition: right var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease),
+  transition: left var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease),
+    right var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease),
     transform var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease);
 }
 .artifacts-preview-overlay.artifacts-slid-out,
