@@ -955,13 +955,18 @@ export function ArtifactsPanel(): ReactElement | null {
   const minWidthPx = Math.max(80, Math.round((winW * (settings.minPanelWidth || 0)) / 100))
   const widthPx = panelFrac != null ? Math.max(minWidthPx, Math.round(panelFrac * avail)) : minWidthPx
 
-  // 打开时为面板预留布局空间：把 app 框架收缩面板实时宽度，会话列让位
-  //（见 styles 中 html #root 规则）。
+  // 发布面板宽度到 CSS 变量：供预览覆盖层定位和 header padding 使用。
+  // 面板为覆盖模式（不推挤 AppFrame），变量仅影响覆盖层和 header 的避让。
   React.useEffect(() => {
     const root = document.documentElement
     root.style.setProperty('--dsh-flyout-sidebar-width', open ? widthPx + 'px' : '0px')
+    // body 标记让 CSS 可以用更高特异性覆盖宿主/其它插件对 header 的 padding
+    // （如 better-sidebar 折叠态会给 header 强加 78px），确保面板打开时
+    // 右上角 session 日志等按钮一定给面板让位。
+    document.body.classList.toggle('dsh-flyout-sidebar-open', open)
     return () => {
       root.style.setProperty('--dsh-flyout-sidebar-width', '0px')
+      document.body.classList.remove('dsh-flyout-sidebar-open')
     }
   }, [open, widthPx])
 
@@ -986,7 +991,7 @@ export function ArtifactsPanel(): ReactElement | null {
 
   // 推拉动画：面板和角落触发按钮共用 slide 状态（见 store）。面板常驻 DOM，
   // 开合只切换 slid-out class（= !open，同步无时序），隐藏时平移到屏外且
-  // pointer-events: none，与 #root 让位过渡同时进行。
+  // pointer-events: none，与 header padding 过渡同时进行。
   const { visible, slidOut } = useSlide()
 
   if (!visible) return null
@@ -1035,9 +1040,14 @@ export function ArtifactsPanel(): ReactElement | null {
       } catch { /* layout 服务不可用时跳过 */ }
     }
 
+    const startX = e.clientX
     let lastMouseX = e.clientX
     let rafId: number | null = null
     let collapseTriggered = false
+    // 只有真正向左拖动（超过 8px）才允许触发左侧栏折叠；mousedown 瞬间不做
+    // 判断，避免「点一下/打开时把手刚好在左侧栏边框上」就误折叠（web 端
+    // 左侧栏窄，把手很容易落在边框区域内）。
+    let draggedLeft = false
 
     const tick = (): void => {
       rafId = requestAnimationFrame(tick)
@@ -1049,8 +1059,10 @@ export function ArtifactsPanel(): ReactElement | null {
       const maxW = window.innerWidth - sidebarW - rightOffset
       const w = Math.min(cursorW, maxW)
 
-      // 面板左缘推到左侧栏右边框 → 触发最小化（仅展开态、仅触发一次）
-      if (!collapseTriggered && sidebarW > 0 && cursorW >= maxW - 2) {
+      if (lastMouseX < startX - 8) draggedLeft = true
+
+      // 面板左缘推到左侧栏右边框 → 触发最小化（仅展开态、仅拖动后、仅触发一次）
+      if (!collapseTriggered && sidebarW > 0 && draggedLeft && cursorW >= maxW - 2) {
         collapseTriggered = true
         triggerSidebarCollapse()
       }

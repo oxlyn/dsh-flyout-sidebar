@@ -149,6 +149,11 @@ function loadSettings(): Settings {
 
 type SettingsListener = (settings: Settings) => void
 
+// defaultOpen 只应用一次的门闩：面板每次摊开都会重拉配置（热重载后即生效），
+// 若每次都把 defaultOpen 回写开合状态，defaultOpen=false 会把用户刚点开的面板
+// 当场压回，表现为「图标显示了但点击没反应」。首次加载应用一次后不再干预。
+let openSyncedWithConfig = false
+
 export const settingsStore = {
   data: loadSettings(),
   listeners: [] as SettingsListener[],
@@ -172,10 +177,16 @@ export const settingsStore = {
             // 单个订阅者异常不阻断其余
           }
         }
-        // 配置里的 defaultOpen 与初始打开状态不一致时，联动更新开合与 slide
-        if (typeof next.defaultOpen === 'boolean' && next.defaultOpen !== store.open) {
-          store.open = next.defaultOpen
-          setSlide({ slidOut: !next.defaultOpen })
+        // 首次加载（页面打开瞬间）把 defaultOpen 应用到初始开合：走 setOpen
+        // 通知订阅者，旧实现直接赋值 store.open，Open 订阅者（corner 触发
+        // 按钮）收不到通知，组件停留在初始 open=true 的滑出态 → 图标不可见；
+        // 同时 slide 被置为收起 → 面板在屏外，点按钮也无反应。之后配置再变
+        // （设置热重载 / 面板重开）都不回写开合，把开合控制权完全交给用户。
+        if (!openSyncedWithConfig) {
+          openSyncedWithConfig = true
+          if (typeof next.defaultOpen === 'boolean' && next.defaultOpen !== store.open) {
+            store.setOpen(next.defaultOpen)
+          }
         }
       })
       .catch(() => {
