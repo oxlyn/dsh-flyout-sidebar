@@ -5,7 +5,7 @@
  * React（bundle 内不 import react），然后返回 { inject, apply } 供宿主调用。
  */
 import type * as ReactNS from 'react'
-import { h, initReact } from './jsx'
+import { h, initReact, React } from './jsx'
 import { initClient, type ClientContext } from './runtime'
 import { insertStyles } from './styles'
 import { ArtifactsPanel, CornerButton, SettingsCard } from './components'
@@ -97,17 +97,41 @@ window.__ModuleLoader__.load({
           const scopedSlots = sctx.get<Slots>('slots')
           if (!scopedSlots) return
 
-          // 订阅 settings scope 变更：用户在卡片里改值后，面板下次打开
-          // /flyout-sidebar/config 即反映最新值。
-          sctx.effect(() => scope.subscribe(() => settingsStore.load()), 'flyout: settings scope')
-
-          // 卡片注入的 hooks：快照读取 + 字段写入（classic JSX 不能用泛型箭头，
-          // 包装为普通函数后传入）。
-          const useSettingsSnapshot = (selector: (s: { status: string; value: unknown; writable: boolean }) => unknown) => {
-            const snap = scope.getSnapshot()
-            return selector(snap)
+          // 本地快照存储：镜像 scope 状态 + 乐观回声。useSyncExternalStore
+          // 要求 getSnapshot 在无变更时返回引用稳定的值；scope.getSnapshot()
+          // 不保证引用稳定，故本地缓存一份，仅在 scope 通知或乐观写入时更新。
+          type Snap = { status: string; value: unknown; writable: boolean }
+          let localSnap: Snap = scope.getSnapshot()
+          const localListeners = new Set<() => void>()
+          const publishLocal = (next: Snap): void => {
+            if (next === localSnap) return
+            localSnap = next
+            for (const fn of localListeners) { try { fn() } catch { /* skip */ } }
           }
+
+          // 订阅 scope 外部变更：确认或回滚乐观回声，同时刷新面板配置。
+          sctx.effect(() => scope.subscribe(() => {
+            publishLocal(scope.getSnapshot())
+            settingsStore.load()
+          }), 'flyout: settings scope')
+
+          // 卡片注入的 hooks：响应式快照读取 + 乐观字段写入。
+          const useSettingsSnapshot = <T,>(selector: (s: Snap) => T): T =>
+            React.useSyncExternalStore(
+              (cb: () => void) => {
+                localListeners.add(cb)
+                return () => { localListeners.delete(cb) }
+              },
+              () => selector(localSnap),
+            )
           const setField = (field: string, value: unknown) => {
+            // 乐观回声：立即在本地镜像里写入新值，UI 瞬时翻转，不等 scope.set。
+            const cur = localSnap
+            const nextValue = (cur.value && typeof cur.value === 'object')
+              ? { ...(cur.value as Record<string, unknown>), [field]: value }
+              : { [field]: value }
+            publishLocal({ ...cur, value: nextValue })
+            // 持久化：scope.set 异步结算；失败时 scope.subscribe 回滚本地镜像。
             void scope.set(field, value)
           }
 

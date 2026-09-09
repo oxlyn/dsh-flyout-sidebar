@@ -2896,11 +2896,35 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 						const scope = binder.bind({ namespace: SETTINGS_NAMESPACE });
 						const scopedSlots = sctx.get("slots");
 						if (!scopedSlots) return;
-						sctx.effect(() => scope.subscribe(() => settingsStore.load()), "flyout: settings scope");
-						const useSettingsSnapshot = (selector) => {
-							return selector(scope.getSnapshot());
+						let localSnap = scope.getSnapshot();
+						const localListeners = /* @__PURE__ */ new Set();
+						const publishLocal = (next) => {
+							if (next === localSnap) return;
+							localSnap = next;
+							for (const fn of localListeners) try {
+								fn();
+							} catch {}
 						};
+						sctx.effect(() => scope.subscribe(() => {
+							publishLocal(scope.getSnapshot());
+							settingsStore.load();
+						}), "flyout: settings scope");
+						const useSettingsSnapshot = (selector) => React.useSyncExternalStore((cb) => {
+							localListeners.add(cb);
+							return () => {
+								localListeners.delete(cb);
+							};
+						}, () => selector(localSnap));
 						const setField = (field, value) => {
+							const cur = localSnap;
+							const nextValue = cur.value && typeof cur.value === "object" ? {
+								...cur.value,
+								[field]: value
+							} : { [field]: value };
+							publishLocal({
+								...cur,
+								value: nextValue
+							});
 							scope.set(field, value);
 						};
 						scopedSlots.inject("settings.plugin.item", () => scopedSlots.register({
