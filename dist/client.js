@@ -859,7 +859,6 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 	function loadSettings() {
 		return { ...DEFAULT_SETTINGS };
 	}
-	let openSyncedWithConfig = false;
 	const settingsStore = {
 		data: loadSettings(),
 		listeners: [],
@@ -869,21 +868,26 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		/**
 		* 从宿主拉取插件配置（config 已由 cordis 校验填充默认值）并通知订阅者。
 		* 配置保存在宿主侧，页面内不持久化；面板打开即用最新值。
+		*
+		* syncDefaultOpen=true（启动首次加载、settings scope 配置变更回调）时，
+		* 若本次拉取确实改动了 defaultOpen 字段，则实时同步边栏开合 —— 用户在
+		* 设置卡片切换「默认展开」开关后边栏立即跟随展开/收起。面板摊开时例行
+		* 拉取（刷新 minPanelWidth 等设置）不传此 flag：只刷新配置，绝不回写
+		* 开合状态，否则刚点开的边栏会被 defaultOpen 当场压回（点击无反应）。
 		*/
-		load() {
+		load(opts) {
+			const syncDefaultOpen = !!(opts && opts.syncDefaultOpen);
 			fetch("/flyout-sidebar/config").then((res) => res.ok ? res.json() : Promise.reject(/* @__PURE__ */ new Error("HTTP " + res.status))).then((out) => {
 				const next = {
 					...this.data,
 					...out.config || {}
 				};
+				const defaultOpenChanged = typeof next.defaultOpen === "boolean" && next.defaultOpen !== this.data.defaultOpen;
 				this.data = next;
 				for (const fn of this.listeners) try {
 					fn(next);
 				} catch {}
-				if (!openSyncedWithConfig) {
-					openSyncedWithConfig = true;
-					if (typeof next.defaultOpen === "boolean" && next.defaultOpen !== store.open) store.setOpen(next.defaultOpen);
-				}
+				if (syncDefaultOpen && defaultOpenChanged && next.defaultOpen !== store.open) store.setOpen(next.defaultOpen);
 			}).catch(() => {});
 		},
 		subscribe(fn) {
@@ -3047,7 +3051,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 						order: 50,
 						label: "Artifacts Panel"
 					}, () => /* @__PURE__ */ h(ArtifactsPanel, null)));
-					settingsStore.load();
+					settingsStore.load({ syncDefaultOpen: true });
 					ctx.inject(["settingsScope"], (sctx) => {
 						const binder = sctx.get("settingsScope");
 						if (!binder) return;
@@ -3065,7 +3069,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 						};
 						sctx.effect(() => scope.subscribe(() => {
 							publishLocal(scope.getSnapshot());
-							settingsStore.load();
+							settingsStore.load({ syncDefaultOpen: true });
 						}), "flyout: settings scope");
 						const useSettingsSnapshot = (selector) => React.useSyncExternalStore((cb) => {
 							localListeners.add(cb);

@@ -85,7 +85,8 @@ window.__ModuleLoader__.load({
 
         // 插件配置改由 DSH 插件管理维护：拉取宿主侧 Config，供面板使用。
         // 每次面板摊开（ArtifactsPanel 打开时）会重新拉取，热重载后即生效。
-        settingsStore.load()
+        // 首次加载同步一次 defaultOpen：页面打开瞬间应用用户的展开偏好。
+        settingsStore.load({ syncDefaultOpen: true })
 
         // DSH Settings → Plugins → Plugin configuration 卡片：
         // 通过 settingsScope 服务绑定 namespace，在 settings.plugin.item slot
@@ -110,9 +111,10 @@ window.__ModuleLoader__.load({
           }
 
           // 订阅 scope 外部变更：确认或回滚乐观回声，同时刷新面板配置。
+          // 用户在设置卡片切换 defaultOpen 时经此回调实时同步边栏开合。
           sctx.effect(() => scope.subscribe(() => {
             publishLocal(scope.getSnapshot())
-            settingsStore.load()
+            settingsStore.load({ syncDefaultOpen: true })
           }), 'flyout: settings scope')
 
           // 卡片注入的 hooks：响应式快照读取 + 乐观字段写入。

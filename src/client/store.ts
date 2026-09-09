@@ -149,11 +149,6 @@ function loadSettings(): Settings {
 
 type SettingsListener = (settings: Settings) => void
 
-// defaultOpen 只应用一次的门闩：面板每次摊开都会重拉配置（热重载后即生效），
-// 若每次都把 defaultOpen 回写开合状态，defaultOpen=false 会把用户刚点开的面板
-// 当场压回，表现为「图标显示了但点击没反应」。首次加载应用一次后不再干预。
-let openSyncedWithConfig = false
-
 export const settingsStore = {
   data: loadSettings(),
   listeners: [] as SettingsListener[],
@@ -163,12 +158,22 @@ export const settingsStore = {
   /**
    * 从宿主拉取插件配置（config 已由 cordis 校验填充默认值）并通知订阅者。
    * 配置保存在宿主侧，页面内不持久化；面板打开即用最新值。
+   *
+   * syncDefaultOpen=true（启动首次加载、settings scope 配置变更回调）时，
+   * 若本次拉取确实改动了 defaultOpen 字段，则实时同步边栏开合 —— 用户在
+   * 设置卡片切换「默认展开」开关后边栏立即跟随展开/收起。面板摊开时例行
+   * 拉取（刷新 minPanelWidth 等设置）不传此 flag：只刷新配置，绝不回写
+   * 开合状态，否则刚点开的边栏会被 defaultOpen 当场压回（点击无反应）。
    */
-  load(): void {
+  load(opts?: { syncDefaultOpen?: boolean }): void {
+    const syncDefaultOpen = !!(opts && opts.syncDefaultOpen)
     fetch('/flyout-sidebar/config')
       .then((res) => (res.ok ? res.json() : Promise.reject(new Error('HTTP ' + res.status))))
       .then((out: { config?: Partial<Settings> }) => {
         const next = { ...this.data, ...(out.config || {}) }
+        // 仅当 defaultOpen 字段本次确实变化时才联动（其它字段变更不打扰开合）
+        const defaultOpenChanged =
+          typeof next.defaultOpen === 'boolean' && next.defaultOpen !== this.data.defaultOpen
         this.data = next
         for (const fn of this.listeners) {
           try {
@@ -177,16 +182,12 @@ export const settingsStore = {
             // 单个订阅者异常不阻断其余
           }
         }
-        // 首次加载（页面打开瞬间）把 defaultOpen 应用到初始开合：走 setOpen
-        // 通知订阅者，旧实现直接赋值 store.open，Open 订阅者（corner 触发
-        // 按钮）收不到通知，组件停留在初始 open=true 的滑出态 → 图标不可见；
-        // 同时 slide 被置为收起 → 面板在屏外，点按钮也无反应。之后配置再变
-        // （设置热重载 / 面板重开）都不回写开合，把开合控制权完全交给用户。
-        if (!openSyncedWithConfig) {
-          openSyncedWithConfig = true
-          if (typeof next.defaultOpen === 'boolean' && next.defaultOpen !== store.open) {
-            store.setOpen(next.defaultOpen)
-          }
+        // 联动必须走 setOpen 通知订阅者：旧实现直接赋值 store.open，Open
+        // 订阅者（corner 触发按钮）收不到通知，组件停留在初始 open=true 的
+        // 滑出态 → 图标不可见；同时 slide 被置为收起 → 面板在屏外，点按钮
+        // 也无反应。
+        if (syncDefaultOpen && defaultOpenChanged && next.defaultOpen !== store.open) {
+          store.setOpen(next.defaultOpen)
         }
       })
       .catch(() => {
