@@ -335,50 +335,41 @@ body[data-ds-dark-theme] .tok-function, body[data-ds-dark-theme] .tok-decorator 
 body[data-ds-dark-theme] .tok-class, body[data-ds-dark-theme] .tok-builtin, body[data-ds-dark-theme] .tok-tag, body[data-ds-dark-theme] .tok-key { color: #74c0fc; }
 body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 
-/* Settings 卡片（Settings → Plugins → Plugin configuration） */
-.fs-settings-card {
-  list-style: none;
-  border: 1px solid var(--dsw-alias-border-subtle, #e0e0e0);
-  border-radius: 8px;
-  overflow: hidden;
-  margin-bottom: 8px;
-}
-body[data-ds-dark-theme] .fs-settings-card {
-  border-color: var(--dsw-alias-border-subtle, #2d2d2d);
-}
-.fs-settings-head {
-  display: flex; align-items: center; justify-content: space-between;
-  width: 100%; padding: 10px 12px; cursor: pointer;
-  background: var(--dsw-alias-bg-raised, transparent);
-  border: none; color: inherit; font: inherit; text-align: left;
-}
-.fs-settings-head:hover { background: var(--dsw-alias-bg-hover, rgba(0,0,0,0.04)); }
-.fs-settings-headtext { display: flex; flex-direction: column; gap: 2px; }
-.fs-settings-name { font-weight: 600; font-size: 13px; }
-.fs-settings-desc { font-size: 12px; opacity: 0.65; }
-.fs-settings-chevron { transition: transform 150ms ease; flex-shrink: 0; opacity: 0.5; }
-.fs-settings-card.fs-open .fs-settings-chevron { transform: rotate(180deg); }
-.fs-settings-body { padding: 8px 12px 12px; display: flex; flex-direction: column; gap: 10px; }
-.fs-settings-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.fs-settings-label { font-size: 13px; }
+/* Settings 卡片（Settings → Plugins → Plugin configuration）— 跟随 DSH PluginCard 风格 */
+.fs-settings-card { background: var(--dsw-alias-bg-layer-3); border: 1px solid var(--dsw-alias-border-l2); border-radius: 12px; transition: border-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out), background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out); }
+.fs-settings-card:hover { border-color: var(--dsw-alias-label-dimmed); }
+.fs-settings-open, .fs-settings-open:hover { background: var(--dsw-alias-bg-layer-2); border-color: var(--dsw-alias-label-dimmed); }
+.fs-settings-head { width: 100%; appearance: none; border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 12px; }
+.fs-settings-headtext { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.fs-settings-name { font-size: 15px; font-weight: 600; line-height: 1.4; color: var(--dsw-alias-label-primary); }
+.fs-settings-desc { font-size: 13px; line-height: 1.5; color: var(--dsw-alias-label-tertiary); }
+.fs-settings-chevron { flex: none; color: var(--dsw-alias-label-tertiary); transition: transform var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out); }
+.fs-settings-open .fs-settings-chevron { transform: rotate(180deg); }
+.fs-settings-body { border-top: 1px solid var(--dsw-alias-border-l2); margin: 0 16px; padding: 4px 0 12px; display: flex; flex-direction: column; gap: 0; }
+.fs-settings-row { display: flex; align-items: center; gap: 8px; padding: 8px 0; }
+.fs-settings-label { flex: 1; min-width: 0; font-size: 14px; color: var(--dsw-alias-label-primary); }
 .fs-settings-input {
-  width: 64px; padding: 4px 6px; border-radius: 4px;
-  border: 1px solid var(--dsw-alias-border-subtle, #ccc);
-  background: var(--dsw-alias-bg-base, transparent);
-  color: inherit; font: inherit; font-size: 13px; text-align: right;
+  width: 64px; padding: 4px 8px; border-radius: 8px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-bg-module-platform, transparent);
+  color: var(--dsw-alias-label-primary); font: inherit; font-size: 14px; text-align: right;
+  transition: background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
 }
+.fs-settings-input:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover); }
+.fs-settings-input:disabled { opacity: .5; cursor: default; }
 .fs-settings-toggle {
-  position: relative; width: 36px; height: 20px; border-radius: 10px;
-  border: none; cursor: pointer; padding: 0;
-  background: var(--dsw-alias-fill-secondary, #ccc); transition: background 150ms ease;
+  position: relative; width: 40px; height: 22px; border-radius: 11px;
+  border: none; cursor: pointer; padding: 0; flex: none;
+  background: var(--dsw-alias-fill-secondary, #ccc); transition: background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
 }
 .fs-settings-toggle[data-on="true"] { background: var(--dsw-alias-accent-primary, #2a7fbf); }
+.fs-settings-toggle:disabled { opacity: .5; cursor: default; }
 .fs-settings-toggle::after {
   content: ""; position: absolute; top: 2px; left: 2px;
-  width: 16px; height: 16px; border-radius: 50%;
-  background: #fff; transition: transform 150ms ease;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: #fff; transition: transform var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
 }
-.fs-settings-toggle[data-on="true"]::after { transform: translateX(16px); }
+.fs-settings-toggle[data-on="true"]::after { transform: translateX(18px); }
 `;
 	/** 注入样式（幂等：已存在则跳过） */
 	function insertStyles() {
