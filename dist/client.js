@@ -705,8 +705,9 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 	*/
 	/** @param {string} p @returns {string} */
 	function basename(p) {
-		var parts = String(p).split("/");
-		return parts[parts.length - 1] || p;
+		var s = String(p).replace(/[\\/]+$/, "");
+		var i = Math.max(s.lastIndexOf("/"), s.lastIndexOf("\\"));
+		return i >= 0 ? s.slice(i + 1) : s;
 	}
 	/**
 	* 变更文件的状态徽章字母：未跟踪为 U，否则取工作树状态（y），再退到暂存
