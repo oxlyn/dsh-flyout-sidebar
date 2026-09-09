@@ -937,12 +937,58 @@ export function ArtifactsPanel(): ReactElement | null {
     e.preventDefault()
     setResizing(true)
     const availAtStart = avail
-    const onMove = (ev: MouseEvent): void => {
-      const w = window.innerWidth - ev.clientX - rightOffset
+
+    // DSH 左侧栏感知：拖拽面板左缘向左时，面板不得覆盖左侧栏。
+    // 当面板左缘推到左侧栏右边框（展开态）时，触发左侧栏最小化；
+    // 最小化后左边框左移，面板继续跟随，直到最小化后左侧栏的右边框。
+    const getSidebarRight = (): number => {
+      const conv = document.querySelector('[data-pane="conversation"]')
+      const frame = conv?.parentElement
+      if (!frame) return 0
+      const sidebarCol = frame.children[0] as HTMLElement | undefined
+      if (!sidebarCol) return 0
+      return sidebarCol.getBoundingClientRect().right
+    }
+    const isSidebarCollapsed = (): boolean => {
+      const conv = document.querySelector('[data-pane="conversation"]')
+      const frame = conv?.parentElement
+      return !!frame?.hasAttribute('data-sidebar-collapsed')
+    }
+    const triggerSidebarCollapse = (): void => {
+      try { ctx.get<{ toggleSidebar: () => void }>('layout')?.toggleSidebar() } catch { /* layout 服务不可用时跳过 */ }
+    }
+
+    let lastMouseX = e.clientX
+    let rafId: number | null = null
+    let collapseTriggered = false
+
+    const tick = (): void => {
+      rafId = requestAnimationFrame(tick)
+      // 光标期望的面板宽度
+      const cursorW = window.innerWidth - lastMouseX - rightOffset
+      // 左侧栏右边框限制：面板不能超过左侧栏
+      const sidebarRight = getSidebarRight()
+      const maxW = window.innerWidth - sidebarRight - rightOffset
+      // 取两者较小值：光标期望 vs 左侧栏限制
+      const w = Math.min(cursorW, maxW)
+
+      // 面板左缘推到左侧栏右边框 → 触发最小化（仅展开态、仅触发一次）
+      if (!collapseTriggered && !isSidebarCollapsed() && cursorW >= maxW - 2) {
+        collapseTriggered = true
+        triggerSidebarCollapse()
+      }
+      // 拖回右侧后重置触发标志，允许下一次推到时再次触发
+      if (collapseTriggered && cursorW < maxW - 10) {
+        collapseTriggered = false
+      }
+
       const frac = Math.max(minWidthPx / availAtStart, Math.min(w / availAtStart, (availAtStart - 24) / availAtStart))
       setPanelFrac(frac)
     }
+
+    const onMove = (ev: MouseEvent): void => { lastMouseX = ev.clientX }
     const onUp = (): void => {
+      if (rafId !== null) cancelAnimationFrame(rafId)
       setResizing(false)
       resizeHandlers.current = null
       document.removeEventListener('mousemove', onMove)
@@ -951,6 +997,7 @@ export function ArtifactsPanel(): ReactElement | null {
     resizeHandlers.current = { onMove, onUp }
     document.addEventListener('mousemove', onMove)
     document.addEventListener('mouseup', onUp)
+    rafId = requestAnimationFrame(tick)
   }
 
   const flash = (msg: string): void => {

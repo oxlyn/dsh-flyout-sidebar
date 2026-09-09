@@ -2652,12 +2652,43 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			e.preventDefault();
 			setResizing(true);
 			const availAtStart = avail;
-			const onMove = (ev) => {
-				const w = window.innerWidth - ev.clientX - rightOffset;
+			const getSidebarRight = () => {
+				const frame = document.querySelector("[data-pane=\"conversation\"]")?.parentElement;
+				if (!frame) return 0;
+				const sidebarCol = frame.children[0];
+				if (!sidebarCol) return 0;
+				return sidebarCol.getBoundingClientRect().right;
+			};
+			const isSidebarCollapsed = () => {
+				return !!(document.querySelector("[data-pane=\"conversation\"]")?.parentElement)?.hasAttribute("data-sidebar-collapsed");
+			};
+			const triggerSidebarCollapse = () => {
+				try {
+					ctx.get("layout")?.toggleSidebar();
+				} catch {}
+			};
+			let lastMouseX = e.clientX;
+			let rafId = null;
+			let collapseTriggered = false;
+			const tick = () => {
+				rafId = requestAnimationFrame(tick);
+				const cursorW = window.innerWidth - lastMouseX - rightOffset;
+				const sidebarRight = getSidebarRight();
+				const maxW = window.innerWidth - sidebarRight - rightOffset;
+				const w = Math.min(cursorW, maxW);
+				if (!collapseTriggered && !isSidebarCollapsed() && cursorW >= maxW - 2) {
+					collapseTriggered = true;
+					triggerSidebarCollapse();
+				}
+				if (collapseTriggered && cursorW < maxW - 10) collapseTriggered = false;
 				const frac = Math.max(minWidthPx / availAtStart, Math.min(w / availAtStart, (availAtStart - 24) / availAtStart));
 				setPanelFrac(frac);
 			};
+			const onMove = (ev) => {
+				lastMouseX = ev.clientX;
+			};
 			const onUp = () => {
+				if (rafId !== null) cancelAnimationFrame(rafId);
 				setResizing(false);
 				resizeHandlers.current = null;
 				document.removeEventListener("mousemove", onMove);
@@ -2669,6 +2700,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			};
 			document.addEventListener("mousemove", onMove);
 			document.addEventListener("mouseup", onUp);
+			rafId = requestAnimationFrame(tick);
 		};
 		const flash = (msg) => {
 			setNotice(msg);
