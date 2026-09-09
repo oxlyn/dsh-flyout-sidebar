@@ -62,24 +62,23 @@
 	* --dsw-alias-* 设计令牌，深浅主题自动跟随。
 	*/
 	const styleCss = `
-html #root {
-  margin-right: calc(var(--dsh-sidebar-width, 0px) + var(--dsh-flyout-sidebar-width, 0px));
-  transition: margin-right var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease);
-}
-body[data-dsh-flyout-dragging] #root {
-  transition: none;
-}
-header:has([data-slot="conversation.session.header.utilities"]) {
-  padding-right: max(28px, calc(60px - var(--dsh-flyout-sidebar-width, 0px)));
+/* 面板关闭时不对 host header 做任何干预：session 日志等按钮保持宿主默认
+   位置（不额外留白、不错位）。触发按钮是 fixed 透明覆盖层，不占布局。 */
+/* 面板打开时：以面板宽度精确避让右上角按钮。用 !important 压过宿主/其它
+   插件对同一 header 的 padding 规则（如 better-sidebar 折叠态强加的 78px）。 */
+body.dsh-flyout-sidebar-open header:has([data-slot="conversation.session.header.utilities"]) {
+  padding-right: var(--dsh-flyout-sidebar-width, 0px) !important;
   transition: padding-right var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease);
 }
+body[data-dsh-flyout-dragging] header:has([data-slot="conversation.session.header.utilities"]) {
+  transition: none;
+}
 @media (prefers-reduced-motion: reduce) {
-  html #root { transition: none; }
   header:has([data-slot="conversation.session.header.utilities"]) { transition: none; }
   .artifacts-preview-overlay, .artifacts-panel, .artifacts-corner-btn { transition: none; }
 }
 .artifacts-preview-overlay {
-  position: fixed; top: 0; bottom: 0; left: 0;
+  position: fixed; top: 0; bottom: 0; left: var(--dsh-app-sidebar-width, 0px);
   right: calc(var(--dsh-sidebar-width, 0px) + var(--dsh-flyout-sidebar-width, 0px));
   z-index: 9998;
   display: flex; flex-direction: column; min-width: 0;
@@ -90,7 +89,8 @@ header:has([data-slot="conversation.session.header.utilities"]) {
   pointer-events: auto;
   font-family: var(--dsw-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif);
   font-size: 13px; line-height: 1.5;
-  transition: right var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease),
+  transition: left var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease),
+    right var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease),
     transform var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease);
 }
 .artifacts-preview-overlay.artifacts-slid-out,
@@ -99,6 +99,12 @@ header:has([data-slot="conversation.session.header.utilities"]) {
   pointer-events: none;
 }
 body[data-dsh-flyout-dragging] .artifacts-preview-overlay { transition: none; }
+/* 抽屉式动画：内容区从右往左滑入，反向滑出。preview-hidden 在 slid-out
+   之前声明，面板收起时 slid-out 的 105% 优先覆盖。 */
+.artifacts-preview-overlay.artifacts-preview-hidden {
+  transform: translateX(100%);
+  pointer-events: none;
+}
 .artifacts-preview-overlay-tabs {
   flex: none; display: flex; align-items: stretch; height: 28px;
   background: var(--dsw-alias-bg-layer-1);
@@ -204,10 +210,18 @@ body[data-dsh-flyout-dragging] .artifacts-preview-overlay { transition: none; }
 .artifacts-corner-btn {
   position: fixed; top: 0; right: calc(var(--dsh-sidebar-width, 0px) + 12px);
   z-index: 10000; width: 36px; height: 28px; padding: 0;
-  border: none; background: transparent; color: var(--dsw-alias-label-secondary);
+  border: none; background: transparent;
+  /* 颜色带多级回退：某些宿主的 --dsw-alias-* 令牌缺失时兜底到常规文字色，
+     保证触发图标始终可见（曾被误报为“图标不显示”）。 */
+  color: var(--dsw-alias-label-secondary, var(--dsw-alias-label-tertiary, var(--ds-text-2, #555)));
   cursor: pointer; align-items: center; justify-content: center; display: inline-flex;
   transition: transform var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease),
     right var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease), color .15s;
+}
+/* better-sidebar 折叠时其右上角折叠按钮组占 right 10→70px；触发按钮避开它，
+   否则两者重叠抢点击（坐标约定见 better-sidebar layout.css 的 78px 注释）。 */
+body[data-dsh-sidebar-collapsed] .artifacts-corner-btn {
+  right: 78px;
 }
 /* 面板打开时随面板一起滑出屏右缘（推拉动画的另一半） */
 .artifacts-corner-btn.artifacts-slid-out {
@@ -371,15 +385,17 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 }
 .fs-settings-toggle[data-on="true"]::after { transform: translateX(18px); }
 `;
-	/** 注入样式（幂等：已存在则跳过） */
+	/** 注入样式（幂等：内容不一致时替换，使热重载后新样式必然生效） */
 	function insertStyles() {
 		if (typeof document === "undefined") return;
 		const id = "dsh-flyout-sidebar-styles";
-		if (document.getElementById(id)) return;
-		const el = document.createElement("style");
-		el.id = id;
-		el.textContent = styleCss;
-		document.head.appendChild(el);
+		let el = document.getElementById(id);
+		if (!el) {
+			el = document.createElement("style");
+			el.id = id;
+			document.head.appendChild(el);
+		}
+		if (el.textContent !== styleCss) el.textContent = styleCss;
 	}
 	//#endregion
 	//#region src/shared/ext.js
@@ -698,8 +714,9 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 	*/
 	/** @param {string} p @returns {string} */
 	function basename(p) {
-		var parts = String(p).split("/");
-		return parts[parts.length - 1] || p;
+		var s = String(p).replace(/[\\/]+$/, "");
+		var i = Math.max(s.lastIndexOf("/"), s.lastIndexOf("\\"));
+		return i >= 0 ? s.slice(i + 1) : s;
 	}
 	/**
 	* 变更文件的状态徽章字母：未跟踪为 U，否则取工作树状态（y），再退到暂存
@@ -842,6 +859,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 	function loadSettings() {
 		return { ...DEFAULT_SETTINGS };
 	}
+	let openSyncedWithConfig = false;
 	const settingsStore = {
 		data: loadSettings(),
 		listeners: [],
@@ -862,9 +880,9 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 				for (const fn of this.listeners) try {
 					fn(next);
 				} catch {}
-				if (typeof next.defaultOpen === "boolean" && next.defaultOpen !== store.open) {
-					store.open = next.defaultOpen;
-					setSlide({ slidOut: !next.defaultOpen });
+				if (!openSyncedWithConfig) {
+					openSyncedWithConfig = true;
+					if (typeof next.defaultOpen === "boolean" && next.defaultOpen !== store.open) store.setOpen(next.defaultOpen);
 				}
 			}).catch(() => {});
 		},
@@ -2414,6 +2432,40 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		const sessionId = useSessionId();
 		const { tabs, activeKey, setActiveKey, previewHidden, setPreviewHidden, openFile, openGitDiff, closeTab, closeOthers, closeRight } = usePreviewTabs(sessionId);
 		const activeTab = tabs.find((t) => t.key === activeKey) || null;
+		const showPreview = tabs.length > 0 && !previewHidden;
+		const previewMountedRef = React.useRef(false);
+		const [previewMounted, setPreviewMounted] = React.useState(false);
+		const [previewOpen, setPreviewOpen] = React.useState(false);
+		const lastTabsRef = React.useRef([]);
+		const lastActiveKeyRef = React.useRef(null);
+		if (showPreview) {
+			lastTabsRef.current = tabs;
+			lastActiveKeyRef.current = activeKey;
+		}
+		React.useEffect(() => {
+			if (showPreview) {
+				if (!previewMountedRef.current) {
+					previewMountedRef.current = true;
+					setPreviewMounted(true);
+					setPreviewOpen(false);
+					const raf = requestAnimationFrame(() => {
+						requestAnimationFrame(() => setPreviewOpen(true));
+					});
+					return () => cancelAnimationFrame(raf);
+				}
+				setPreviewOpen(true);
+			} else {
+				setPreviewOpen(false);
+				const timer = setTimeout(() => {
+					previewMountedRef.current = false;
+					setPreviewMounted(false);
+				}, 250);
+				return () => clearTimeout(timer);
+			}
+		}, [showPreview]);
+		const displayTabs = showPreview ? tabs : lastTabsRef.current;
+		const displayActiveKey = showPreview ? activeKey : lastActiveKeyRef.current;
+		const displayActiveTab = displayTabs.find((t) => t.key === displayActiveKey) || null;
 		const [notice, setNotice] = React.useState("");
 		const [ctxMenu, setCtxMenu] = React.useState(null);
 		React.useEffect(() => {
@@ -2576,6 +2628,63 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			window.addEventListener("resize", onResize);
 			return () => window.removeEventListener("resize", onResize);
 		}, []);
+		React.useEffect(() => {
+			const root = document.documentElement;
+			const findAppFrame = () => {
+				const nodes = document.querySelectorAll("#root *");
+				for (let i = 0; i < nodes.length; i++) {
+					const el = nodes[i];
+					const cols = el.style.gridTemplateColumns;
+					if (cols) {
+						const first = cols.split(/\s+/)[0];
+						if (first && first.endsWith("px")) return el;
+					}
+				}
+				return null;
+			};
+			const readAndSet = (frame) => {
+				if (!frame) return 0;
+				const cols = frame.style.gridTemplateColumns;
+				if (!cols) return 0;
+				const first = cols.split(/\s+/)[0];
+				const w = first && first.endsWith("px") ? parseFloat(first) : 0;
+				root.style.setProperty("--dsh-app-sidebar-width", (Number.isFinite(w) ? w : 0) + "px");
+				return w;
+			};
+			let frame = findAppFrame();
+			readAndSet(frame);
+			const styleObs = frame ? new MutationObserver(() => readAndSet(frame)) : null;
+			if (frame && styleObs) styleObs.observe(frame, {
+				attributes: true,
+				attributeFilter: ["style"]
+			});
+			let subtreeObs = null;
+			if (typeof MutationObserver === "function") {
+				subtreeObs = new MutationObserver(() => {
+					if (!frame || !document.contains(frame)) {
+						styleObs?.disconnect();
+						frame = findAppFrame();
+						if (frame) {
+							readAndSet(frame);
+							styleObs?.observe(frame, {
+								attributes: true,
+								attributeFilter: ["style"]
+							});
+						}
+					} else readAndSet(frame);
+				});
+				subtreeObs.observe(document.body, {
+					childList: true,
+					subtree: true,
+					attributes: false
+				});
+			}
+			return () => {
+				styleObs?.disconnect();
+				subtreeObs?.disconnect();
+				root.style.removeProperty("--dsh-app-sidebar-width");
+			};
+		}, []);
 		const rightOffset = (() => {
 			const n = parseFloat(document.documentElement.style.getPropertyValue("--dsh-sidebar-width"));
 			return Number.isFinite(n) ? n : 0;
@@ -2586,8 +2695,10 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		React.useEffect(() => {
 			const root = document.documentElement;
 			root.style.setProperty("--dsh-flyout-sidebar-width", open ? widthPx + "px" : "0px");
+			document.body.classList.toggle("dsh-flyout-sidebar-open", open);
 			return () => {
 				root.style.setProperty("--dsh-flyout-sidebar-width", "0px");
+				document.body.classList.remove("dsh-flyout-sidebar-open");
 			};
 		}, [open, widthPx]);
 		React.useEffect(() => {
@@ -2612,12 +2723,58 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			e.preventDefault();
 			setResizing(true);
 			const availAtStart = avail;
-			const onMove = (ev) => {
-				const w = window.innerWidth - ev.clientX - rightOffset;
+			const getSidebarWidth = () => {
+				const root = document.getElementById("root");
+				if (!root) return 0;
+				const find = (el) => {
+					if (el instanceof HTMLElement) {
+						const cols = el.style.gridTemplateColumns;
+						if (cols) {
+							const first = cols.split(/\s+/)[0];
+							if (first && first.endsWith("px")) {
+								const w = parseFloat(first);
+								if (w > 0) return w;
+							}
+						}
+					}
+					for (const child of el.children) {
+						const w = find(child);
+						if (w > 0) return w;
+					}
+					return 0;
+				};
+				return find(root);
+			};
+			const triggerSidebarCollapse = () => {
+				try {
+					(ctx.reflect?.inject("layout"))?.toggleSidebar?.();
+				} catch {}
+			};
+			const startX = e.clientX;
+			let lastMouseX = e.clientX;
+			let rafId = null;
+			let collapseTriggered = false;
+			let draggedLeft = false;
+			const tick = () => {
+				rafId = requestAnimationFrame(tick);
+				const cursorW = window.innerWidth - lastMouseX - rightOffset;
+				const sidebarW = getSidebarWidth();
+				const maxW = window.innerWidth - sidebarW - rightOffset;
+				const w = Math.min(cursorW, maxW);
+				if (lastMouseX < startX - 8) draggedLeft = true;
+				if (!collapseTriggered && sidebarW > 0 && draggedLeft && cursorW >= maxW - 2) {
+					collapseTriggered = true;
+					triggerSidebarCollapse();
+				}
+				if (collapseTriggered && cursorW < maxW - 10) collapseTriggered = false;
 				const frac = Math.max(minWidthPx / availAtStart, Math.min(w / availAtStart, (availAtStart - 24) / availAtStart));
 				setPanelFrac(frac);
 			};
+			const onMove = (ev) => {
+				lastMouseX = ev.clientX;
+			};
 			const onUp = () => {
+				if (rafId !== null) cancelAnimationFrame(rafId);
 				setResizing(false);
 				resizeHandlers.current = null;
 				document.removeEventListener("mousemove", onMove);
@@ -2629,6 +2786,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			};
 			document.addEventListener("mousemove", onMove);
 			document.addEventListener("mouseup", onUp);
+			rafId = requestAnimationFrame(tick);
 		};
 		const flash = (msg) => {
 			setNotice(msg);
@@ -2672,14 +2830,14 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			previewHidden,
 			activeKey
 		]);
-		const previewOverlay = tabs.length && !previewHidden ? /* @__PURE__ */ h("div", {
-			className: "artifacts-preview-overlay" + (slidOut ? " artifacts-slid-out" : ""),
+		const previewOverlay = previewMounted ? /* @__PURE__ */ h("div", {
+			className: "artifacts-preview-overlay" + (slidOut ? " artifacts-slid-out" : "") + (!previewOpen ? " artifacts-preview-hidden" : ""),
 			role: "region",
 			"aria-label": t("previewRegion")
-		}, /* @__PURE__ */ h("div", { className: "artifacts-preview-overlay-tabs" }, /* @__PURE__ */ h("div", { className: "artifacts-ptabs-scroll" }, tabs.map((tab) => /* @__PURE__ */ h("div", {
+		}, /* @__PURE__ */ h("div", { className: "artifacts-preview-overlay-tabs" }, /* @__PURE__ */ h("div", { className: "artifacts-ptabs-scroll" }, displayTabs.map((tab) => /* @__PURE__ */ h("div", {
 			key: tab.key,
-			className: "artifacts-ptab" + (tab.key === activeKey ? " is-active" : ""),
-			title: (tab.git ? t("diffTabPrefix") : "") + (tab.path || ""),
+			className: "artifacts-ptab" + (tab.key === displayActiveKey ? " is-active" : ""),
+			title: (tab.git ? t("diffTabPrefix") : "") + basename(tab.path || ""),
 			onClick: () => setActiveKey(tab.key),
 			onContextMenu: (e) => {
 				e.preventDefault();
@@ -2702,7 +2860,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			className: "artifacts-preview-hide",
 			title: t("hidePreview"),
 			onClick: () => setPreviewHidden(true)
-		}, /* @__PURE__ */ h(PanelCollapseIcon, { size: 16 }))), activeTab ? renderPreview(activeTab, true, settings.contentFontSize) : null) : null;
+		}, /* @__PURE__ */ h(PanelCollapseIcon, { size: 16 }))), displayActiveTab ? renderPreview(displayActiveTab, true, settings.contentFontSize) : null) : null;
 		return /* @__PURE__ */ h(Fragment, null, previewOverlay, /* @__PURE__ */ h("div", {
 			className: "artifacts-panel" + (slidOut ? " artifacts-slid-out" : "") + (resizing ? " artifacts-resizing" : ""),
 			style: { width: widthPx },

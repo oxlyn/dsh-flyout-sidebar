@@ -10,8 +10,9 @@ import { t } from './i18n.js'
 
 /** @param {string} p @returns {string} */
 export function basename(p) {
-  var parts = String(p).split('/')
-  return parts[parts.length - 1] || p
+  var s = String(p).replace(/[\\/]+$/, '')
+  var i = Math.max(s.lastIndexOf('/'), s.lastIndexOf('\\'))
+  return i >= 0 ? s.slice(i + 1) : s
 }
 
 /**
