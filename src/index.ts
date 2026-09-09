@@ -33,7 +33,7 @@ export interface Config {
 
 export const Config: Schema<Config> = Schema.object({
   autoRefresh: Schema.boolean().default(true).description('打开面板时自动刷新产物与 git 变更'),
-  minPanelWidth: Schema.number().min(20).max(60).default(20).description('最短面板宽度（占窗口宽度百分比）'),
+  minPanelWidth: Schema.number().min(15).max(60).default(20).description('最短面板宽度（占窗口宽度百分比）'),
   defaultOpen: Schema.boolean().default(true).description('页面加载后默认展开面板'),
   contentFontSize: Schema.number().min(11).max(20).default(13).description('内容区字体大小（px），界面文字不受影响'),
 })

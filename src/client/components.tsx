@@ -1229,7 +1229,7 @@ export function SettingsCard(props: SettingsCardProps): ReactElement | null {
             <NumberRow
               label={t('settingsMinWidth')}
               value={v.minPanelWidth ?? 20}
-              min={20}
+              min={15}
               max={60}
               disabled={disabled}
               onChange={(val) => { props.setField?.('minPanelWidth', val) }}

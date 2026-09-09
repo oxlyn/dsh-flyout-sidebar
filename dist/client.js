@@ -2846,7 +2846,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		}), /* @__PURE__ */ h(NumberRow, {
 			label: t("settingsMinWidth"),
 			value: v.minPanelWidth ?? 20,
-			min: 20,
+			min: 15,
 			max: 60,
 			disabled,
 			onChange: (val) => {
