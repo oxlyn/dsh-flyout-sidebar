@@ -42,6 +42,12 @@ header:has([data-slot="conversation.session.header.utilities"]) {
   pointer-events: none;
 }
 body[data-dsh-flyout-dragging] .artifacts-preview-overlay { transition: none; }
+/* 抽屉式动画：内容区从右往左滑入，反向滑出。preview-hidden 在 slid-out
+   之前声明，面板收起时 slid-out 的 105% 优先覆盖。 */
+.artifacts-preview-overlay.artifacts-preview-hidden {
+  transform: translateX(100%);
+  pointer-events: none;
+}
 .artifacts-preview-overlay-tabs {
   flex: none; display: flex; align-items: stretch; height: 28px;
   background: var(--dsw-alias-bg-layer-1);

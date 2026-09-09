@@ -662,6 +662,49 @@ export function ArtifactsPanel(): ReactElement | null {
     closeRight,
   } = usePreviewTabs(sessionId)
   const activeTab = tabs.find((t) => t.key === activeKey) || null
+
+  // 抽屉式动画：内容区从右往左滑入，反向滑出。previewMounted 控制 DOM 挂载
+  // （退出时延迟卸载以放完过渡），previewOpen 控制滑入/滑出状态。
+  // lastVisibleRef 保留退出瞬间的 tabs/activeKey，使滑出过程中内容不闪空。
+  const showPreview = tabs.length > 0 && !previewHidden
+  const previewMountedRef = React.useRef(false)
+  const [previewMounted, setPreviewMounted] = React.useState(false)
+  const [previewOpen, setPreviewOpen] = React.useState(false)
+  const lastTabsRef = React.useRef<PreviewTab[]>([])
+  const lastActiveKeyRef = React.useRef<string | null>(null)
+  if (showPreview) {
+    lastTabsRef.current = tabs
+    lastActiveKeyRef.current = activeKey
+  }
+  React.useEffect(() => {
+    if (showPreview) {
+      if (!previewMountedRef.current) {
+        // 首次挂载：以滑出态起始，下一帧切换为滑入，触发 CSS 过渡。
+        previewMountedRef.current = true
+        setPreviewMounted(true)
+        setPreviewOpen(false)
+        const raf = requestAnimationFrame(() => {
+          requestAnimationFrame(() => setPreviewOpen(true))
+        })
+        return () => cancelAnimationFrame(raf)
+      }
+      // 退出中恢复显示：直接滑入。
+      setPreviewOpen(true)
+    } else {
+      // 退出：先滑出，过渡结束后卸载。
+      setPreviewOpen(false)
+      const timer = setTimeout(() => {
+        previewMountedRef.current = false
+        setPreviewMounted(false)
+      }, 250)
+      return () => clearTimeout(timer)
+    }
+  }, [showPreview])
+  // 退出期间用上一帧的 tabs/activeKey 保持内容可见。
+  const displayTabs = showPreview ? tabs : lastTabsRef.current
+  const displayActiveKey = showPreview ? activeKey : lastActiveKeyRef.current
+  const displayActiveTab = displayTabs.find((t) => t.key === displayActiveKey) || null
+
   const [notice, setNotice] = React.useState('')
   const [ctxMenu, setCtxMenu] = React.useState<{ x: number; y: number; key: string } | null>(null)
   // 右键标签菜单：以原生 DOM 直挂 document.body，规避宿主 overlay 容器的
@@ -957,19 +1000,22 @@ export function ArtifactsPanel(): ReactElement | null {
   // 多标签预览覆盖层：每个打开的文件一个标签；活动标签内容盖住侧边栏面板
   // 左侧的整个区域。⇥ 按钮隐藏整个覆盖层 —— 标签保留，经左缘胶囊或打开任
   // 何文件恢复。
-  const previewOverlay =
-    tabs.length && !previewHidden ? (
+  const previewOverlay = previewMounted ? (
       <div
-        className={'artifacts-preview-overlay' + (slidOut ? ' artifacts-slid-out' : '')}
+        className={
+          'artifacts-preview-overlay'
+          + (slidOut ? ' artifacts-slid-out' : '')
+          + (!previewOpen ? ' artifacts-preview-hidden' : '')
+        }
         role="region"
         aria-label={t('previewRegion')}
       >
         <div className="artifacts-preview-overlay-tabs">
           <div className="artifacts-ptabs-scroll">
-            {tabs.map((tab) => (
+            {displayTabs.map((tab) => (
               <div
                 key={tab.key}
-                className={'artifacts-ptab' + (tab.key === activeKey ? ' is-active' : '')}
+                className={'artifacts-ptab' + (tab.key === displayActiveKey ? ' is-active' : '')}
                 title={(tab.git ? t('diffTabPrefix') : '') + (tab.path || '')}
                 onClick={() => setActiveKey(tab.key)}
                 onContextMenu={(e) => {
@@ -996,7 +1042,7 @@ export function ArtifactsPanel(): ReactElement | null {
             <PanelCollapseIcon size={16} />
           </button>
         </div>
-        {activeTab ? renderPreview(activeTab, true, settings.contentFontSize) : null}
+        {displayActiveTab ? renderPreview(displayActiveTab, true, settings.contentFontSize) : null}
       </div>
     ) : null
 

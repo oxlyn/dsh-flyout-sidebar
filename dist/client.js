@@ -99,6 +99,12 @@ header:has([data-slot="conversation.session.header.utilities"]) {
   pointer-events: none;
 }
 body[data-dsh-flyout-dragging] .artifacts-preview-overlay { transition: none; }
+/* 抽屉式动画：内容区从右往左滑入，反向滑出。preview-hidden 在 slid-out
+   之前声明，面板收起时 slid-out 的 105% 优先覆盖。 */
+.artifacts-preview-overlay.artifacts-preview-hidden {
+  transform: translateX(100%);
+  pointer-events: none;
+}
 .artifacts-preview-overlay-tabs {
   flex: none; display: flex; align-items: stretch; height: 28px;
   background: var(--dsw-alias-bg-layer-1);
@@ -2414,6 +2420,40 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		const sessionId = useSessionId();
 		const { tabs, activeKey, setActiveKey, previewHidden, setPreviewHidden, openFile, openGitDiff, closeTab, closeOthers, closeRight } = usePreviewTabs(sessionId);
 		const activeTab = tabs.find((t) => t.key === activeKey) || null;
+		const showPreview = tabs.length > 0 && !previewHidden;
+		const previewMountedRef = React.useRef(false);
+		const [previewMounted, setPreviewMounted] = React.useState(false);
+		const [previewOpen, setPreviewOpen] = React.useState(false);
+		const lastTabsRef = React.useRef([]);
+		const lastActiveKeyRef = React.useRef(null);
+		if (showPreview) {
+			lastTabsRef.current = tabs;
+			lastActiveKeyRef.current = activeKey;
+		}
+		React.useEffect(() => {
+			if (showPreview) {
+				if (!previewMountedRef.current) {
+					previewMountedRef.current = true;
+					setPreviewMounted(true);
+					setPreviewOpen(false);
+					const raf = requestAnimationFrame(() => {
+						requestAnimationFrame(() => setPreviewOpen(true));
+					});
+					return () => cancelAnimationFrame(raf);
+				}
+				setPreviewOpen(true);
+			} else {
+				setPreviewOpen(false);
+				const timer = setTimeout(() => {
+					previewMountedRef.current = false;
+					setPreviewMounted(false);
+				}, 250);
+				return () => clearTimeout(timer);
+			}
+		}, [showPreview]);
+		const displayTabs = showPreview ? tabs : lastTabsRef.current;
+		const displayActiveKey = showPreview ? activeKey : lastActiveKeyRef.current;
+		const displayActiveTab = displayTabs.find((t) => t.key === displayActiveKey) || null;
 		const [notice, setNotice] = React.useState("");
 		const [ctxMenu, setCtxMenu] = React.useState(null);
 		React.useEffect(() => {
@@ -2672,13 +2712,13 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			previewHidden,
 			activeKey
 		]);
-		const previewOverlay = tabs.length && !previewHidden ? /* @__PURE__ */ h("div", {
-			className: "artifacts-preview-overlay" + (slidOut ? " artifacts-slid-out" : ""),
+		const previewOverlay = previewMounted ? /* @__PURE__ */ h("div", {
+			className: "artifacts-preview-overlay" + (slidOut ? " artifacts-slid-out" : "") + (!previewOpen ? " artifacts-preview-hidden" : ""),
 			role: "region",
 			"aria-label": t("previewRegion")
-		}, /* @__PURE__ */ h("div", { className: "artifacts-preview-overlay-tabs" }, /* @__PURE__ */ h("div", { className: "artifacts-ptabs-scroll" }, tabs.map((tab) => /* @__PURE__ */ h("div", {
+		}, /* @__PURE__ */ h("div", { className: "artifacts-preview-overlay-tabs" }, /* @__PURE__ */ h("div", { className: "artifacts-ptabs-scroll" }, displayTabs.map((tab) => /* @__PURE__ */ h("div", {
 			key: tab.key,
-			className: "artifacts-ptab" + (tab.key === activeKey ? " is-active" : ""),
+			className: "artifacts-ptab" + (tab.key === displayActiveKey ? " is-active" : ""),
 			title: (tab.git ? t("diffTabPrefix") : "") + (tab.path || ""),
 			onClick: () => setActiveKey(tab.key),
 			onContextMenu: (e) => {
@@ -2702,7 +2742,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			className: "artifacts-preview-hide",
 			title: t("hidePreview"),
 			onClick: () => setPreviewHidden(true)
-		}, /* @__PURE__ */ h(PanelCollapseIcon, { size: 16 }))), activeTab ? renderPreview(activeTab, true, settings.contentFontSize) : null) : null;
+		}, /* @__PURE__ */ h(PanelCollapseIcon, { size: 16 }))), displayActiveTab ? renderPreview(displayActiveTab, true, settings.contentFontSize) : null) : null;
 		return /* @__PURE__ */ h(Fragment, null, previewOverlay, /* @__PURE__ */ h("div", {
 			className: "artifacts-panel" + (slidOut ? " artifacts-slid-out" : "") + (resizing ? " artifacts-resizing" : ""),
 			style: { width: widthPx },
