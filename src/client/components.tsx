@@ -941,21 +941,38 @@ export function ArtifactsPanel(): ReactElement | null {
     // DSH 左侧栏感知：拖拽面板左缘向左时，面板不得覆盖左侧栏。
     // 当面板左缘推到左侧栏右边框（展开态）时，触发左侧栏最小化；
     // 最小化后左边框左移，面板继续跟随，直到最小化后左侧栏的右边框。
-    const getSidebarRight = (): number => {
-      const conv = document.querySelector('[data-pane="conversation"]')
-      const frame = conv?.parentElement
-      if (!frame) return 0
-      const sidebarCol = frame.children[0] as HTMLElement | undefined
-      if (!sidebarCol) return 0
-      return sidebarCol.getBoundingClientRect().right
+    // DSH AppFrame 是 CSS Grid，内联 style 设 gridTemplateColumns
+    // （第一列 = 左侧栏宽度）。遍历 #root 子树找此 grid 容器，读第一列宽。
+    const getSidebarWidth = (): number => {
+      const root = document.getElementById('root')
+      if (!root) return 0
+      const find = (el: Element): number => {
+        if (el instanceof HTMLElement) {
+          const cols = el.style.gridTemplateColumns
+          if (cols) {
+            const first = cols.split(/\s+/)[0]
+            if (first && first.endsWith('px')) {
+              const w = parseFloat(first)
+              if (w > 0) return w
+            }
+          }
+        }
+        for (const child of el.children) {
+          const w = find(child)
+          if (w > 0) return w
+        }
+        return 0
+      }
+      return find(root)
     }
-    const isSidebarCollapsed = (): boolean => {
-      const conv = document.querySelector('[data-pane="conversation"]')
-      const frame = conv?.parentElement
-      return !!frame?.hasAttribute('data-sidebar-collapsed')
-    }
+    // layout 服务由 DSH 用 ctx.reflect.provide("layout", ...) 注册；
+    // ctx.get() 取不到 reflect-provided 服务，经 reflect.inject 取。
     const triggerSidebarCollapse = (): void => {
-      try { ctx.get<{ toggleSidebar: () => void }>('layout')?.toggleSidebar() } catch { /* layout 服务不可用时跳过 */ }
+      try {
+        const reflect = (ctx as unknown as { reflect?: { inject: <T>(name: string) => T | undefined } }).reflect
+        const layout = reflect?.inject<{ toggleSidebar?: () => void }>('layout')
+        layout?.toggleSidebar?.()
+      } catch { /* layout 服务不可用时跳过 */ }
     }
 
     let lastMouseX = e.clientX
@@ -966,14 +983,14 @@ export function ArtifactsPanel(): ReactElement | null {
       rafId = requestAnimationFrame(tick)
       // 光标期望的面板宽度
       const cursorW = window.innerWidth - lastMouseX - rightOffset
-      // 左侧栏右边框限制：面板不能超过左侧栏
-      const sidebarRight = getSidebarRight()
-      const maxW = window.innerWidth - sidebarRight - rightOffset
-      // 取两者较小值：光标期望 vs 左侧栏限制
+      // 左侧栏宽度：0 = 已折叠，>0 = 展开
+      const sidebarW = getSidebarWidth()
+      // 面板左缘不得超过左侧栏右边框
+      const maxW = window.innerWidth - sidebarW - rightOffset
       const w = Math.min(cursorW, maxW)
 
       // 面板左缘推到左侧栏右边框 → 触发最小化（仅展开态、仅触发一次）
-      if (!collapseTriggered && !isSidebarCollapsed() && cursorW >= maxW - 2) {
+      if (!collapseTriggered && sidebarW > 0 && cursorW >= maxW - 2) {
         collapseTriggered = true
         triggerSidebarCollapse()
       }

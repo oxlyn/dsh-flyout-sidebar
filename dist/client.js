@@ -2652,19 +2652,31 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			e.preventDefault();
 			setResizing(true);
 			const availAtStart = avail;
-			const getSidebarRight = () => {
-				const frame = document.querySelector("[data-pane=\"conversation\"]")?.parentElement;
-				if (!frame) return 0;
-				const sidebarCol = frame.children[0];
-				if (!sidebarCol) return 0;
-				return sidebarCol.getBoundingClientRect().right;
-			};
-			const isSidebarCollapsed = () => {
-				return !!(document.querySelector("[data-pane=\"conversation\"]")?.parentElement)?.hasAttribute("data-sidebar-collapsed");
+			const getSidebarWidth = () => {
+				const root = document.getElementById("root");
+				if (!root) return 0;
+				const find = (el) => {
+					if (el instanceof HTMLElement) {
+						const cols = el.style.gridTemplateColumns;
+						if (cols) {
+							const first = cols.split(/\s+/)[0];
+							if (first && first.endsWith("px")) {
+								const w = parseFloat(first);
+								if (w > 0) return w;
+							}
+						}
+					}
+					for (const child of el.children) {
+						const w = find(child);
+						if (w > 0) return w;
+					}
+					return 0;
+				};
+				return find(root);
 			};
 			const triggerSidebarCollapse = () => {
 				try {
-					ctx.get("layout")?.toggleSidebar();
+					(ctx.reflect?.inject("layout"))?.toggleSidebar?.();
 				} catch {}
 			};
 			let lastMouseX = e.clientX;
@@ -2673,10 +2685,10 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			const tick = () => {
 				rafId = requestAnimationFrame(tick);
 				const cursorW = window.innerWidth - lastMouseX - rightOffset;
-				const sidebarRight = getSidebarRight();
-				const maxW = window.innerWidth - sidebarRight - rightOffset;
+				const sidebarW = getSidebarWidth();
+				const maxW = window.innerWidth - sidebarW - rightOffset;
 				const w = Math.min(cursorW, maxW);
-				if (!collapseTriggered && !isSidebarCollapsed() && cursorW >= maxW - 2) {
+				if (!collapseTriggered && sidebarW > 0 && cursorW >= maxW - 2) {
 					collapseTriggered = true;
 					triggerSidebarCollapse();
 				}
