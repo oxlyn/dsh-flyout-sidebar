@@ -159,6 +159,16 @@ test('host plugin: flyout page HTML is complete and scripts compile', async () =
   const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1])
   assert.equal(scripts.length, 2)
   for (const s of scripts) new Function(s) // 语法错误会抛出
+  // FLYOUT_CONFIG 必须在第一个 script 的顶层（IIFE 外）声明，否则后续
+  // sharedScript 中的 renderActive 引用会抛 ReferenceError。
+  const bootScript = scripts[0]
+  const declIdx = bootScript.indexOf('var FLYOUT_CONFIG')
+  const iifeIdx = bootScript.indexOf('(function')
+  assert.ok(declIdx >= 0 && iifeIdx >= 0 && declIdx < iifeIdx,
+    'FLYOUT_CONFIG must be declared before the IIFE so it lands on global scope')
+  // 第二个 script（sharedScript）必须能引用到 FLYOUT_CONFIG。
+  assert.ok(scripts[1].includes('FLYOUT_CONFIG'),
+    'sharedScript must reference FLYOUT_CONFIG')
 })
 
 test('host plugin: content / listdir / media routes', async () => {
