@@ -2821,7 +2821,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		}, /* @__PURE__ */ h("div", { className: "artifacts-preview-overlay-tabs" }, /* @__PURE__ */ h("div", { className: "artifacts-ptabs-scroll" }, displayTabs.map((tab) => /* @__PURE__ */ h("div", {
 			key: tab.key,
 			className: "artifacts-ptab" + (tab.key === displayActiveKey ? " is-active" : ""),
-			title: (tab.git ? t("diffTabPrefix") : "") + (tab.path || ""),
+			title: (tab.git ? t("diffTabPrefix") : "") + basename(tab.path || ""),
 			onClick: () => setActiveKey(tab.key),
 			onContextMenu: (e) => {
 				e.preventDefault();

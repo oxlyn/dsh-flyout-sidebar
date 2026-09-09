@@ -539,7 +539,7 @@ ${sharedScript}
       var scroll = el('div', 'ptabs-scroll');
       tabs.forEach(function (t) {
         var tab = el('div', 'ptab' + (t.key === activeKey ? ' is-active' : ''));
-        tab.title = (t.git ? tr('diffTabPrefix') : '') + t.path;
+        tab.title = (t.git ? tr('diffTabPrefix') : '') + basename(t.path);
         tab.appendChild(el('span', 'ptab-name', basename(t.path)));
         var x = el('button', 'ptab-close', '×');
         x.type = 'button';
