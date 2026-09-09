@@ -662,49 +662,6 @@ export function ArtifactsPanel(): ReactElement | null {
     closeRight,
   } = usePreviewTabs(sessionId)
   const activeTab = tabs.find((t) => t.key === activeKey) || null
-
-  // 抽屉式动画：内容区从右往左滑入，反向滑出。previewMounted 控制 DOM 挂载
-  // （退出时延迟卸载以放完过渡），previewOpen 控制滑入/滑出状态。
-  // lastVisibleRef 保留退出瞬间的 tabs/activeKey，使滑出过程中内容不闪空。
-  const showPreview = tabs.length > 0 && !previewHidden
-  const previewMountedRef = React.useRef(false)
-  const [previewMounted, setPreviewMounted] = React.useState(false)
-  const [previewOpen, setPreviewOpen] = React.useState(false)
-  const lastTabsRef = React.useRef<PreviewTab[]>([])
-  const lastActiveKeyRef = React.useRef<string | null>(null)
-  if (showPreview) {
-    lastTabsRef.current = tabs
-    lastActiveKeyRef.current = activeKey
-  }
-  React.useEffect(() => {
-    if (showPreview) {
-      if (!previewMountedRef.current) {
-        // 首次挂载：以滑出态起始，下一帧切换为滑入，触发 CSS 过渡。
-        previewMountedRef.current = true
-        setPreviewMounted(true)
-        setPreviewOpen(false)
-        const raf = requestAnimationFrame(() => {
-          requestAnimationFrame(() => setPreviewOpen(true))
-        })
-        return () => cancelAnimationFrame(raf)
-      }
-      // 退出中恢复显示：直接滑入。
-      setPreviewOpen(true)
-    } else {
-      // 退出：先滑出，过渡结束后卸载。
-      setPreviewOpen(false)
-      const timer = setTimeout(() => {
-        previewMountedRef.current = false
-        setPreviewMounted(false)
-      }, 250)
-      return () => clearTimeout(timer)
-    }
-  }, [showPreview])
-  // 退出期间用上一帧的 tabs/activeKey 保持内容可见。
-  const displayTabs = showPreview ? tabs : lastTabsRef.current
-  const displayActiveKey = showPreview ? activeKey : lastActiveKeyRef.current
-  const displayActiveTab = displayTabs.find((t) => t.key === displayActiveKey) || null
-
   const [notice, setNotice] = React.useState('')
   const [ctxMenu, setCtxMenu] = React.useState<{ x: number; y: number; key: string } | null>(null)
   // 右键标签菜单：以原生 DOM 直挂 document.body，规避宿主 overlay 容器的
@@ -885,66 +842,6 @@ export function ArtifactsPanel(): ReactElement | null {
     return () => window.removeEventListener('resize', onResize)
   }, [])
 
-  // 跟踪 DSH 左侧栏宽度，发布为 --dsh-app-sidebar-width 供预览覆盖层的
-  // left 使用（内容区向左只展开到左侧栏右边框，不覆盖左侧栏）。
-  // DSH AppFrame 是 CSS Grid，内联 style 设 gridTemplateColumns，
-  // 第一列即左侧栏宽（折叠时为 0px）。
-  React.useEffect(() => {
-    const root = document.documentElement
-    const findAppFrame = (): HTMLElement | null => {
-      const nodes = document.querySelectorAll<HTMLElement>('#root *')
-      for (let i = 0; i < nodes.length; i++) {
-        const el = nodes[i]
-        const cols = el.style.gridTemplateColumns
-        if (cols) {
-          const first = cols.split(/\s+/)[0]
-          if (first && first.endsWith('px')) return el
-        }
-      }
-      return null
-    }
-    const readAndSet = (frame: HTMLElement | null): number => {
-      if (!frame) return 0
-      const cols = frame.style.gridTemplateColumns
-      if (!cols) return 0
-      const first = cols.split(/\s+/)[0]
-      const w = first && first.endsWith('px') ? parseFloat(first) : 0
-      root.style.setProperty('--dsh-app-sidebar-width', (Number.isFinite(w) ? w : 0) + 'px')
-      return w
-    }
-
-    let frame = findAppFrame()
-    readAndSet(frame)
-
-    // 观察 AppFrame 的 style 属性变化（折叠/展开/拖拽改 gridTemplateColumns）
-    const styleObs = frame ? new MutationObserver(() => readAndSet(frame)) : null
-    if (frame && styleObs) styleObs.observe(frame, { attributes: true, attributeFilter: ['style'] })
-
-    // AppFrame 可能在挂载后才出现或被重建：监听 #root 子树，找不到时重找
-    let subtreeObs: MutationObserver | null = null
-    if (typeof MutationObserver === 'function') {
-      subtreeObs = new MutationObserver(() => {
-        if (!frame || !document.contains(frame)) {
-          styleObs?.disconnect()
-          frame = findAppFrame()
-          if (frame) {
-            readAndSet(frame)
-            styleObs?.observe(frame, { attributes: true, attributeFilter: ['style'] })
-          }
-        } else {
-          readAndSet(frame)
-        }
-      })
-      subtreeObs.observe(document.body, { childList: true, subtree: true, attributes: false })
-    }
-
-    return () => {
-      styleObs?.disconnect()
-      subtreeObs?.disconnect()
-      root.style.removeProperty('--dsh-app-sidebar-width')
-    }
-  }, [])
-
   // 面板宽度（px）：至少 minPanelWidth% 窗口宽，拖左边缘可更宽。panelFrac
   // 保存拖拽结果（占可用宽度的比例）；null → 用配置的最小值。
   const rightOffset = (() => {
@@ -955,18 +852,13 @@ export function ArtifactsPanel(): ReactElement | null {
   const minWidthPx = Math.max(80, Math.round((winW * (settings.minPanelWidth || 0)) / 100))
   const widthPx = panelFrac != null ? Math.max(minWidthPx, Math.round(panelFrac * avail)) : minWidthPx
 
-  // 发布面板宽度到 CSS 变量：供预览覆盖层定位和 header padding 使用。
-  // 面板为覆盖模式（不推挤 AppFrame），变量仅影响覆盖层和 header 的避让。
+  // 打开时为面板预留布局空间：把 app 框架收缩面板实时宽度，会话列让位
+  //（见 styles 中 html #root 规则）。
   React.useEffect(() => {
     const root = document.documentElement
     root.style.setProperty('--dsh-flyout-sidebar-width', open ? widthPx + 'px' : '0px')
-    // body 标记让 CSS 可以用更高特异性覆盖宿主/其它插件对 header 的 padding
-    // （如 better-sidebar 折叠态会给 header 强加 78px），确保面板打开时
-    // 右上角 session 日志等按钮一定给面板让位。
-    document.body.classList.toggle('dsh-flyout-sidebar-open', open)
     return () => {
       root.style.setProperty('--dsh-flyout-sidebar-width', '0px')
-      document.body.classList.remove('dsh-flyout-sidebar-open')
     }
   }, [open, widthPx])
 
@@ -991,7 +883,7 @@ export function ArtifactsPanel(): ReactElement | null {
 
   // 推拉动画：面板和角落触发按钮共用 slide 状态（见 store）。面板常驻 DOM，
   // 开合只切换 slid-out class（= !open，同步无时序），隐藏时平移到屏外且
-  // pointer-events: none，与 header padding 过渡同时进行。
+  // pointer-events: none，与 #root 让位过渡同时进行。
   const { visible, slidOut } = useSlide()
 
   if (!visible) return null
@@ -1002,82 +894,12 @@ export function ArtifactsPanel(): ReactElement | null {
     e.preventDefault()
     setResizing(true)
     const availAtStart = avail
-
-    // DSH 左侧栏感知：拖拽面板左缘向左时，面板不得覆盖左侧栏。
-    // 当面板左缘推到左侧栏右边框（展开态）时，触发左侧栏最小化；
-    // 最小化后左边框左移，面板继续跟随，直到最小化后左侧栏的右边框。
-    // DSH AppFrame 是 CSS Grid，内联 style 设 gridTemplateColumns
-    // （第一列 = 左侧栏宽度）。遍历 #root 子树找此 grid 容器，读第一列宽。
-    const getSidebarWidth = (): number => {
-      const root = document.getElementById('root')
-      if (!root) return 0
-      const find = (el: Element): number => {
-        if (el instanceof HTMLElement) {
-          const cols = el.style.gridTemplateColumns
-          if (cols) {
-            const first = cols.split(/\s+/)[0]
-            if (first && first.endsWith('px')) {
-              const w = parseFloat(first)
-              if (w > 0) return w
-            }
-          }
-        }
-        for (const child of el.children) {
-          const w = find(child)
-          if (w > 0) return w
-        }
-        return 0
-      }
-      return find(root)
-    }
-    // layout 服务由 DSH 用 ctx.reflect.provide("layout", ...) 注册；
-    // ctx.get() 取不到 reflect-provided 服务，经 reflect.inject 取。
-    const triggerSidebarCollapse = (): void => {
-      try {
-        const reflect = (ctx as unknown as { reflect?: { inject: <T>(name: string) => T | undefined } }).reflect
-        const layout = reflect?.inject<{ toggleSidebar?: () => void }>('layout')
-        layout?.toggleSidebar?.()
-      } catch { /* layout 服务不可用时跳过 */ }
-    }
-
-    const startX = e.clientX
-    let lastMouseX = e.clientX
-    let rafId: number | null = null
-    let collapseTriggered = false
-    // 只有真正向左拖动（超过 8px）才允许触发左侧栏折叠；mousedown 瞬间不做
-    // 判断，避免「点一下/打开时把手刚好在左侧栏边框上」就误折叠（web 端
-    // 左侧栏窄，把手很容易落在边框区域内）。
-    let draggedLeft = false
-
-    const tick = (): void => {
-      rafId = requestAnimationFrame(tick)
-      // 光标期望的面板宽度
-      const cursorW = window.innerWidth - lastMouseX - rightOffset
-      // 左侧栏宽度：0 = 已折叠，>0 = 展开
-      const sidebarW = getSidebarWidth()
-      // 面板左缘不得超过左侧栏右边框
-      const maxW = window.innerWidth - sidebarW - rightOffset
-      const w = Math.min(cursorW, maxW)
-
-      if (lastMouseX < startX - 8) draggedLeft = true
-
-      // 面板左缘推到左侧栏右边框 → 触发最小化（仅展开态、仅拖动后、仅触发一次）
-      if (!collapseTriggered && sidebarW > 0 && draggedLeft && cursorW >= maxW - 2) {
-        collapseTriggered = true
-        triggerSidebarCollapse()
-      }
-      // 拖回右侧后重置触发标志，允许下一次推到时再次触发
-      if (collapseTriggered && cursorW < maxW - 10) {
-        collapseTriggered = false
-      }
-
+    const onMove = (ev: MouseEvent): void => {
+      const w = window.innerWidth - ev.clientX - rightOffset
       const frac = Math.max(minWidthPx / availAtStart, Math.min(w / availAtStart, (availAtStart - 24) / availAtStart))
       setPanelFrac(frac)
     }
-
-    const onMove = (ev: MouseEvent): void => { lastMouseX = ev.clientX }
     const onUp = (): void => {
-      if (rafId !== null) cancelAnimationFrame(rafId)
       setResizing(false)
       resizeHandlers.current = null
       document.removeEventListener('mousemove', onMove)
@@ -1086,7 +908,6 @@ export function ArtifactsPanel(): ReactElement | null {
     resizeHandlers.current = { onMove, onUp }
     document.addEventListener('mousemove', onMove)
     document.addEventListener('mouseup', onUp)
-    rafId = requestAnimationFrame(tick)
   }
 
   const flash = (msg: string): void => {
@@ -1136,23 +957,20 @@ export function ArtifactsPanel(): ReactElement | null {
   // 多标签预览覆盖层：每个打开的文件一个标签；活动标签内容盖住侧边栏面板
   // 左侧的整个区域。⇥ 按钮隐藏整个覆盖层 —— 标签保留，经左缘胶囊或打开任
   // 何文件恢复。
-  const previewOverlay = previewMounted ? (
+  const previewOverlay =
+    tabs.length && !previewHidden ? (
       <div
-        className={
-          'artifacts-preview-overlay'
-          + (slidOut ? ' artifacts-slid-out' : '')
-          + (!previewOpen ? ' artifacts-preview-hidden' : '')
-        }
+        className={'artifacts-preview-overlay' + (slidOut ? ' artifacts-slid-out' : '')}
         role="region"
         aria-label={t('previewRegion')}
       >
         <div className="artifacts-preview-overlay-tabs">
           <div className="artifacts-ptabs-scroll">
-            {displayTabs.map((tab) => (
+            {tabs.map((tab) => (
               <div
                 key={tab.key}
-                className={'artifacts-ptab' + (tab.key === displayActiveKey ? ' is-active' : '')}
-                title={(tab.git ? t('diffTabPrefix') : '') + basename(tab.path || '')}
+                className={'artifacts-ptab' + (tab.key === activeKey ? ' is-active' : '')}
+                title={(tab.git ? t('diffTabPrefix') : '') + (tab.path || '')}
                 onClick={() => setActiveKey(tab.key)}
                 onContextMenu={(e) => {
                   e.preventDefault()
@@ -1178,7 +996,7 @@ export function ArtifactsPanel(): ReactElement | null {
             <PanelCollapseIcon size={16} />
           </button>
         </div>
-        {displayActiveTab ? renderPreview(displayActiveTab, true, settings.contentFontSize) : null}
+        {activeTab ? renderPreview(activeTab, true, settings.contentFontSize) : null}
       </div>
     ) : null
 

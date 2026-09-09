@@ -5,23 +5,24 @@
  * --dsw-alias-* 设计令牌，深浅主题自动跟随。
  */
 export const styleCss = `
-/* 面板关闭时不对 host header 做任何干预：session 日志等按钮保持宿主默认
-   位置（不额外留白、不错位）。触发按钮是 fixed 透明覆盖层，不占布局。 */
-/* 面板打开时：以面板宽度精确避让右上角按钮。用 !important 压过宿主/其它
-   插件对同一 header 的 padding 规则（如 better-sidebar 折叠态强加的 78px）。 */
-body.dsh-flyout-sidebar-open header:has([data-slot="conversation.session.header.utilities"]) {
-  padding-right: var(--dsh-flyout-sidebar-width, 0px) !important;
-  transition: padding-right var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease);
+html #root {
+  margin-right: calc(var(--dsh-sidebar-width, 0px) + var(--dsh-flyout-sidebar-width, 0px));
+  transition: margin-right var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease);
 }
-body[data-dsh-flyout-dragging] header:has([data-slot="conversation.session.header.utilities"]) {
+body[data-dsh-flyout-dragging] #root {
   transition: none;
 }
+header:has([data-slot="conversation.session.header.utilities"]) {
+  padding-right: max(28px, calc(60px - var(--dsh-flyout-sidebar-width, 0px)));
+  transition: padding-right var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease);
+}
 @media (prefers-reduced-motion: reduce) {
+  html #root { transition: none; }
   header:has([data-slot="conversation.session.header.utilities"]) { transition: none; }
   .artifacts-preview-overlay, .artifacts-panel, .artifacts-corner-btn { transition: none; }
 }
 .artifacts-preview-overlay {
-  position: fixed; top: 0; bottom: 0; left: var(--dsh-app-sidebar-width, 0px);
+  position: fixed; top: 0; bottom: 0; left: 0;
   right: calc(var(--dsh-sidebar-width, 0px) + var(--dsh-flyout-sidebar-width, 0px));
   z-index: 9998;
   display: flex; flex-direction: column; min-width: 0;
@@ -32,8 +33,7 @@ body[data-dsh-flyout-dragging] header:has([data-slot="conversation.session.heade
   pointer-events: auto;
   font-family: var(--dsw-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif);
   font-size: 13px; line-height: 1.5;
-  transition: left var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease),
-    right var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease),
+  transition: right var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease),
     transform var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease);
 }
 .artifacts-preview-overlay.artifacts-slid-out,
@@ -42,12 +42,6 @@ body[data-dsh-flyout-dragging] header:has([data-slot="conversation.session.heade
   pointer-events: none;
 }
 body[data-dsh-flyout-dragging] .artifacts-preview-overlay { transition: none; }
-/* 抽屉式动画：内容区从右往左滑入，反向滑出。preview-hidden 在 slid-out
-   之前声明，面板收起时 slid-out 的 105% 优先覆盖。 */
-.artifacts-preview-overlay.artifacts-preview-hidden {
-  transform: translateX(100%);
-  pointer-events: none;
-}
 .artifacts-preview-overlay-tabs {
   flex: none; display: flex; align-items: stretch; height: 28px;
   background: var(--dsw-alias-bg-layer-1);
@@ -153,18 +147,10 @@ body[data-dsh-flyout-dragging] .artifacts-preview-overlay { transition: none; }
 .artifacts-corner-btn {
   position: fixed; top: 0; right: calc(var(--dsh-sidebar-width, 0px) + 12px);
   z-index: 10000; width: 36px; height: 28px; padding: 0;
-  border: none; background: transparent;
-  /* 颜色带多级回退：某些宿主的 --dsw-alias-* 令牌缺失时兜底到常规文字色，
-     保证触发图标始终可见（曾被误报为“图标不显示”）。 */
-  color: var(--dsw-alias-label-secondary, var(--dsw-alias-label-tertiary, var(--ds-text-2, #555)));
+  border: none; background: transparent; color: var(--dsw-alias-label-secondary);
   cursor: pointer; align-items: center; justify-content: center; display: inline-flex;
   transition: transform var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease),
     right var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease), color .15s;
-}
-/* better-sidebar 折叠时其右上角折叠按钮组占 right 10→70px；触发按钮避开它，
-   否则两者重叠抢点击（坐标约定见 better-sidebar layout.css 的 78px 注释）。 */
-body[data-dsh-sidebar-collapsed] .artifacts-corner-btn {
-  right: 78px;
 }
 /* 面板打开时随面板一起滑出屏右缘（推拉动画的另一半） */
 .artifacts-corner-btn.artifacts-slid-out {
@@ -329,17 +315,13 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 .fs-settings-toggle[data-on="true"]::after { transform: translateX(18px); }
 `
 
-/** 注入样式（幂等：内容不一致时替换，使热重载后新样式必然生效） */
+/** 注入样式（幂等：已存在则跳过） */
 export function insertStyles(): void {
   if (typeof document === 'undefined') return
   const id = 'dsh-flyout-sidebar-styles'
-  let el = document.getElementById(id) as HTMLStyleElement | null
-  if (!el) {
-    el = document.createElement('style')
-    el.id = id
-    document.head.appendChild(el)
-  }
-  // 不能用"存在即跳过"：热重载时页面残留旧 <style>，改过的 CSS 永不生效
-  // （表现为"改了没反应/还是老问题"）。内容不一致就整体替换。
-  if (el.textContent !== styleCss) el.textContent = styleCss
+  if (document.getElementById(id)) return
+  const el = document.createElement('style')
+  el.id = id
+  el.textContent = styleCss
+  document.head.appendChild(el)
 }

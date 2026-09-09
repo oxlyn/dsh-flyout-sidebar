@@ -1,6 +1,6 @@
 {
   "name": "dsh-flyout-sidebar",
-  "version": "0.1.7",
+  "version": "0.1.6",
   "description": "可弹出侧边栏 · A DeepSeek Harness sidebar that shows artifacts and pops out into a larger web tab.",
   "license": "MIT",
   "type": "module",
@@ -57,7 +57,6 @@
       "inject": [
         "@deepseek-ai/dsh-client-runtime",
         "@deepseek-ai/dsh-client-locale",
-        "@deepseek-ai/dsh-client-ui-layout",
         "@deepseek-ai/dsh-client-ui-theme",
         "@deepseek-ai/dsh-client-ui-conversation",
         "@deepseek-ai/dsh-client-ui-settings"
