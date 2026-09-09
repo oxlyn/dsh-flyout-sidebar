@@ -8,11 +8,12 @@ export const styleCss = `
 /* 面板关闭时:corner 触发按钮滑回右上角(占 right 12~48px 区间),左上角
    panel 不动,日志按钮让位留白 —— 与 better-sidebar 折叠态给右上角按钮组
    让位(right 10→70px)的思路一致,避免两块按钮挤在一起(见下方 64px 规则)。 */
-/* 面板打开时:以面板宽度精确避让右上角按钮,并在面板左侧留 16px 间距,日志
-   按钮不紧贴面板边框。用 !important 压过宿主/其它插件对同一 header 的
-   padding 规则(如 better-sidebar 折叠态强加的 78px)。 */
+/* 面板打开:header 已被 AppFrame grid 推挤到面板左缘(components.tsx 追加
+   轨道),这里只需再留固定 16px 间距,日志按钮与面板保持恒定距离 —— 不能
+   再按面板宽让位一次,否则推挤 + padding 叠加,日志按钮会被推出去两倍
+   面板宽(距面板过远)。用 !important 压过宿主/其它插件的同规则。 */
 body.dsh-flyout-sidebar-open header:has([data-slot="conversation.session.header.utilities"]) {
-  padding-right: calc(var(--dsh-flyout-sidebar-width, 0px) + 16px) !important;
+  padding-right: 16px !important;
   transition: padding-right var(--ds-transition-duration-slow, 200ms) var(--ds-ease-in-out, ease);
 }
 /* 面板收起:日志按钮让位到 64px(= corner 按钮 48px 左缘 + 16px 间距)。
