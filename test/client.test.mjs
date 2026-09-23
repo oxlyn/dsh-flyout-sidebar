@@ -71,14 +71,37 @@ function loadClientBundle() {
 function makeClientCtx() {
   const registered = []
   const intervals = []
+  const mutations = []
+  const formSnapshot = {
+    status: 'ready',
+    value: { autoRefresh: true, minPanelWidth: 20, defaultOpen: true, contentFontSize: 13 },
+    revision: 3,
+    writable: true,
+  }
+  const configForm = {
+    getSnapshot: () => formSnapshot,
+    subscribe: () => () => {},
+    mutate(ops, revision) {
+      mutations.push({ ops, revision })
+      return Promise.resolve(true)
+    },
+  }
   const services = {
     slots: {
       register(definition, component) {
         registered.push({ definition, component })
-        return definition
+        return () => {}
       },
       inject(slot, factory) {
         factory()
+        return () => {}
+      },
+    },
+    configForms: {
+      get: () => configForm,
+      whileServed(namespaces, register) {
+        register(new Set(namespaces))
+        return () => {}
       },
     },
     sessions: {
@@ -93,6 +116,8 @@ function makeClientCtx() {
   return {
     registered,
     intervals,
+    mutations,
+    formSnapshot,
     get(id) {
       return services[id]
     },
@@ -101,7 +126,9 @@ function makeClientCtx() {
       return () => {}
     },
     inject(deps, callback) {
-      // 测试环境无 settingsScope 服务，动态注入回调不执行
+      // cordis 动态注入：依赖就绪后用派生 ctx 执行回调（派生 ctx 的 get 仍读
+      // 同一批服务，测试里直接复用本对象即可）
+      if (deps.includes('configForms') && services.configForms) callback(this)
     },
     effect(dispose) {
       if (typeof dispose === 'function') dispose()
@@ -121,10 +148,43 @@ test('client bundle: apply inserts styles and registers two overlay slots', () =
   const ctx = makeClientCtx()
   plugin.apply(ctx)
   assert.ok(created.some((el) => el.tag === 'style' && el.id === 'dsh-flyout-sidebar-styles'), '样式应被注入')
-  assert.equal(ctx.registered.length, 2)
-  const [trigger, panel] = ctx.registered.map((r) => r.definition)
+  const overlay = ctx.registered.filter((r) => r.definition.name === 'shell.overlay')
+  assert.equal(overlay.length, 2)
+  const [trigger, panel] = overlay.map((r) => r.definition)
   assert.deepEqual(trigger, { name: 'shell.overlay', id: 'artifacts-sidebar-trigger', order: 40, label: 'Artifacts' })
   assert.deepEqual(panel, { name: 'shell.overlay', id: 'artifacts-sidebar-panel', order: 50, label: 'Artifacts Panel' })
+})
+
+test('client bundle: registers the row config page under <package>#<row id>', () => {
+  const { plugin } = loadClientBundle()
+  const ctx = makeClientCtx()
+  plugin.apply(ctx)
+  const entry = ctx.registered.find((r) => r.definition.name === 'plugins.row.config')
+  assert.ok(entry, '应注册 plugins.row.config（宿主插件管理页据此渲染行的配置入口）')
+  assert.equal(entry.definition.key, 'dsh-flyout-sidebar#flyout-sidebar')
+  assert.equal(typeof entry.definition.label, 'function')
+})
+
+test('client bundle: config page renders summary and the staged form', () => {
+  const { plugin } = loadClientBundle()
+  const ctx = makeClientCtx()
+  plugin.apply(ctx)
+  const entry = ctx.registered.find((r) => r.definition.name === 'plugins.row.config')
+  const injected = entry.definition.inject()
+  assert.ok(injected.configForm, '配置页应拿到宿主表单引用')
+
+  const summary = renderToString(React.createElement(entry.component, { ...injected, view: 'summary' }))
+  assert.ok(summary.includes('Sidebar panel preferences'), 'summary 视图应为单行说明')
+
+  const html = renderToString(React.createElement(entry.component, { ...injected, view: 'page' }))
+  assert.ok(html.includes('fs-settings-form'), '应渲染配置表单')
+  assert.ok(html.includes('Auto-refresh on panel open'), '应有自动刷新开关')
+  assert.ok(html.includes('Min panel width (%)'), '应有面板最小宽度')
+  assert.ok(html.includes('Content font size (px)'), '应有内容区字号')
+  assert.equal((html.match(/fs-settings-toggle/g) || []).length, 2, '应有两个开关')
+  assert.ok(html.includes('value="20"') && html.includes('value="13"'), '数字控件应回填宿主当前值')
+  assert.ok(html.includes('fs-settings-save'), '应有保存控件')
+  assert.ok(html.includes('disabled'), '未改动时保存应禁用')
 })
 
 test('client bundle: ArtifactsPanel renders file tree panel', () => {

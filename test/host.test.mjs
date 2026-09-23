@@ -99,9 +99,6 @@ function makeCtx(workspace) {
       intervals.push(fn)
       return () => {}
     },
-    inject(deps, callback) {
-      // 测试环境无 settings 服务，动态注入回调不执行
-    },
   }
   return ctx
 }
@@ -138,6 +135,21 @@ test('host plugin: apply registers routes, events and intervals', async () => {
   assert.equal(ctx.handlers['tools/execute'].length, 1)
   assert.equal(ctx.intervals.length, 1) // 15s 兜底轮询
   assert.equal(ctx.disposers.length, expectedRoutes.length)
+})
+
+test('host plugin: config route sends plain values, not volatile references', async () => {
+  const workspace = mkdtempSync(join(os.tmpdir(), 'dsh-flyout-cfg-'))
+  const plugin = await import('../dist/index.js')
+  const ctx = makeCtx(workspace)
+  plugin.apply(ctx)
+
+  // Config 字段以 .volatile() 声明，apply 收到的是引用；JSON.stringify 引用会得到
+  // {}，路由必须下发解包后的纯值，否则面板永远读不到配置。
+  const res = makeFakeRes()
+  await ctx.routes.get('/flyout-sidebar/config')({ url: '/flyout-sidebar/config' }, res)
+  assert.deepEqual(JSON.parse(res.body), {
+    config: { autoRefresh: true, minPanelWidth: 20, defaultOpen: true, contentFontSize: 13 },
+  })
 })
 
 test('host plugin: flyout page HTML is complete and scripts compile', async () => {

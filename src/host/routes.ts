@@ -43,8 +43,7 @@ function sendText(res: ServerResponse, status: number, body: string): void {
 export function registerRoutes(
   ctx: HostContext,
   webServer: DshWebServer,
-  _config: import('../index.js').Config,
-  getConfig: () => import('../index.js').Config,
+  getConfig: () => import('../index.js').ConfigValues,
 ): void {
   const register = (route: Parameters<DshWebServer['register']>[0], label: string): void => {
     ctx.effect(() => webServer.register(route), label)
@@ -66,7 +65,7 @@ export function registerRoutes(
         "connect-src 'self'",
       ].join('; ')
       // 每次请求重建 HTML：把 getConfig() 的最新 contentFontSize 等内联进
-      // FLYOUT_CONFIG，避免启动期缓存值与用户在 Settings 卡片改的值不一致。
+      // FLYOUT_CONFIG，避免启动期缓存值与用户在 Settings 表单改的值不一致。
       const livePage = buildFlyoutPage(getConfig())
       res.writeHead(200, {
         'Content-Type': 'text/html; charset=utf-8',
@@ -89,8 +88,8 @@ export function registerRoutes(
     kind: 'exact',
     path: '/flyout-sidebar/config',
     handler(req, res) {
-      // 插件配置：优先从 settings namespace 读取用户已编辑值（热重载后即时反映），
-      // 回退到 cordis config 默认。面板每次打开拉取最新值。
+      // 插件配置：现读宿主侧 volatile 引用的当前值（Settings 表单改值后即时反映）。
+      // 面板每次打开拉取最新值。
       sendJson(res, { config: getConfig() })
     },
   }, 'artifacts: config route')

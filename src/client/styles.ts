@@ -301,17 +301,9 @@ body[data-ds-dark-theme] .tok-function, body[data-ds-dark-theme] .tok-decorator 
 body[data-ds-dark-theme] .tok-class, body[data-ds-dark-theme] .tok-builtin, body[data-ds-dark-theme] .tok-tag, body[data-ds-dark-theme] .tok-key { color: #74c0fc; }
 body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 
-/* Settings 卡片（Settings → Plugins → Plugin configuration）— 跟随 DSH PluginCard 风格 */
-.fs-settings-card { background: var(--dsw-alias-bg-layer-3); border: 1px solid var(--dsw-alias-border-l2); border-radius: 12px; transition: border-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out), background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out); }
-.fs-settings-card:hover { border-color: var(--dsw-alias-label-dimmed); }
-.fs-settings-open, .fs-settings-open:hover { background: var(--dsw-alias-bg-layer-2); border-color: var(--dsw-alias-label-dimmed); }
-.fs-settings-head { width: 100%; appearance: none; border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 12px; }
-.fs-settings-headtext { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
-.fs-settings-name { font-size: 15px; font-weight: 600; line-height: 1.4; color: var(--dsw-alias-label-primary); }
-.fs-settings-desc { font-size: 13px; line-height: 1.5; color: var(--dsw-alias-label-tertiary); }
-.fs-settings-chevron { flex: none; color: var(--dsw-alias-label-tertiary); transition: transform var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out); }
-.fs-settings-open .fs-settings-chevron { transform: rotate(180deg); }
-.fs-settings-body { border-top: 1px solid var(--dsw-alias-border-l2); margin: 0 16px; padding: 4px 0 12px; display: flex; flex-direction: column; gap: 0; }
+/* 插件配置页（插件页 → 本插件的行 → 配置）：行/标题/描述由插件管理页绘制，
+   这里只负责表单本体与保存控件，跟随 DSH 设计令牌。 */
+.fs-settings-form { display: flex; flex-direction: column; gap: 0; }
 .fs-settings-row { display: flex; align-items: center; gap: 8px; padding: 8px 0; }
 .fs-settings-label { flex: 1; min-width: 0; font-size: 14px; color: var(--dsw-alias-label-primary); }
 .fs-settings-input {
@@ -323,6 +315,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 }
 .fs-settings-input:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover); }
 .fs-settings-input:disabled { opacity: .5; cursor: default; }
+.fs-settings-input[data-invalid="true"] { border-color: var(--dsw-alias-accent-error, #e5484d); }
 .fs-settings-toggle {
   position: relative; width: 40px; height: 22px; border-radius: 11px;
   border: none; cursor: pointer; padding: 0; flex: none;
@@ -336,6 +329,18 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
   background: #fff; transition: transform var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
 }
 .fs-settings-toggle[data-on="true"]::after { transform: translateX(18px); }
+.fs-settings-actions { display: flex; align-items: center; gap: 10px; padding: 12px 0 4px; }
+.fs-settings-save {
+  appearance: none; border: 1px solid transparent; border-radius: 8px; cursor: pointer;
+  padding: 5px 14px; font: inherit; font-size: 13px; font-weight: 500;
+  background: var(--dsw-alias-accent-primary, #2a7fbf); color: #fff;
+  transition: opacity var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
+}
+.fs-settings-save:disabled { opacity: .45; cursor: default; }
+.fs-settings-status, .fs-settings-note {
+  font-size: 12px; line-height: 1.5; color: var(--dsw-alias-label-tertiary);
+}
+.fs-settings-note { margin: 4px 0 8px; }
 `
 
 /** 注入样式（幂等：内容不一致时替换，使热重载后新样式必然生效） */

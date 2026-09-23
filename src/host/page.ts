@@ -28,7 +28,7 @@ if (/<\/script/i.test(sharedScript)) {
   throw new Error('shared inline script must not contain a literal </script> sequence')
 }
 
-export function buildFlyoutPage(config: import('../index.js').Config): string {
+export function buildFlyoutPage(config: import('../index.js').ConfigValues): string {
   return String.raw`<!doctype html>
 <html lang="zh-CN">
 <head>

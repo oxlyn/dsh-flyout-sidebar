@@ -159,11 +159,11 @@ export const settingsStore = {
    * 从宿主拉取插件配置（config 已由 cordis 校验填充默认值）并通知订阅者。
    * 配置保存在宿主侧，页面内不持久化；面板打开即用最新值。
    *
-   * syncDefaultOpen=true（启动首次加载、settings scope 配置变更回调）时，
-   * 若本次拉取确实改动了 defaultOpen 字段，则实时同步边栏开合 —— 用户在
-   * 设置卡片切换「默认展开」开关后边栏立即跟随展开/收起。面板摊开时例行
-   * 拉取（刷新 minPanelWidth 等设置）不传此 flag：只刷新配置，绝不回写
-   * 开合状态，否则刚点开的边栏会被 defaultOpen 当场压回（点击无反应）。
+   * syncDefaultOpen=true（启动首次加载）时，若本次拉取确实改动了 defaultOpen
+   * 字段，则实时同步边栏开合 —— 用户改完「默认展开」设置后重新加载页面，边栏
+   * 立即按新偏好展开/收起。面板摊开时例行拉取（刷新 minPanelWidth 等设置）不传
+   * 此 flag：只刷新配置，绝不回写开合状态，否则刚点开的边栏会被 defaultOpen
+   * 当场压回（点击无反应）。
    */
   load(opts?: { syncDefaultOpen?: boolean }): void {
     const syncDefaultOpen = !!(opts && opts.syncDefaultOpen)

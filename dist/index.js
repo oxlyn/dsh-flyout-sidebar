@@ -1022,7 +1022,7 @@ var highlight_default = "/**\n * 共享：零依赖语法高亮器（无模板�
 var markdown_default = "/**\n * 共享：极简 Markdown → HTML 渲染器。\n *\n * 可移植性约束见 ext.ts 顶部说明：本文件经 `?raw` 原样内联进独立弹出页的\n * 经典 <script>，只能使用 JSDoc 标注类型。围栏代码块通过 shared/highlight\n * 的 highlightCode 高亮。\n */\nimport { highlightCode } from './highlight.js'\n\n/** @param {string} s @returns {string} */\nfunction mdEscape(s) {\n  return String(s).replace(/[\\u0000\\u0001]/g, '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;')\n}\n\n/**\n * URL 白名单：只放行 http(s)、站内相对路径、页内锚点与 data:image/*，\n * 其余（javascript:、vbscript: 及实体编码变体等）一律替换为 '#'，防止\n * 预览渲染出来的链接/图片在点击时执行脚本。\n * @param {string} u @returns {string}\n */\nfunction mdSafeUrl(u) {\n  var s = String(u || '').replace(/[\\s\\u0000-\\u001f]/g, '')\n  if (/^https?:\\/\\//i.test(s)) return s\n  if (/^\\/(?!\\/)/.test(s) || /^\\.{1,2}\\//.test(s) || s.charAt(0) === '#') return s\n  if (/^data:image\\/(?:png|gif|jpeg|webp|bmp|avif);/i.test(s)) return s\n  return '#'\n}\n\n/** @param {string} s @returns {string} */\nfunction mdInline(s) {\n  // code span 先摘出为占位符再跑后续规则：反引号内的 `[x](url)`、`**b**`\n  // 应原样输出，不被行内链接/强调规则二次渲染（占位符字符已在 mdEscape 剥除）。\n  /** @type {string[]} */\n  const codes = []\n  s = s.replace(/`([^`]+)`/g, (m, c) => {\n    codes.push('<code>' + c + '</code>')\n    return '\\u0000' + (codes.length - 1) + '\\u0000'\n  })\n  s = s.replace(/!\\[([^\\]]*)\\]\\(([^)\\s]+)\\)/g, (m, alt, u) => '<img alt=\"' + alt + '\" src=\"' + mdSafeUrl(u) + '\">')\n  s = s.replace(/\\[([^\\]]+)\\]\\(([^)\\s]+)\\)/g, (m, text, u) => '<a href=\"' + mdSafeUrl(u) + '\" target=\"_blank\" rel=\"noopener noreferrer\">' + text + '</a>')\n  s = s.replace(/\\*\\*([^*]+)\\*\\*/g, '<strong>$1</strong>')\n  s = s.replace(/\\*([^*\\n]+)\\*/g, '<em>$1</em>')\n  s = s.replace(/\\u0000(\\d+)\\u0000/g, (m, i) => codes[Number(i)] ?? '')\n  return s\n}\n\n/**\n * GFM 管道表格辅助：按未转义的 | 切分单元格（行内 \\| 还原为字面量竖线），\n * 并去掉首尾管道产生的空单元格。\n * @param {string} line @returns {string[]}\n */\nfunction mdSplitCells(line) {\n  const parts = String(line).replace(/\\\\\\|/g, '\\u0002').split('|')\n  for (let i = 0; i < parts.length; i += 1) {\n    parts[i] = (parts[i] || '').replace(/\\u0002/g, '|').trim()\n  }\n  return parts\n}\n\n/** @param {string[]} cells @returns {string[]} */\nfunction mdTrimEdgeCells(cells) {\n  if (cells.length && cells[0] === '') cells.shift()\n  if (cells.length && cells[cells.length - 1] === '') cells.pop()\n  return cells\n}\n\n/** @param {string[]} cells @returns {boolean} 是否为 GFM 分隔行（:--- / :---: / ---: 形态） */\nfunction mdIsDelimiterRow(cells) {\n  return cells.length > 0 && cells.every((c) => /^:?-+:?$/.test(c))\n}\n\n/**\n * @param {string} cell @returns {string} 'center' | 'right' | ''（left 与默认一致，不输出）\n */\nfunction mdCellAlign(cell) {\n  if (/^:-+:$/.test(cell)) return 'center'\n  if (/^:-+$/.test(cell)) return 'left'\n  if (/^-+:$/.test(cell)) return 'right'\n  return ''\n}\n\n/** @param {string} a @returns {string} 单元格对齐的内联样式属性 */\nfunction mdAlignAttr(a) {\n  return a === 'center' || a === 'right' ? ' style=\"text-align:' + a + '\"' : ''\n}\n\n/** @param {string} src @returns {string} HTML */\nexport function mdToHtml(src) {\n  const lines = String(src || '').replace(/\\r\\n/g, '\\n').split('\\n')\n  /** @type {string[]} */\n  const out = []\n  let i = 0\n  while (i < lines.length) {\n    const line = /** @type {string} */ (lines[i])\n    if (/^\\s*```/.test(line)) {\n      const fence = /^\\s*```([\\w+-]*)/.exec(line)\n      const langHint = fence ? fence[1] || '' : ''\n      /** @type {string[]} */\n      const buf = []\n      i += 1\n      while (i < lines.length && !/^\\s*```/.test(/** @type {string} */ (lines[i]))) {\n        buf.push(/** @type {string} */ (lines[i]))\n        i += 1\n      }\n      i += 1\n      out.push('<pre><code>' + highlightCode(buf.join('\\n'), langHint) + '</code></pre>')\n      continue\n    }\n    const h = /^(#{1,6})\\s+(.*)$/.exec(line)\n    if (h) {\n      const lv = (h[1] || '').length\n      out.push('<h' + lv + '>' + mdInline(mdEscape(/** @type {string} */ (h[2]))) + '</h' + lv + '>')\n      i += 1\n      continue\n    }\n    if (/^\\s*(---+|\\*\\*\\*+|___+)\\s*$/.test(line)) {\n      out.push('<hr>')\n      i += 1\n      continue\n    }\n    if (/^\\s*>\\s?/.test(line)) {\n      /** @type {string[]} */\n      const q = []\n      while (i < lines.length && /^\\s*>\\s?/.test(/** @type {string} */ (lines[i]))) {\n        q.push((/** @type {string} */ (lines[i])).replace(/^\\s*>\\s?/, ''))\n        i += 1\n      }\n      out.push('<blockquote>' + mdInline(mdEscape(q.join(' '))) + '</blockquote>')\n      continue\n    }\n    if (/^\\s*[-*+]\\s+/.test(line)) {\n      /** @type {string[]} */\n      const lis = []\n      while (i < lines.length && /^\\s*[-*+]\\s+/.test(/** @type {string} */ (lines[i]))) {\n        lis.push(mdInline(mdEscape((/** @type {string} */ (lines[i])).replace(/^\\s*[-*+]\\s+/, ''))))\n        i += 1\n      }\n      out.push('<ul>' + lis.map((x) => '<li>' + x + '</li>').join('') + '</ul>')\n      continue\n    }\n    if (/^\\s*\\d+\\.\\s+/.test(line)) {\n      /** @type {string[]} */\n      const lis2 = []\n      while (i < lines.length && /^\\s*\\d+\\.\\s+/.test(/** @type {string} */ (lines[i]))) {\n        lis2.push(mdInline(mdEscape((/** @type {string} */ (lines[i])).replace(/^\\s*\\d+\\.\\s+/, ''))))\n        i += 1\n      }\n      out.push('<ol>' + lis2.map((x) => '<li>' + x + '</li>').join('') + '</ol>')\n      continue\n    }\n    if (line.trim() === '') {\n      i += 1\n      continue\n    }\n    // GFM 管道表格：表头行（含 |）+ 分隔行（:---/:---:/---:）+ 数据行，\n    // 空行或不含 | 的行结束；列数以表头为准，数据行多删少补，\n    // 单元格内容走 mdEscape + mdInline，对齐声明转成内联 text-align。\n    if (line.indexOf('|') >= 0 && i + 1 < lines.length) {\n      const head = mdTrimEdgeCells(mdSplitCells(line))\n      const delim = mdTrimEdgeCells(mdSplitCells(/** @type {string} */ (lines[i + 1])))\n      if (head.length && mdIsDelimiterRow(delim)) {\n        const aligns = delim.map(mdCellAlign)\n        const colCount = head.length\n        /** @type {string[][]} */\n        const rows = []\n        i += 2\n        while (i < lines.length && (/** @type {string} */ (lines[i])).trim() !== '' && (/** @type {string} */ (lines[i])).indexOf('|') >= 0) {\n          const cells = mdTrimEdgeCells(mdSplitCells(/** @type {string} */ (lines[i])))\n          /** @type {string[]} */\n          const padded = []\n          for (let c = 0; c < colCount; c += 1) padded.push(cells[c] || '')\n          rows.push(padded)\n          i += 1\n        }\n        let table = '<table><thead><tr>'\n        for (let c = 0; c < colCount; c += 1) {\n          table += '<th' + mdAlignAttr(aligns[c] || '') + '>' + mdInline(mdEscape(head[c] || '')) + '</th>'\n        }\n        table += '</tr></thead><tbody>'\n        for (const cells of rows) {\n          table += '<tr>'\n          for (let c = 0; c < colCount; c += 1) {\n            table += '<td' + mdAlignAttr(aligns[c] || '') + '>' + mdInline(mdEscape(cells[c] || '')) + '</td>'\n          }\n          table += '</tr>'\n        }\n        out.push(table + '</tbody></table>')\n        continue\n      }\n    }\n    out.push('<p>' + mdInline(mdEscape(line)) + '</p>')\n    i += 1\n  }\n  return out.join('\\n')\n}\n";
 //#endregion
 //#region src/shared/i18n.js?raw
-var i18n_default = "/**\n * 共享：中英双语 UI 文案。\n *\n * 与 ext/highlight/markdown 一样遵守「可移植源码」约束：只能使用 JSDoc 标注\n * 类型（不得出现 TS 语法注记）、不得引入本目录之外的依赖。本模块被同时用于：\n * 1. tsdown 打包进 client 侧（浏览器 React bundle）；\n * 2. tsdown 构建期经 `?raw` 读入原始文本，内联进独立弹出页 /flyout-sidebar\n *    的经典 <script>（见 src/host/page.ts）。\n *\n * 语言选择：跟随 DSH 宿主界面语言。应用内侧边栏观察 `<html lang>`（宿主\n * 已设置语言时），把 'zh'/'en' 通过 localStorage `dsh-flyout-sidebar:lang`\n * 发布；独立弹出页 / 各入口读取该值，未发布时按浏览器语言自动判定。\n * `t(key)` 取当前语言文案，缺失时回退另一语言、再回退 key 本身。\n */\n\n/** @type {Record<string, string>} */\nconst ZH = {\n  // 通用状态\n  loading: '加载中…',\n  loadingTree: '加载文件树…',\n  loadingChanges: '加载变更列表…',\n  loadingPdf: '加载 PDF…',\n  searching: '搜索中…',\n  emptyDir: '（空目录）',\n  noChanges: '没有未提交的变更',\n  noChangesHead: '没有未提交的变更（相对于 HEAD）',\n  noResults: '没有匹配的文件',\n  readFailed: '读取失败',\n  retry: '重试',\n  gitStatusFailed: 'git status 失败',\n  imageLoadFailed: '图片加载失败',\n  pdfLoadFailed: 'pdf.js 加载失败',\n  searchFailed: '搜索失败',\n  treeLoadFailed: '加载失败',\n  truncated: '（已截断的预览）',\n  // 复制 / 引用\n  copied: '已复制',\n  copiedPath: '已复制路径',\n  copiedRef: '已复制 @引用（未能写入输入框）',\n  insertedInput: '已插入输入框',\n  refBtn: '@引用',\n  refTitle: '引用到输入框（失败则复制 @path）',\n  refFlyoutTitle: '复制 @path 引用',\n  copyPath: '复制路径',\n  refInput: '@引用到输入框',\n  // 面板头部 / 控件\n  collapsePanel: '收起侧边栏',\n  panelAria: '文件面板',\n  flyoutTitle: '弹出式侧边栏',\n  flyoutOpen: '弹出式侧边栏 — 在新标签页打开（可拖到另一块显示器）',\n  resizeHandle: '拖动调整宽度',\n  resizePanel: '拖动调整面板宽度',\n  refreshTree: '刷新文件树',\n  refreshChanges: '刷新变更列表',\n  refresh: '刷新',\n  viewGit: '查看 Git 变更（未提交）',\n  backToFiles: '返回文件列表',\n  hidePreview: '隐藏预览（标签页保留）',\n  closeTab: '关闭标签页',\n  closeOthers: '关闭其他',\n  closeRight: '关闭右侧标签',\n  previewRegion: '文件预览',\n  diffTabPrefix: '[diff] ',\n  searchPlaceholder: '搜索文件…',\n  searchToggle: '搜索文件',\n  hintClickGit: '点击右侧变更文件查看 diff',\n  hintClickTree: '点击右侧文件查看内容',\n  movePanelLeft: '将文件面板移到左侧',\n  movePanelRight: '将文件面板移到右侧',\n  // git 状态\n  statusU: '未跟踪',\n  statusA: '新增',\n  statusM: '修改',\n  statusD: '删除',\n  statusR: '重命名',\n  statusC: '复制',\n  statusT: '类型变更',\n  staged: '（已暂存）',\n  unstaged: '（未暂存）',\n  // diff / 预览控件\n  diffDeleted: '- 删除',\n  diffAdded: '+ 新增',\n  zoomOut: '缩小',\n  zoomIn: '放大',\n  prevPage: '上一页',\n  nextPage: '下一页',\n  openInEditor: '在系统编辑器打开',\n  openedInEditor: '已在编辑器打开',\n  openFailed: '打开失败',\n  // 设置卡片\n  settingsTitle: '弹出式侧边栏',\n  settingsDesc: '侧边栏面板偏好设置',\n  settingsAutoRefresh: '打开面板时自动刷新',\n  settingsMinWidth: '面板最小宽度（%）',\n  settingsDefaultOpen: '页面加载后默认展开',\n  settingsFontSize: '内容区字号（px）',\n}\n\n/** @type {Record<string, string>} */\nconst EN = {\n  loading: 'Loading…',\n  loadingTree: 'Loading file tree…',\n  loadingChanges: 'Loading change list…',\n  loadingPdf: 'Loading PDF…',\n  searching: 'Searching…',\n  emptyDir: '(empty directory)',\n  noChanges: 'No uncommitted changes',\n  noChangesHead: 'No uncommitted changes (relative to HEAD)',\n  noResults: 'No matching files',\n  readFailed: 'Failed to read',\n  retry: 'Retry',\n  gitStatusFailed: 'git status failed',\n  imageLoadFailed: 'Failed to load image',\n  pdfLoadFailed: 'Failed to load pdf.js',\n  searchFailed: 'Search failed',\n  treeLoadFailed: 'Failed to load',\n  truncated: '(truncated preview)',\n  copied: 'Copied',\n  copiedPath: 'Path copied',\n  copiedRef: 'Copied @reference (could not write to input box)',\n  insertedInput: 'Inserted into input box',\n  refBtn: '@ref',\n  refTitle: 'Quote into input box (falls back to copying @path)',\n  refFlyoutTitle: 'Copy @path reference',\n  copyPath: 'Copy path',\n  refInput: '@reference into input box',\n  collapsePanel: 'Collapse sidebar',\n  panelAria: 'File panel',\n  flyoutTitle: 'Flyout sidebar',\n  flyoutOpen: 'Flyout sidebar — open in a new tab (drag to another display)',\n  resizeHandle: 'Drag to resize',\n  resizePanel: 'Drag to resize panel',\n  refreshTree: 'Refresh file tree',\n  refreshChanges: 'Refresh change list',\n  refresh: 'Refresh',\n  viewGit: 'View Git changes (uncommitted)',\n  backToFiles: 'Back to file list',\n  hidePreview: 'Hide preview (tabs are kept)',\n  closeTab: 'Close tab',\n  closeOthers: 'Close others',\n  closeRight: 'Close tabs to the right',\n  previewRegion: 'File preview',\n  diffTabPrefix: '[diff] ',\n  searchPlaceholder: 'Search files…',\n  searchToggle: 'Search files',\n  hintClickGit: 'Click a changed file to view its diff',\n  hintClickTree: 'Click a file to view its content',\n  movePanelLeft: 'Move file panel to the left',\n  movePanelRight: 'Move file panel to the right',\n  statusU: 'Untracked',\n  statusA: 'Added',\n  statusM: 'Modified',\n  statusD: 'Deleted',\n  statusR: 'Renamed',\n  statusC: 'Copied',\n  statusT: 'Type change',\n  staged: '(staged)',\n  unstaged: '(unstaged)',\n  diffDeleted: '- Deleted',\n  diffAdded: '+ Added',\n  zoomOut: 'Zoom out',\n  zoomIn: 'Zoom in',\n  prevPage: 'Previous page',\n  nextPage: 'Next page',\n  openInEditor: 'Open in system editor',\n  openedInEditor: 'Opened in editor',\n  openFailed: 'Failed to open',\n  // Settings card\n  settingsTitle: 'Flyout Sidebar',\n  settingsDesc: 'Sidebar panel preferences',\n  settingsAutoRefresh: 'Auto-refresh on panel open',\n  settingsMinWidth: 'Min panel width (%)',\n  settingsDefaultOpen: 'Open by default on page load',\n  settingsFontSize: 'Content font size (px)',\n}\n\n/** @type {Record<string, Record<string, string>>} */\nconst DICTS = { zh: ZH, en: EN }\n\nconst LANG_KEY = 'dsh-flyout-sidebar:lang'\n\n/** @type {'zh' | 'en' | null} 已发布的主界面语言（null = 宿主未发布，按浏览器判定） */\nlet publishedLang = null\n/** @type {Array<(lang: string) => void>} */\nlet listeners = []\n\n/** @returns {'zh' | 'en' | null} 主面板发布到 localStorage 的语言，无效时 null */\nfunction readPublishedLang() {\n  try {\n    var v = localStorage.getItem(LANG_KEY)\n    return v === 'zh' || v === 'en' ? v : null\n  } catch (e) {\n    return null\n  }\n}\n\n/** 浏览器语言自动判定：非 zh 开头一律英文 */\nfunction autoLang() {\n  try {\n    var langs = navigator.languages || (navigator.language ? [navigator.language] : [])\n    for (var i = 0; i < langs.length; i++) {\n      var l = String(langs[i] || '').toLowerCase()\n      if (l.indexOf('zh') === 0) return 'zh'\n      if (l.indexOf('en') === 0) return 'en'\n    }\n  } catch (e) {\n    // navigator 不可用时按英文处理\n  }\n  return 'en'\n}\n\nfunction currentLang() {\n  if (publishedLang === null) publishedLang = readPublishedLang()\n  return publishedLang || autoLang()\n}\n\n/**\n * @param {string} key 文案键\n * @returns {string} 当前语言文案；两级回退（另一语言 → key）\n */\nexport function t(key) {\n  var lang = currentLang()\n  var dict = DICTS[lang] || EN\n  if (dict[key] != null) return dict[key]\n  var other = DICTS[lang === 'zh' ? 'en' : 'zh']\n  if (!other) return key\n  return other[key] != null ? other[key] : key\n}\n\n/** @returns {'zh' | 'en'} 当前生效语言（含自动判定的结果） */\nexport function getLang() {\n  return currentLang()\n}\n\n/**\n * 发布语言：主面板观察宿主界面语言后调用，写入 localStorage 供独立弹出页\n * 读取，并通知本页订阅者重渲染。\n * @param {'zh' | 'en'} lang\n */\nexport function setLang(lang) {\n  publishedLang = lang\n  try {\n    localStorage.setItem(LANG_KEY, lang)\n  } catch (e) {\n    // localStorage 不可用时仅保存在内存\n  }\n  var next = listeners.slice()\n  for (var i = 0; i < next.length; i++) {\n    var fn = next[i]\n    if (!fn) continue\n    try {\n      fn(lang)\n    } catch (e) {\n      // 单个订阅者异常不阻断其余\n    }\n  }\n}\n\n/** @param {(lang: string) => void} fn @returns {() => void} 取消订阅 */\nexport function subscribeLang(fn) {\n  listeners.push(fn)\n  return function () {\n    listeners = listeners.filter(function (f) {\n      return f !== fn\n    })\n  }\n}\n";
+var i18n_default = "/**\n * 共享：中英双语 UI 文案。\n *\n * 与 ext/highlight/markdown 一样遵守「可移植源码」约束：只能使用 JSDoc 标注\n * 类型（不得出现 TS 语法注记）、不得引入本目录之外的依赖。本模块被同时用于：\n * 1. tsdown 打包进 client 侧（浏览器 React bundle）；\n * 2. tsdown 构建期经 `?raw` 读入原始文本，内联进独立弹出页 /flyout-sidebar\n *    的经典 <script>（见 src/host/page.ts）。\n *\n * 语言选择：跟随 DSH 宿主界面语言。应用内侧边栏观察 `<html lang>`（宿主\n * 已设置语言时），把 'zh'/'en' 通过 localStorage `dsh-flyout-sidebar:lang`\n * 发布；独立弹出页 / 各入口读取该值，未发布时按浏览器语言自动判定。\n * `t(key)` 取当前语言文案，缺失时回退另一语言、再回退 key 本身。\n */\n\n/** @type {Record<string, string>} */\nconst ZH = {\n  // 通用状态\n  loading: '加载中…',\n  loadingTree: '加载文件树…',\n  loadingChanges: '加载变更列表…',\n  loadingPdf: '加载 PDF…',\n  searching: '搜索中…',\n  emptyDir: '（空目录）',\n  noChanges: '没有未提交的变更',\n  noChangesHead: '没有未提交的变更（相对于 HEAD）',\n  noResults: '没有匹配的文件',\n  readFailed: '读取失败',\n  retry: '重试',\n  gitStatusFailed: 'git status 失败',\n  imageLoadFailed: '图片加载失败',\n  pdfLoadFailed: 'pdf.js 加载失败',\n  searchFailed: '搜索失败',\n  treeLoadFailed: '加载失败',\n  truncated: '（已截断的预览）',\n  // 复制 / 引用\n  copied: '已复制',\n  copiedPath: '已复制路径',\n  copiedRef: '已复制 @引用（未能写入输入框）',\n  insertedInput: '已插入输入框',\n  refBtn: '@引用',\n  refTitle: '引用到输入框（失败则复制 @path）',\n  refFlyoutTitle: '复制 @path 引用',\n  copyPath: '复制路径',\n  refInput: '@引用到输入框',\n  // 面板头部 / 控件\n  collapsePanel: '收起侧边栏',\n  panelAria: '文件面板',\n  flyoutTitle: '弹出式侧边栏',\n  flyoutOpen: '弹出式侧边栏 — 在新标签页打开（可拖到另一块显示器）',\n  resizeHandle: '拖动调整宽度',\n  resizePanel: '拖动调整面板宽度',\n  refreshTree: '刷新文件树',\n  refreshChanges: '刷新变更列表',\n  refresh: '刷新',\n  viewGit: '查看 Git 变更（未提交）',\n  backToFiles: '返回文件列表',\n  hidePreview: '隐藏预览（标签页保留）',\n  closeTab: '关闭标签页',\n  closeOthers: '关闭其他',\n  closeRight: '关闭右侧标签',\n  previewRegion: '文件预览',\n  diffTabPrefix: '[diff] ',\n  searchPlaceholder: '搜索文件…',\n  searchToggle: '搜索文件',\n  hintClickGit: '点击右侧变更文件查看 diff',\n  hintClickTree: '点击右侧文件查看内容',\n  movePanelLeft: '将文件面板移到左侧',\n  movePanelRight: '将文件面板移到右侧',\n  // git 状态\n  statusU: '未跟踪',\n  statusA: '新增',\n  statusM: '修改',\n  statusD: '删除',\n  statusR: '重命名',\n  statusC: '复制',\n  statusT: '类型变更',\n  staged: '（已暂存）',\n  unstaged: '（未暂存）',\n  // diff / 预览控件\n  diffDeleted: '- 删除',\n  diffAdded: '+ 新增',\n  zoomOut: '缩小',\n  zoomIn: '放大',\n  prevPage: '上一页',\n  nextPage: '下一页',\n  openInEditor: '在系统编辑器打开',\n  openedInEditor: '已在编辑器打开',\n  openFailed: '打开失败',\n  // 插件配置页（插件页 → 本插件的行 → 配置）\n  settingsTitle: '弹出式侧边栏',\n  settingsDesc: '侧边栏面板偏好设置',\n  settingsAutoRefresh: '打开面板时自动刷新',\n  settingsMinWidth: '面板最小宽度（%）',\n  settingsDefaultOpen: '页面加载后默认展开',\n  settingsFontSize: '内容区字号（px）',\n  settingsSave: '保存',\n  settingsSaving: '保存中…',\n  settingsSaveFailed: '宿主未接受这些值，已保留供你修改。',\n  settingsReadonly: '本部署的设置为只读。',\n  settingsUnavailable: '该插件当前未加载，暂时无法配置。',\n  settingsInvalidNumber: '请填范围内的数字；留空表示恢复默认。',\n}\n\n/** @type {Record<string, string>} */\nconst EN = {\n  loading: 'Loading…',\n  loadingTree: 'Loading file tree…',\n  loadingChanges: 'Loading change list…',\n  loadingPdf: 'Loading PDF…',\n  searching: 'Searching…',\n  emptyDir: '(empty directory)',\n  noChanges: 'No uncommitted changes',\n  noChangesHead: 'No uncommitted changes (relative to HEAD)',\n  noResults: 'No matching files',\n  readFailed: 'Failed to read',\n  retry: 'Retry',\n  gitStatusFailed: 'git status failed',\n  imageLoadFailed: 'Failed to load image',\n  pdfLoadFailed: 'Failed to load pdf.js',\n  searchFailed: 'Search failed',\n  treeLoadFailed: 'Failed to load',\n  truncated: '(truncated preview)',\n  copied: 'Copied',\n  copiedPath: 'Path copied',\n  copiedRef: 'Copied @reference (could not write to input box)',\n  insertedInput: 'Inserted into input box',\n  refBtn: '@ref',\n  refTitle: 'Quote into input box (falls back to copying @path)',\n  refFlyoutTitle: 'Copy @path reference',\n  copyPath: 'Copy path',\n  refInput: '@reference into input box',\n  collapsePanel: 'Collapse sidebar',\n  panelAria: 'File panel',\n  flyoutTitle: 'Flyout sidebar',\n  flyoutOpen: 'Flyout sidebar — open in a new tab (drag to another display)',\n  resizeHandle: 'Drag to resize',\n  resizePanel: 'Drag to resize panel',\n  refreshTree: 'Refresh file tree',\n  refreshChanges: 'Refresh change list',\n  refresh: 'Refresh',\n  viewGit: 'View Git changes (uncommitted)',\n  backToFiles: 'Back to file list',\n  hidePreview: 'Hide preview (tabs are kept)',\n  closeTab: 'Close tab',\n  closeOthers: 'Close others',\n  closeRight: 'Close tabs to the right',\n  previewRegion: 'File preview',\n  diffTabPrefix: '[diff] ',\n  searchPlaceholder: 'Search files…',\n  searchToggle: 'Search files',\n  hintClickGit: 'Click a changed file to view its diff',\n  hintClickTree: 'Click a file to view its content',\n  movePanelLeft: 'Move file panel to the left',\n  movePanelRight: 'Move file panel to the right',\n  statusU: 'Untracked',\n  statusA: 'Added',\n  statusM: 'Modified',\n  statusD: 'Deleted',\n  statusR: 'Renamed',\n  statusC: 'Copied',\n  statusT: 'Type change',\n  staged: '(staged)',\n  unstaged: '(unstaged)',\n  diffDeleted: '- Deleted',\n  diffAdded: '+ Added',\n  zoomOut: 'Zoom out',\n  zoomIn: 'Zoom in',\n  prevPage: 'Previous page',\n  nextPage: 'Next page',\n  openInEditor: 'Open in system editor',\n  openedInEditor: 'Opened in editor',\n  openFailed: 'Failed to open',\n  // Plugins page → this bundle's row → configure\n  settingsTitle: 'Flyout Sidebar',\n  settingsDesc: 'Sidebar panel preferences',\n  settingsAutoRefresh: 'Auto-refresh on panel open',\n  settingsMinWidth: 'Min panel width (%)',\n  settingsDefaultOpen: 'Open by default on page load',\n  settingsFontSize: 'Content font size (px)',\n  settingsSave: 'Save',\n  settingsSaving: 'Saving…',\n  settingsSaveFailed: 'The deployment did not accept these values; they were left for you to correct.',\n  settingsReadonly: 'This deployment stores settings read-only.',\n  settingsUnavailable: 'This plugin is not loaded, so it cannot be configured right now.',\n  settingsInvalidNumber: 'Enter a number within range, or leave blank to use the default.',\n}\n\n/** @type {Record<string, Record<string, string>>} */\nconst DICTS = { zh: ZH, en: EN }\n\nconst LANG_KEY = 'dsh-flyout-sidebar:lang'\n\n/** @type {'zh' | 'en' | null} 已发布的主界面语言（null = 宿主未发布，按浏览器判定） */\nlet publishedLang = null\n/** @type {Array<(lang: string) => void>} */\nlet listeners = []\n\n/** @returns {'zh' | 'en' | null} 主面板发布到 localStorage 的语言，无效时 null */\nfunction readPublishedLang() {\n  try {\n    var v = localStorage.getItem(LANG_KEY)\n    return v === 'zh' || v === 'en' ? v : null\n  } catch (e) {\n    return null\n  }\n}\n\n/** 浏览器语言自动判定：非 zh 开头一律英文 */\nfunction autoLang() {\n  try {\n    var langs = navigator.languages || (navigator.language ? [navigator.language] : [])\n    for (var i = 0; i < langs.length; i++) {\n      var l = String(langs[i] || '').toLowerCase()\n      if (l.indexOf('zh') === 0) return 'zh'\n      if (l.indexOf('en') === 0) return 'en'\n    }\n  } catch (e) {\n    // navigator 不可用时按英文处理\n  }\n  return 'en'\n}\n\nfunction currentLang() {\n  if (publishedLang === null) publishedLang = readPublishedLang()\n  return publishedLang || autoLang()\n}\n\n/**\n * @param {string} key 文案键\n * @returns {string} 当前语言文案；两级回退（另一语言 → key）\n */\nexport function t(key) {\n  var lang = currentLang()\n  var dict = DICTS[lang] || EN\n  if (dict[key] != null) return dict[key]\n  var other = DICTS[lang === 'zh' ? 'en' : 'zh']\n  if (!other) return key\n  return other[key] != null ? other[key] : key\n}\n\n/** @returns {'zh' | 'en'} 当前生效语言（含自动判定的结果） */\nexport function getLang() {\n  return currentLang()\n}\n\n/**\n * 发布语言：主面板观察宿主界面语言后调用，写入 localStorage 供独立弹出页\n * 读取，并通知本页订阅者重渲染。\n * @param {'zh' | 'en'} lang\n */\nexport function setLang(lang) {\n  publishedLang = lang\n  try {\n    localStorage.setItem(LANG_KEY, lang)\n  } catch (e) {\n    // localStorage 不可用时仅保存在内存\n  }\n  var next = listeners.slice()\n  for (var i = 0; i < next.length; i++) {\n    var fn = next[i]\n    if (!fn) continue\n    try {\n      fn(lang)\n    } catch (e) {\n      // 单个订阅者异常不阻断其余\n    }\n  }\n}\n\n/** @param {(lang: string) => void} fn @returns {() => void} 取消订阅 */\nexport function subscribeLang(fn) {\n  listeners.push(fn)\n  return function () {\n    listeners = listeners.filter(function (f) {\n      return f !== fn\n    })\n  }\n}\n";
 //#endregion
 //#region src/shared/gitui.js?raw
 var gitui_default = "/**\n * 共享：git 变更列表 / diff 的纯展示逻辑。\n *\n * client 侧 React 组件与独立弹出页（page.ts 内联脚本）共用，避免双端各自\n * 实现后细节漂移。与 ext/highlight/markdown 一样遵守「可移植源码」约束：\n * 只能使用 JSDoc 标注类型、依赖仅限本目录（i18n 的 t 在内联场景由同作用域\n * 函数声明提升提供）。\n */\nimport { t } from './i18n.js'\n\n/** @param {string} p @returns {string} */\nexport function basename(p) {\n  var s = String(p).replace(/[\\\\/]+$/, '')\n  var i = Math.max(s.lastIndexOf('/'), s.lastIndexOf('\\\\'))\n  return i >= 0 ? s.slice(i + 1) : s\n}\n\n/**\n * 变更文件的状态徽章字母：未跟踪为 U，否则取工作树状态（y），再退到暂存\n * 状态（x），空缺按 M。\n * @param {{ x: string, y: string }} e @returns {string}\n */\nexport function gitLabel(e) {\n  if (e.x === '?' || e.y === '?') return 'U'\n  return (e.y !== ' ' ? e.y : e.x) || 'M'\n}\n\n/**\n * 变更文件行 hover 提示：状态名 + 暂存/未暂存。\n * @param {{ x: string, y: string }} e @returns {string}\n */\nexport function gitTitle(e) {\n  var label = gitLabel(e)\n  /** @type {Record<string, string>} */\n  var map = {\n    U: t('statusU'), A: t('statusA'), M: t('statusM'),\n    D: t('statusD'), R: t('statusR'), C: t('statusC'), T: t('statusT'),\n  }\n  var staged = e.x !== ' ' && e.x !== '?'\n  return (map[label] || label) + (staged ? t('staged') : t('unstaged'))\n}\n\n/**\n * unified diff 单行的样式类：hunk / 增 / 删 / 元信息（diff --git、index、\n * rename 等），其余为普通行。\n * @param {string} line @returns {string}\n */\nexport function gitDiffLineClass(line) {\n  var cls = 'gd-line'\n  if (line.indexOf('@@') === 0) cls += ' gd-hunk'\n  else if (line.charAt(0) === '+' && line.indexOf('+++') !== 0) cls += ' gd-add'\n  else if (line.charAt(0) === '-' && line.indexOf('---') !== 0) cls += ' gd-del'\n  else if (\n    line.indexOf('diff ') === 0 || line.indexOf('index ') === 0 || line.indexOf('--- ') === 0 ||\n    line.indexOf('+++ ') === 0 || line.indexOf('new file') === 0 || line.indexOf('deleted file') === 0 ||\n    line.indexOf('old mode') === 0 || line.indexOf('new mode') === 0 || line.indexOf('rename ') === 0 ||\n    line.indexOf('similarity ') === 0 || line.indexOf('copy ') === 0 || line.indexOf('Binary files') === 0 ||\n    line.charAt(0) === '\\\\'\n  ) {\n    cls += ' gd-meta'\n  }\n  return cls\n}\n";
@@ -1098,7 +1098,7 @@ function sendText(res, status, body) {
 	res.writeHead(status, { "Content-Type": "text/plain; charset=utf-8" });
 	res.end(body);
 }
-function registerRoutes(ctx, webServer, _config, getConfig) {
+function registerRoutes(ctx, webServer, getConfig) {
 	const register = (route, label) => {
 		ctx.effect(() => webServer.register(route), label);
 	};
@@ -1252,7 +1252,7 @@ function registerRoutes(ctx, webServer, _config, getConfig) {
 	}, "artifacts: pdf.js worker route");
 }
 //#endregion
-//#region node_modules/.pnpm/@deepseek-ai+cosmokit@1.8.3/node_modules/@deepseek-ai/cosmokit/lib/index.js
+//#region node_modules/.pnpm/@deepseek-ai+cosmokit@1.8.5/node_modules/@deepseek-ai/cosmokit/lib/index.js
 /** Return true when a value is `null` or `undefined`. */
 function isNullable(value) {
 	return value === null || value === void 0;
@@ -1275,6 +1275,43 @@ function pick(source, keys, forced) {
 	const result = {};
 	for (const key of keys) if (forced || source[key] !== void 0) result[key] = source[key];
 	return result;
+}
+/** Shared config references used by schema validators and plugin runtimes. */
+const write = Symbol.for("cosmokit.volatile.write");
+function snapshot(value, ancestors = /* @__PURE__ */ new Set()) {
+	if (typeof value === "function") throw new TypeError("volatile config cannot contain functions");
+	if (value === null || typeof value !== "object") return value;
+	if (ancestors.has(value)) throw new TypeError("volatile config cannot contain cycles");
+	ancestors.add(value);
+	try {
+		if (Array.isArray(value)) return Object.freeze(value.map((item) => snapshot(item, ancestors)));
+		if (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null) throw new TypeError("volatile config objects must be plain objects or arrays");
+		return Object.freeze(Object.fromEntries(Object.entries(value).map(([key, item]) => [key, snapshot(item, ancestors)])));
+	} finally {
+		ancestors.delete(value);
+	}
+}
+/**
+* Create a detached reference containing an immutable copy of the supplied data.
+* @param value - validated config data; class instances and functions are unsupported.
+* @returns a reference whose value is updated only by its owning runtime.
+*/
+function createVolatile(value) {
+	let current = snapshot(value);
+	return Object.freeze({
+		get: () => current,
+		[write]: (value) => {
+			current = value;
+		}
+	});
+}
+/**
+* Identify references across ESM/CJS copies of the shared library.
+* @param value - a parsed config value.
+* @returns whether the value implements the shared reference protocol.
+*/
+function isVolatile(value) {
+	return typeof value === "object" && value !== null && write in value;
 }
 /** Test values using `instanceof` with a `toStringTag` fallback. */
 function is(type, value) {
@@ -1356,26 +1393,47 @@ function clone(source, refs = /* @__PURE__ */ new Map()) {
 	}
 	return result;
 }
-/** Deeply compare arrays, dates, regexps, buffers, and plain object fields. */
+/**
+* Compare values recursively, treating two volatile references as equal regardless of value.
+* Strict comparison distinguishes null/undefined, treats opaque objects by identity,
+* compares URLs by normalized href, treats array holes as undefined, and considers distinct cyclic structures unequal.
+* @param a - first value.
+* @param b - second value.
+* @param strict - whether to require strict data equality outside volatile references.
+* @returns whether the values compare equal.
+*/
 function deepEqual(a, b, strict) {
-	if (a === b) return true;
-	if (!strict && isNullable(a) && isNullable(b)) return true;
-	if (typeof a !== typeof b) return false;
-	if (typeof a !== "object") return false;
-	if (!a || !b) return false;
-	function check(test, then) {
-		return test(a) ? test(b) ? then(a, b) : false : test(b) ? false : void 0;
+	const ancestors = /* @__PURE__ */ new Set();
+	function compare(a, b) {
+		if (a === b) return true;
+		if (isVolatile(a) || isVolatile(b)) return isVolatile(a) && isVolatile(b);
+		if (!strict && isNullable(a) && isNullable(b)) return true;
+		if (typeof a !== typeof b || typeof a !== "object" || !a || !b) return false;
+		if (ancestors.has(a)) return false;
+		function check(test, then) {
+			return test(a) ? test(b) ? then(a, b) : false : test(b) ? false : void 0;
+		}
+		ancestors.add(a);
+		try {
+			return check(Array.isArray, (a, b) => {
+				if (a.length !== b.length) return false;
+				for (let index = 0; index < a.length; index++) if (!compare(a[index], b[index])) return false;
+				return true;
+			}) ?? check(is("Date"), (a, b) => a.valueOf() === b.valueOf()) ?? check(is("URL"), (a, b) => a.href === b.href) ?? check(is("RegExp"), (a, b) => a.source === b.source && a.flags === b.flags) ?? check(isArrayBufferLike, (a, b) => {
+				if (a.byteLength !== b.byteLength) return false;
+				const viewA = new Uint8Array(a);
+				const viewB = new Uint8Array(b);
+				for (let i = 0; i < viewA.length; i++) if (viewA[i] !== viewB[i]) return false;
+				return true;
+			}) ?? ((!strict || [a, b].every((value) => Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null)) && Object.keys({
+				...a,
+				...b
+			}).every((key) => compare(a[key], b[key])));
+		} finally {
+			ancestors.delete(a);
+		}
 	}
-	return check(Array.isArray, (a, b) => a.length === b.length && a.every((item, index) => deepEqual(item, b[index]))) ?? check(is("Date"), (a, b) => a.valueOf() === b.valueOf()) ?? check(is("RegExp"), (a, b) => a.source === b.source && a.flags === b.flags) ?? check(isArrayBufferLike, (a, b) => {
-		if (a.byteLength !== b.byteLength) return false;
-		const viewA = new Uint8Array(a);
-		const viewB = new Uint8Array(b);
-		for (let i = 0; i < viewA.length; i++) if (viewA[i] !== viewB[i]) return false;
-		return true;
-	}) ?? Object.keys({
-		...a,
-		...b
-	}).every((key) => deepEqual(a[key], b[key], strict));
+	return compare(a, b);
 }
 /** Time constants plus parsing and formatting helpers. */
 var Time;
@@ -1448,7 +1506,7 @@ var Time;
 	Time.template = template;
 })(Time || (Time = {}));
 //#endregion
-//#region node_modules/.pnpm/@deepseek-ai+schemastery@3.18.2/node_modules/@deepseek-ai/schemastery/lib/index.mjs
+//#region node_modules/.pnpm/@deepseek-ai+schemastery@3.18.4/node_modules/@deepseek-ai/schemastery/lib/index.mjs
 const kSchema = Symbol.for("schemastery");
 const kValidationError = Symbol.for("ValidationError");
 globalThis.__schemastery_index__ ??= 0;
@@ -1624,6 +1682,7 @@ Schema.prototype.pattern = function pattern(regexp) {
 	return schema;
 };
 Schema.prototype.simplify = function simplify(value) {
+	if (isVolatile(value)) value = value.get();
 	if (deepEqual(value, this.meta.default, this.type === "dict")) return null;
 	if (isNullable(value)) return value;
 	if (this.type === "object" || this.type === "dict") {
@@ -1680,12 +1739,49 @@ for (const key of [
 	};
 	return schema;
 } });
+Schema.prototype.volatile = function volatile() {
+	if (this.meta.volatile) throw new TypeError("volatile schema is already wrapped");
+	return this.extra("volatile", true);
+};
 const resolvers = {};
+const checkedVolatile = Symbol("checked-volatile-schema");
+function validateVolatileSchema(schema, path = [], blocked = false, seen = /* @__PURE__ */ new Map()) {
+	const states = seen.get(schema) ?? /* @__PURE__ */ new Set();
+	if (states.has(blocked)) return;
+	states.add(blocked);
+	seen.set(schema, states);
+	if (schema.meta?.volatile && blocked) throw new ValidationError("volatile fields require a fixed object path without an enclosing volatile field", { path });
+	const nested = blocked || !!schema.meta?.volatile;
+	if (schema.dict) for (const [key, child] of Object.entries(schema.dict)) validateVolatileSchema(child, [...path, key], nested, seen);
+	if (schema.sKey) validateVolatileSchema(schema.sKey, [...path, "<key>"], true, seen);
+	if (schema.inner && (schema.type !== "lazy" || schema.inner[kSchema])) validateVolatileSchema(schema.inner, [...path, "*"], true, seen);
+	if (schema.list) for (let index = 0; index < schema.list.length; index++) validateVolatileSchema(schema.list[index], [...path, String(index)], true, seen);
+}
 Schema.extend = function extend(type, resolve) {
 	resolvers[type] = resolve;
 };
 Schema.resolve = function resolve(data, schema, options = {}, strict = false) {
 	if (!schema) return [data];
+	if (!options[checkedVolatile]) {
+		validateVolatileSchema(schema, options.path);
+		options = {
+			...options,
+			[checkedVolatile]: true
+		};
+	}
+	if (schema.meta?.volatile) {
+		const inner = Schema(schema);
+		inner.meta = {
+			...schema.meta,
+			volatile: false
+		};
+		const [value, adapted] = Schema.resolve(data, inner, options, strict);
+		try {
+			return [createVolatile(value), adapted];
+		} catch (error) {
+			throw new ValidationError(error instanceof Error ? error.message : String(error), options);
+		}
+	}
 	if (options.ignore?.(data, schema)) return [data];
 	if (isNullable(data) && schema.type !== "lazy") {
 		if (schema.meta.required) throw new ValidationError(`missing required value`, options);
@@ -1788,6 +1884,7 @@ Schema.extend("lazy", (data, schema, options, strict) => {
 			...schema.meta,
 			...schema.inner.meta
 		};
+		validateVolatileSchema(schema.inner, options.path, true);
 	}
 	return Schema.resolve(data, schema.inner, options, strict);
 });
@@ -1887,7 +1984,7 @@ function property(data, key, schema, options) {
 	} catch (e) {
 		if (!options?.autofix) throw e;
 		delete data[key];
-		return schema.meta.default;
+		return schema.meta.volatile ? createVolatile(schema.meta.default) : schema.meta.default;
 	}
 }
 Schema.extend("array", (data, { inner, meta }, options) => {
@@ -2051,14 +2148,31 @@ defineMethod("transform", [
 * 兼容（静态 bundle 下 harness 全局不存在，typeof 守卫直接跳过）。
 */
 const name = "dsh-flyout-sidebar";
+/**
+* 插件配置 schema。字段以 `.volatile()` 声明：DSH Settings → Plugins 的表单只投影
+* volatile 字段（按 profile 条目 id `flyout-sidebar` 定位本插件），编辑结果写进当前
+* profile 的 Cordis patch。apply 收到的配置里 volatile 字段是稳定引用，读当前值必须
+* 走 `.get()`；引用由 loader 在配置变更时就地更新，插件无需重新加载。
+*/
 const Config = Schema.object({
-	autoRefresh: Schema.boolean().default(true).description("打开面板时自动刷新产物与 git 变更"),
-	minPanelWidth: Schema.number().min(15).max(60).default(20).description("最短面板宽度（占窗口宽度百分比）"),
-	defaultOpen: Schema.boolean().default(true).description("页面加载后默认展开面板"),
-	contentFontSize: Schema.number().min(11).max(20).default(13).description("内容区字体大小（px），界面文字不受影响")
+	/** 面板打开时轮询刷新产物与 git 变更 */
+	autoRefresh: Schema.boolean().default(true).description("打开面板时自动刷新产物与 git 变更").volatile(),
+	/** 面板最小宽度（占窗口宽度的百分比，15–60） */
+	minPanelWidth: Schema.number().min(15).max(60).default(20).description("最短面板宽度（占窗口宽度百分比）").volatile(),
+	/** 页面加载后默认展开面板 */
+	defaultOpen: Schema.boolean().default(true).description("页面加载后默认展开面板").volatile(),
+	/** 内容区（代码/diff/markdown）基准字号（px） */
+	contentFontSize: Schema.number().min(11).max(20).default(13).description("内容区字体大小（px），界面文字不受影响").volatile()
 });
-/** settings namespace（DSH Settings 卡片的 join key，与客户端 settingsScope.bind 一致） */
-const SETTINGS_NAMESPACE = "dsh-flyout-sidebar";
+/** 读取 volatile 引用的当前快照；每次请求现读，用户在 Settings 改值后立即生效 */
+function readConfig(cfg) {
+	return {
+		autoRefresh: cfg.autoRefresh.get(),
+		minPanelWidth: cfg.minPanelWidth.get(),
+		defaultOpen: cfg.defaultOpen.get(),
+		contentFontSize: cfg.contentFontSize.get()
+	};
+}
 const inject = [
 	"webServer",
 	"sessionQuery",
@@ -2068,11 +2182,6 @@ function apply(ctx, config) {
 	const cfg = config ?? Config({});
 	attachArtifactTracking(ctx);
 	attachGitTracking(ctx);
-	let settingsScope;
-	ctx.inject(["settings"], (sctx) => {
-		const settings = sctx.get("settings");
-		if (settings) settingsScope = settings.register(SETTINGS_NAMESPACE, Config);
-	});
 	if (typeof harness !== "undefined" && harness) {
 		harness.handle("artifacts.list", () => ({ artifacts: snapshotArtifacts() }));
 		harness.handle("artifacts.remove", (args) => removeFile(args?.path));
@@ -2084,9 +2193,7 @@ function apply(ctx, config) {
 		harness.handle("git.diff", (args) => gitDiff(ctx, args?.path, args?.sessionId));
 	}
 	const webServer = ctx.get("webServer");
-	if (webServer) registerRoutes(ctx, webServer, cfg, () => {
-		return settingsScope?.get() ?? cfg;
-	});
+	if (webServer) registerRoutes(ctx, webServer, () => readConfig(cfg));
 }
 //#endregion
-export { Config, SETTINGS_NAMESPACE, apply, inject, name };
+export { Config, apply, inject, name };

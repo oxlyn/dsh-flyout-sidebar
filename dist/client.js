@@ -358,17 +358,9 @@ body[data-ds-dark-theme] .tok-function, body[data-ds-dark-theme] .tok-decorator 
 body[data-ds-dark-theme] .tok-class, body[data-ds-dark-theme] .tok-builtin, body[data-ds-dark-theme] .tok-tag, body[data-ds-dark-theme] .tok-key { color: #74c0fc; }
 body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 
-/* Settings 卡片（Settings → Plugins → Plugin configuration）— 跟随 DSH PluginCard 风格 */
-.fs-settings-card { background: var(--dsw-alias-bg-layer-3); border: 1px solid var(--dsw-alias-border-l2); border-radius: 12px; transition: border-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out), background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out); }
-.fs-settings-card:hover { border-color: var(--dsw-alias-label-dimmed); }
-.fs-settings-open, .fs-settings-open:hover { background: var(--dsw-alias-bg-layer-2); border-color: var(--dsw-alias-label-dimmed); }
-.fs-settings-head { width: 100%; appearance: none; border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 12px; }
-.fs-settings-headtext { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
-.fs-settings-name { font-size: 15px; font-weight: 600; line-height: 1.4; color: var(--dsw-alias-label-primary); }
-.fs-settings-desc { font-size: 13px; line-height: 1.5; color: var(--dsw-alias-label-tertiary); }
-.fs-settings-chevron { flex: none; color: var(--dsw-alias-label-tertiary); transition: transform var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out); }
-.fs-settings-open .fs-settings-chevron { transform: rotate(180deg); }
-.fs-settings-body { border-top: 1px solid var(--dsw-alias-border-l2); margin: 0 16px; padding: 4px 0 12px; display: flex; flex-direction: column; gap: 0; }
+/* 插件配置页（插件页 → 本插件的行 → 配置）：行/标题/描述由插件管理页绘制，
+   这里只负责表单本体与保存控件，跟随 DSH 设计令牌。 */
+.fs-settings-form { display: flex; flex-direction: column; gap: 0; }
 .fs-settings-row { display: flex; align-items: center; gap: 8px; padding: 8px 0; }
 .fs-settings-label { flex: 1; min-width: 0; font-size: 14px; color: var(--dsw-alias-label-primary); }
 .fs-settings-input {
@@ -380,6 +372,7 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 }
 .fs-settings-input:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover); }
 .fs-settings-input:disabled { opacity: .5; cursor: default; }
+.fs-settings-input[data-invalid="true"] { border-color: var(--dsw-alias-accent-error, #e5484d); }
 .fs-settings-toggle {
   position: relative; width: 40px; height: 22px; border-radius: 11px;
   border: none; cursor: pointer; padding: 0; flex: none;
@@ -393,6 +386,18 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
   background: #fff; transition: transform var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
 }
 .fs-settings-toggle[data-on="true"]::after { transform: translateX(18px); }
+.fs-settings-actions { display: flex; align-items: center; gap: 10px; padding: 12px 0 4px; }
+.fs-settings-save {
+  appearance: none; border: 1px solid transparent; border-radius: 8px; cursor: pointer;
+  padding: 5px 14px; font: inherit; font-size: 13px; font-weight: 500;
+  background: var(--dsw-alias-accent-primary, #2a7fbf); color: #fff;
+  transition: opacity var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
+}
+.fs-settings-save:disabled { opacity: .45; cursor: default; }
+.fs-settings-status, .fs-settings-note {
+  font-size: 12px; line-height: 1.5; color: var(--dsw-alias-label-tertiary);
+}
+.fs-settings-note { margin: 4px 0 8px; }
 `;
 	/** 注入样式（幂等：内容不一致时替换，使热重载后新样式必然生效） */
 	function insertStyles() {
@@ -554,7 +559,13 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		settingsAutoRefresh: "打开面板时自动刷新",
 		settingsMinWidth: "面板最小宽度（%）",
 		settingsDefaultOpen: "页面加载后默认展开",
-		settingsFontSize: "内容区字号（px）"
+		settingsFontSize: "内容区字号（px）",
+		settingsSave: "保存",
+		settingsSaving: "保存中…",
+		settingsSaveFailed: "宿主未接受这些值，已保留供你修改。",
+		settingsReadonly: "本部署的设置为只读。",
+		settingsUnavailable: "该插件当前未加载，暂时无法配置。",
+		settingsInvalidNumber: "请填范围内的数字；留空表示恢复默认。"
 	};
 	/** @type {Record<string, string>} */
 	const EN = {
@@ -630,7 +641,13 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		settingsAutoRefresh: "Auto-refresh on panel open",
 		settingsMinWidth: "Min panel width (%)",
 		settingsDefaultOpen: "Open by default on page load",
-		settingsFontSize: "Content font size (px)"
+		settingsFontSize: "Content font size (px)",
+		settingsSave: "Save",
+		settingsSaving: "Saving…",
+		settingsSaveFailed: "The deployment did not accept these values; they were left for you to correct.",
+		settingsReadonly: "This deployment stores settings read-only.",
+		settingsUnavailable: "This plugin is not loaded, so it cannot be configured right now.",
+		settingsInvalidNumber: "Enter a number within range, or leave blank to use the default."
 	};
 	/** @type {Record<string, Record<string, string>>} */
 	const DICTS = {
@@ -878,11 +895,11 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 		* 从宿主拉取插件配置（config 已由 cordis 校验填充默认值）并通知订阅者。
 		* 配置保存在宿主侧，页面内不持久化；面板打开即用最新值。
 		*
-		* syncDefaultOpen=true（启动首次加载、settings scope 配置变更回调）时，
-		* 若本次拉取确实改动了 defaultOpen 字段，则实时同步边栏开合 —— 用户在
-		* 设置卡片切换「默认展开」开关后边栏立即跟随展开/收起。面板摊开时例行
-		* 拉取（刷新 minPanelWidth 等设置）不传此 flag：只刷新配置，绝不回写
-		* 开合状态，否则刚点开的边栏会被 defaultOpen 当场压回（点击无反应）。
+		* syncDefaultOpen=true（启动首次加载）时，若本次拉取确实改动了 defaultOpen
+		* 字段，则实时同步边栏开合 —— 用户改完「默认展开」设置后重新加载页面，边栏
+		* 立即按新偏好展开/收起。面板摊开时例行拉取（刷新 minPanelWidth 等设置）不传
+		* 此 flag：只刷新配置，绝不回写开合状态，否则刚点开的边栏会被 defaultOpen
+		* 当场压回（点击无反应）。
 		*/
 		load(opts) {
 			const syncDefaultOpen = !!(opts && opts.syncDefaultOpen);
@@ -2998,95 +3015,222 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 			onClick: () => store.toggle()
 		}, /* @__PURE__ */ h(PanelIcon, { size: 18 }));
 	}
+	//#endregion
+	//#region src/client/config.tsx
+	/**
+	* Client 侧：插件配置页（插件页 → 本插件的行 → 配置入口）。
+	*
+	* 新版 DSH 客户端不再为插件的 volatile 配置自动生成设置卡片：配置页必须由插件
+	* 自己注册进 `plugins.row.config`（key = `<包名>#<行 id>`），宿主插件管理页才会
+	* 在该行上渲染配置入口。宿主侧不需要任何注册 —— settings 服务直接投影 Loader
+	* 条目里带 `.volatile()` 的字段，以条目 id（= 行 id）作为 namespace，配置值经
+	* `ctx.configForms.get(条目 id)` 读写（插件管理页把它作为 owner props 的 `form`
+	* 传下来，注册方通过注入的表单引用拿实时快照）。
+	*
+	* 表单是「一页一存」：控件只改本地草稿，保存时把所有改动合成一次带 revision
+	* fence 的 mutate —— 与官方伴生包的 SettingsFormModel 语义一致，这样一次保存
+	* 只产生一次宿主写入，用户也能在保存前看到自己要写什么。
+	*/
+	/** row config slot 的注册 key：`<包名>#<行 id>`，由 cordis.patch.yml 的 insert 决定 */
+	const ROW_CONFIG_KEY = "dsh-flyout-sidebar#flyout-sidebar";
+	/** 宿主 settings 的 namespace：profile 条目 id，也就是插件行的 row id */
+	const SETTINGS_NAMESPACE = "flyout-sidebar";
+	const FIELDS = [
+		{
+			field: "autoRefresh",
+			labelKey: "settingsAutoRefresh",
+			kind: "toggle",
+			min: 0,
+			max: 0
+		},
+		{
+			field: "defaultOpen",
+			labelKey: "settingsDefaultOpen",
+			kind: "toggle",
+			min: 0,
+			max: 0
+		},
+		{
+			field: "minPanelWidth",
+			labelKey: "settingsMinWidth",
+			kind: "number",
+			min: 15,
+			max: 60
+		},
+		{
+			field: "contentFontSize",
+			labelKey: "settingsFontSize",
+			kind: "number",
+			min: 11,
+			max: 20
+		}
+	];
+	/** 宿主值 → 草稿文本：开关用 'true'/'false'，数字无值时留空（= 未覆盖） */
+	function seedText(spec, stored) {
+		if (spec.kind === "toggle") return stored === true ? "true" : "false";
+		return typeof stored === "number" && Number.isFinite(stored) ? String(stored) : "";
+	}
+	function seed(values) {
+		const out = {};
+		for (const spec of FIELDS) out[spec.field] = seedText(spec, values?.[spec.field]);
+		return out;
+	}
+	/** 草稿文本 → 数字；空文本表示恢复默认，越界或非数字视为无效（阻止保存） */
+	function parseNumber(spec, text) {
+		const trimmed = text.trim();
+		if (trimmed === "") return {
+			ok: true,
+			value: null
+		};
+		const n = Number(trimmed);
+		if (!Number.isFinite(n) || n < spec.min || n > spec.max) return {
+			ok: false,
+			value: null
+		};
+		return {
+			ok: true,
+			value: n
+		};
+	}
+	/** 把有改动的字段合成一次写入的操作序列；无效字段不产生操作（保存已被阻止） */
+	function planOps(draft, remote) {
+		const ops = [];
+		for (const spec of FIELDS) {
+			const text = draft[spec.field] ?? "";
+			if (text === (remote[spec.field] ?? "")) continue;
+			if (spec.kind === "toggle") {
+				ops.push({
+					op: "set",
+					path: [spec.field],
+					value: text === "true"
+				});
+				continue;
+			}
+			const parsed = parseNumber(spec, text);
+			if (!parsed.ok) continue;
+			ops.push(parsed.value === null ? {
+				op: "unset",
+				path: [spec.field]
+			} : {
+				op: "set",
+				path: [spec.field],
+				value: parsed.value
+			});
+		}
+		return ops;
+	}
 	function ToggleRow(props) {
-		return /* @__PURE__ */ h("div", { className: "fs-settings-row" }, /* @__PURE__ */ h("span", { className: "fs-settings-label" }, props.label), /* @__PURE__ */ h("button", {
+		return /* @__PURE__ */ h(Fragment, null, /* @__PURE__ */ h("span", { className: "fs-settings-label" }, props.label), /* @__PURE__ */ h("button", {
 			type: "button",
 			className: "fs-settings-toggle",
 			"data-on": props.value ? "true" : "false",
 			disabled: props.disabled,
 			"aria-pressed": props.value,
+			"aria-label": props.label,
 			onClick: () => {
 				if (!props.disabled) props.onToggle(!props.value);
 			}
 		}));
 	}
 	function NumberRow(props) {
-		return /* @__PURE__ */ h("div", { className: "fs-settings-row" }, /* @__PURE__ */ h("span", { className: "fs-settings-label" }, props.label), /* @__PURE__ */ h("input", {
+		return /* @__PURE__ */ h(Fragment, null, /* @__PURE__ */ h("span", { className: "fs-settings-label" }, props.label), /* @__PURE__ */ h("input", {
 			type: "number",
 			className: "fs-settings-input",
-			value: props.value,
+			value: props.text,
 			min: props.min,
 			max: props.max,
 			disabled: props.disabled,
-			onChange: (e) => {
-				const v = Number(e.currentTarget.value);
-				if (Number.isFinite(v)) props.onChange(v);
-			}
+			"aria-label": props.label,
+			"aria-invalid": props.invalid,
+			"data-invalid": props.invalid ? "true" : "false",
+			onChange: (e) => props.onEdit(e.currentTarget.value)
 		}));
 	}
-	function SettingsCard(props) {
-		const [open, setOpen] = React.useState(false);
+	/**
+	* 订阅宿主表单的实时快照：写入被接受后宿主镜像会折叠出新快照，本控件据此
+	* 重新播种草稿（插件管理页是否跟着重渲染与本页无关）。
+	*/
+	function useConfigSnapshot(form, fallback) {
+		const [snap, setSnap] = React.useState(() => form ? form.getSnapshot() : fallback);
+		React.useEffect(() => {
+			if (!form) return;
+			setSnap(form.getSnapshot());
+			return form.subscribe(() => setSnap(form.getSnapshot()));
+		}, [form]);
+		return form ? snap : fallback;
+	}
+	function FlyoutConfigPage(props) {
 		useLang();
-		const snap = typeof props.useSettingsSnapshot === "function" ? props.useSettingsSnapshot((s) => s) : void 0;
-		if (snap === void 0 || snap.status === "unavailable") return null;
-		const disabled = snap.status !== "ready" || !snap.writable;
-		const v = snap.value ?? {};
-		return /* @__PURE__ */ h("li", { className: "fs-settings-card" + (open ? " fs-open" : "") }, /* @__PURE__ */ h("button", {
+		const form = props.configForm;
+		const snap = useConfigSnapshot(form, props.form?.state);
+		const values = snap?.value;
+		const remote = React.useMemo(() => seed(values), [snap]);
+		const [staged, setStaged] = React.useState(() => ({
+			revision: snap?.revision,
+			text: {}
+		}));
+		const [saving, setSaving] = React.useState(false);
+		const [failed, setFailed] = React.useState(false);
+		const edits = staged.revision === snap?.revision ? staged.text : {};
+		if (props.view === "summary") return /* @__PURE__ */ h(Fragment, null, t("settingsDesc"));
+		if (snap === void 0 || snap.status === "unavailable") return /* @__PURE__ */ h("p", { className: "fs-settings-note" }, t("settingsUnavailable"));
+		const draft = {
+			...remote,
+			...edits
+		};
+		const textOf = (field) => draft[field] ?? "";
+		const dirty = FIELDS.some((spec) => textOf(spec.field) !== (remote[spec.field] ?? ""));
+		const invalid = FIELDS.some((spec) => spec.kind === "number" && !parseNumber(spec, textOf(spec.field)).ok);
+		const disabled = snap.status !== "ready" || snap.writable === false || saving;
+		const mutate = form?.mutate ?? props.form?.mutate;
+		const stage = (field, text) => {
+			setFailed(false);
+			setStaged({
+				revision: snap.revision,
+				text: {
+					...edits,
+					[field]: text
+				}
+			});
+		};
+		const save = () => {
+			if (!mutate || !dirty || invalid || saving) return;
+			setSaving(true);
+			setFailed(false);
+			mutate(planOps(draft, remote), snap.revision).then((ok) => {
+				setSaving(false);
+				if (ok) return;
+				setFailed(true);
+			}).catch(() => {
+				setSaving(false);
+				setFailed(true);
+			});
+		};
+		return /* @__PURE__ */ h("div", { className: "fs-settings-form" }, snap.writable === false ? /* @__PURE__ */ h("p", { className: "fs-settings-note" }, t("settingsReadonly")) : null, FIELDS.map((spec) => /* @__PURE__ */ h("div", {
+			className: "fs-settings-row",
+			key: spec.field
+		}, spec.kind === "toggle" ? /* @__PURE__ */ h(ToggleRow, {
+			label: t(spec.labelKey),
+			value: textOf(spec.field) === "true",
+			disabled,
+			onToggle: (next) => stage(spec.field, next ? "true" : "false")
+		}) : /* @__PURE__ */ h(NumberRow, {
+			label: t(spec.labelKey),
+			text: textOf(spec.field),
+			min: spec.min,
+			max: spec.max,
+			invalid: !parseNumber(spec, textOf(spec.field)).ok,
+			disabled,
+			onEdit: (text) => stage(spec.field, text)
+		}))), /* @__PURE__ */ h("div", { className: "fs-settings-actions" }, /* @__PURE__ */ h("button", {
 			type: "button",
-			className: "fs-settings-head",
-			"aria-expanded": open,
-			onClick: () => {
-				setOpen(!open);
-			}
-		}, /* @__PURE__ */ h("span", { className: "fs-settings-headtext" }, /* @__PURE__ */ h("span", { className: "fs-settings-name" }, t("settingsTitle")), /* @__PURE__ */ h("span", { className: "fs-settings-desc" }, t("settingsDesc"))), /* @__PURE__ */ h("svg", {
-			className: "fs-settings-chevron",
-			width: "14",
-			height: "14",
-			viewBox: "0 0 14 14",
-			fill: "none"
-		}, /* @__PURE__ */ h("path", {
-			d: "M3 5L7 9L11 5",
-			stroke: "currentColor",
-			strokeWidth: "1.5",
-			strokeLinecap: "round",
-			strokeLinejoin: "round"
-		}))), open ? /* @__PURE__ */ h("div", { className: "fs-settings-body" }, /* @__PURE__ */ h(ToggleRow, {
-			label: t("settingsAutoRefresh"),
-			value: !!v.autoRefresh,
-			disabled,
-			onToggle: (val) => {
-				props.setField?.("autoRefresh", val);
-			}
-		}), /* @__PURE__ */ h(ToggleRow, {
-			label: t("settingsDefaultOpen"),
-			value: !!v.defaultOpen,
-			disabled,
-			onToggle: (val) => {
-				props.setField?.("defaultOpen", val);
-			}
-		}), /* @__PURE__ */ h(NumberRow, {
-			label: t("settingsMinWidth"),
-			value: v.minPanelWidth ?? 20,
-			min: 15,
-			max: 60,
-			disabled,
-			onChange: (val) => {
-				props.setField?.("minPanelWidth", val);
-			}
-		}), /* @__PURE__ */ h(NumberRow, {
-			label: t("settingsFontSize"),
-			value: v.contentFontSize ?? 13,
-			min: 11,
-			max: 20,
-			disabled,
-			onChange: (val) => {
-				props.setField?.("contentFontSize", val);
-			}
-		})) : null);
+			className: "fs-settings-save",
+			disabled: disabled || !dirty || invalid,
+			onClick: save
+		}, saving ? t("settingsSaving") : t("settingsSave")), invalid ? /* @__PURE__ */ h("span", { className: "fs-settings-status" }, t("settingsInvalidNumber")) : null, !invalid && failed ? /* @__PURE__ */ h("span", { className: "fs-settings-status" }, t("settingsSaveFailed")) : null));
 	}
 	//#endregion
 	//#region src/client/index.tsx
-	const SETTINGS_NAMESPACE = "dsh-flyout-sidebar";
 	window.__ModuleLoader__.load({
 		id: "dsh-flyout-sidebar",
 		factory: (require) => {
@@ -3110,54 +3254,18 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 						order: 50,
 						label: "Artifacts Panel"
 					}, () => /* @__PURE__ */ h(ArtifactsPanel, null)));
-					settingsStore.load({ syncDefaultOpen: true });
-					ctx.inject(["settingsScope"], (sctx) => {
-						const binder = sctx.get("settingsScope");
-						if (!binder) return;
-						const scope = binder.bind({ namespace: SETTINGS_NAMESPACE });
-						const scopedSlots = sctx.get("slots");
-						if (!scopedSlots) return;
-						let localSnap = scope.getSnapshot();
-						const localListeners = /* @__PURE__ */ new Set();
-						const publishLocal = (next) => {
-							if (next === localSnap) return;
-							localSnap = next;
-							for (const fn of localListeners) try {
-								fn();
-							} catch {}
-						};
-						sctx.effect(() => scope.subscribe(() => {
-							publishLocal(scope.getSnapshot());
-							settingsStore.load({ syncDefaultOpen: true });
-						}), "flyout: settings scope");
-						const useSettingsSnapshot = (selector) => React.useSyncExternalStore((cb) => {
-							localListeners.add(cb);
-							return () => {
-								localListeners.delete(cb);
-							};
-						}, () => selector(localSnap));
-						const setField = (field, value) => {
-							const cur = localSnap;
-							const nextValue = cur.value && typeof cur.value === "object" ? {
-								...cur.value,
-								[field]: value
-							} : { [field]: value };
-							publishLocal({
-								...cur,
-								value: nextValue
-							});
-							scope.set(field, value);
-						};
-						scopedSlots.inject("settings.plugin.item", () => scopedSlots.register({
-							name: "settings.plugin.item",
-							key: SETTINGS_NAMESPACE,
-							locale: SETTINGS_NAMESPACE,
-							inject: () => ({
-								useSettingsSnapshot,
-								setField
-							})
-						}, (props) => h(SettingsCard, props)));
+					ctx.inject(["configForms"], (sub) => {
+						const configForms = sub.get("configForms");
+						if (!configForms) return;
+						ctx.effect(() => configForms.whileServed([SETTINGS_NAMESPACE], () => slots.inject("plugins.row.config", () => slots.register({
+							name: "plugins.row.config",
+							key: ROW_CONFIG_KEY,
+							order: 40,
+							label: () => t("settingsTitle"),
+							inject: () => ({ configForm: configForms.get(SETTINGS_NAMESPACE) })
+						}, FlyoutConfigPage))), "dsh-flyout-sidebar: config page");
 					});
+					settingsStore.load({ syncDefaultOpen: true });
 				}
 			};
 		}

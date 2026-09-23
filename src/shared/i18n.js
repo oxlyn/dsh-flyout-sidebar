@@ -87,13 +87,19 @@ const ZH = {
   openInEditor: '在系统编辑器打开',
   openedInEditor: '已在编辑器打开',
   openFailed: '打开失败',
-  // 设置卡片
+  // 插件配置页（插件页 → 本插件的行 → 配置）
   settingsTitle: '弹出式侧边栏',
   settingsDesc: '侧边栏面板偏好设置',
   settingsAutoRefresh: '打开面板时自动刷新',
   settingsMinWidth: '面板最小宽度（%）',
   settingsDefaultOpen: '页面加载后默认展开',
   settingsFontSize: '内容区字号（px）',
+  settingsSave: '保存',
+  settingsSaving: '保存中…',
+  settingsSaveFailed: '宿主未接受这些值，已保留供你修改。',
+  settingsReadonly: '本部署的设置为只读。',
+  settingsUnavailable: '该插件当前未加载，暂时无法配置。',
+  settingsInvalidNumber: '请填范围内的数字；留空表示恢复默认。',
 }
 
 /** @type {Record<string, string>} */
@@ -165,13 +171,19 @@ const EN = {
   openInEditor: 'Open in system editor',
   openedInEditor: 'Opened in editor',
   openFailed: 'Failed to open',
-  // Settings card
+  // Plugins page → this bundle's row → configure
   settingsTitle: 'Flyout Sidebar',
   settingsDesc: 'Sidebar panel preferences',
   settingsAutoRefresh: 'Auto-refresh on panel open',
   settingsMinWidth: 'Min panel width (%)',
   settingsDefaultOpen: 'Open by default on page load',
   settingsFontSize: 'Content font size (px)',
+  settingsSave: 'Save',
+  settingsSaving: 'Saving…',
+  settingsSaveFailed: 'The deployment did not accept these values; they were left for you to correct.',
+  settingsReadonly: 'This deployment stores settings read-only.',
+  settingsUnavailable: 'This plugin is not loaded, so it cannot be configured right now.',
+  settingsInvalidNumber: 'Enter a number within range, or leave blank to use the default.',
 }
 
 /** @type {Record<string, Record<string, string>>} */
