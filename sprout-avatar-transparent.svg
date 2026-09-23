@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="leafL" x1="1" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#86efac"/>
+      <stop offset="55%" stop-color="#22c55e"/>
+      <stop offset="100%" stop-color="#15803d"/>
+    </linearGradient>
+    <linearGradient id="leafR" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#86efac"/>
+      <stop offset="55%" stop-color="#22c55e"/>
+      <stop offset="100%" stop-color="#166534"/>
+    </linearGradient>
+    <linearGradient id="stem" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0%" stop-color="#14532d"/>
+      <stop offset="100%" stop-color="#4ade80"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Stem -->
+  <path d="M 256 444 C 250 360, 262 290, 256 200" stroke="url(#stem)" stroke-width="16" stroke-linecap="round" fill="none"/>
+
+  <!-- Left leaf (shorter) -->
+  <path d="M 250 200 Q 221 120, 135 90 Q 165 170, 250 200 Z" fill="url(#leafL)"/>
+  <path d="M 247 198 Q 195 150, 140 95" stroke="#14532d" stroke-width="2" fill="none" opacity="0.4" stroke-linecap="round"/>
+
+  <!-- Right leaf (longer) -->
+  <path d="M 262 200 Q 297 110, 385 75 Q 351 166, 262 200 Z" fill="url(#leafR)"/>
+  <path d="M 265 198 Q 330 140, 382 80" stroke="#14532d" stroke-width="2" fill="none" opacity="0.4" stroke-linecap="round"/>
+</svg>
