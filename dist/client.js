@@ -3018,12 +3018,13 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 	//#endregion
 	//#region src/client/config.tsx
 	/**
-	* Client 侧：插件配置页（插件页 → 本插件的行 → 配置入口）。
+	* Client 侧：插件配置页（插件页 → 本插件的详情页 → 配置表单）。
 	*
 	* 新版 DSH 客户端不再为插件的 volatile 配置自动生成设置卡片：配置页必须由插件
-	* 自己注册进 `plugins.row.config`（key = `<包名>#<行 id>`），宿主插件管理页才会
-	* 在该行上渲染配置入口。宿主侧不需要任何注册 —— settings 服务直接投影 Loader
-	* 条目里带 `.volatile()` 的字段，以条目 id（= 行 id）作为 namespace，配置值经
+	* 自己注册。bundle 级配置注册进 `plugins.bundle.config`（key = 包名），宿主插件
+	* 管理页会把它直接渲染在本插件的详情页上、位于描述与行列表之间（仅 `page`
+	* 视图）。宿主侧不需要任何注册 —— settings 服务直接投影 Loader 条目里带
+	* `.volatile()` 的字段，以条目 id（= 行 id）作为 namespace，配置值经
 	* `ctx.configForms.get(条目 id)` 读写（插件管理页把它作为 owner props 的 `form`
 	* 传下来，注册方通过注入的表单引用拿实时快照）。
 	*
@@ -3031,8 +3032,8 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 	* fence 的 mutate —— 与官方伴生包的 SettingsFormModel 语义一致，这样一次保存
 	* 只产生一次宿主写入，用户也能在保存前看到自己要写什么。
 	*/
-	/** row config slot 的注册 key：`<包名>#<行 id>`，由 cordis.patch.yml 的 insert 决定 */
-	const ROW_CONFIG_KEY = "dsh-flyout-sidebar#flyout-sidebar";
+	/** bundle config slot 的注册 key：包名（dsh-flyout-sidebar） */
+	const BUNDLE_CONFIG_KEY = "dsh-flyout-sidebar";
 	/** 宿主 settings 的 namespace：profile 条目 id，也就是插件行的 row id */
 	const SETTINGS_NAMESPACE = "flyout-sidebar";
 	const FIELDS = [
@@ -3257,9 +3258,9 @@ body[data-ds-dark-theme] .tok-property { color: #ced4da; }
 					ctx.inject(["configForms"], (sub) => {
 						const configForms = sub.get("configForms");
 						if (!configForms) return;
-						ctx.effect(() => configForms.whileServed([SETTINGS_NAMESPACE], () => slots.inject("plugins.row.config", () => slots.register({
-							name: "plugins.row.config",
-							key: ROW_CONFIG_KEY,
+						ctx.effect(() => configForms.whileServed([SETTINGS_NAMESPACE], () => slots.inject("plugins.bundle.config", () => slots.register({
+							name: "plugins.bundle.config",
+							key: BUNDLE_CONFIG_KEY,
 							order: 40,
 							label: () => t("settingsTitle"),
 							inject: () => ({ configForm: configForms.get(SETTINGS_NAMESPACE) })

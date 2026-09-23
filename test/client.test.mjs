@@ -155,26 +155,23 @@ test('client bundle: apply inserts styles and registers two overlay slots', () =
   assert.deepEqual(panel, { name: 'shell.overlay', id: 'artifacts-sidebar-panel', order: 50, label: 'Artifacts Panel' })
 })
 
-test('client bundle: registers the row config page under <package>#<row id>', () => {
+test('client bundle: registers the bundle config page under the package name', () => {
   const { plugin } = loadClientBundle()
   const ctx = makeClientCtx()
   plugin.apply(ctx)
-  const entry = ctx.registered.find((r) => r.definition.name === 'plugins.row.config')
-  assert.ok(entry, '应注册 plugins.row.config（宿主插件管理页据此渲染行的配置入口）')
-  assert.equal(entry.definition.key, 'dsh-flyout-sidebar#flyout-sidebar')
+  const entry = ctx.registered.find((r) => r.definition.name === 'plugins.bundle.config')
+  assert.ok(entry, '应注册 plugins.bundle.config（宿主插件管理页据此在本插件详情页渲染配置表单）')
+  assert.equal(entry.definition.key, 'dsh-flyout-sidebar')
   assert.equal(typeof entry.definition.label, 'function')
 })
 
-test('client bundle: config page renders summary and the staged form', () => {
+test('client bundle: config page renders the staged form', () => {
   const { plugin } = loadClientBundle()
   const ctx = makeClientCtx()
   plugin.apply(ctx)
-  const entry = ctx.registered.find((r) => r.definition.name === 'plugins.row.config')
+  const entry = ctx.registered.find((r) => r.definition.name === 'plugins.bundle.config')
   const injected = entry.definition.inject()
   assert.ok(injected.configForm, '配置页应拿到宿主表单引用')
-
-  const summary = renderToString(React.createElement(entry.component, { ...injected, view: 'summary' }))
-  assert.ok(summary.includes('Sidebar panel preferences'), 'summary 视图应为单行说明')
 
   const html = renderToString(React.createElement(entry.component, { ...injected, view: 'page' }))
   assert.ok(html.includes('fs-settings-form'), '应渲染配置表单')

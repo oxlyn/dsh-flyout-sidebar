@@ -1,10 +1,11 @@
 /**
- * Client 侧：插件配置页（插件页 → 本插件的行 → 配置入口）。
+ * Client 侧：插件配置页（插件页 → 本插件的详情页 → 配置表单）。
  *
  * 新版 DSH 客户端不再为插件的 volatile 配置自动生成设置卡片：配置页必须由插件
- * 自己注册进 `plugins.row.config`（key = `<包名>#<行 id>`），宿主插件管理页才会
- * 在该行上渲染配置入口。宿主侧不需要任何注册 —— settings 服务直接投影 Loader
- * 条目里带 `.volatile()` 的字段，以条目 id（= 行 id）作为 namespace，配置值经
+ * 自己注册。bundle 级配置注册进 `plugins.bundle.config`（key = 包名），宿主插件
+ * 管理页会把它直接渲染在本插件的详情页上、位于描述与行列表之间（仅 `page`
+ * 视图）。宿主侧不需要任何注册 —— settings 服务直接投影 Loader 条目里带
+ * `.volatile()` 的字段，以条目 id（= 行 id）作为 namespace，配置值经
  * `ctx.configForms.get(条目 id)` 读写（插件管理页把它作为 owner props 的 `form`
  * 传下来，注册方通过注入的表单引用拿实时快照）。
  *
@@ -17,8 +18,8 @@ import { t } from '../shared/i18n.js'
 import { useLang } from './store'
 import type { ReactElement } from 'react'
 
-/** row config slot 的注册 key：`<包名>#<行 id>`，由 cordis.patch.yml 的 insert 决定 */
-export const ROW_CONFIG_KEY = 'dsh-flyout-sidebar#flyout-sidebar'
+/** bundle config slot 的注册 key：包名（dsh-flyout-sidebar） */
+export const BUNDLE_CONFIG_KEY = 'dsh-flyout-sidebar'
 
 /** 宿主 settings 的 namespace：profile 条目 id，也就是插件行的 row id */
 export const SETTINGS_NAMESPACE = 'flyout-sidebar'
@@ -194,6 +195,7 @@ export function FlyoutConfigPage(props: ConfigPageProps): ReactElement | null {
   // 个 revision，保存时的 fence 与屏幕上看到的值必然一致。
   const edits = staged.revision === snap?.revision ? staged.text : {}
 
+  // bundle.config 契约仅渲染 page；summary 分支为行级配置（row.config）场景保留
   if (props.view === 'summary') return <>{t('settingsDesc')}</>
   if (snap === undefined || snap.status === 'unavailable') {
     return <p className="fs-settings-note">{t('settingsUnavailable')}</p>

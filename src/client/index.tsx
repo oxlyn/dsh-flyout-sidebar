@@ -9,7 +9,7 @@ import { h, initReact } from './jsx'
 import { initClient, type ClientContext } from './runtime'
 import { insertStyles } from './styles'
 import { ArtifactsPanel, CornerButton } from './components'
-import { FlyoutConfigPage, ROW_CONFIG_KEY, SETTINGS_NAMESPACE, type ConfigFormLike } from './config'
+import { FlyoutConfigPage, BUNDLE_CONFIG_KEY, SETTINGS_NAMESPACE, type ConfigFormLike } from './config'
 import { settingsStore } from './store'
 import { t } from '../shared/i18n.js'
 
@@ -79,9 +79,10 @@ window.__ModuleLoader__.load({
           ),
         )
 
-        // 插件配置页（插件页 → 本插件的行 → 配置）：新版客户端不再为 volatile
-        // 配置自动生成卡片，配置入口完全由插件自行注册 plugins.row.config 决定
-        // （key = `<包名>#<行 id>`；宿主插件管理页只认已注册的 key 才渲染入口）。
+        // 插件配置页（插件页 → 本插件的详情页 → 配置表单）：新版客户端不再为
+        // volatile 配置自动生成卡片，bundle 级配置由插件自行注册
+        // `plugins.bundle.config`（key = 包名；宿主插件管理页把它渲染在详情页
+        // 描述与行列表之间，打开插件页即见表单，仅 page 视图）。
         // 注册表在宿主 settings 服务就绪、且该 namespace（= profile 条目 id）被
         // 宿主投影出来之后才生效：插件没加载的部署上不会留下痕迹。
         ctx.inject(['configForms'], (sub) => {
@@ -90,11 +91,11 @@ window.__ModuleLoader__.load({
           ctx.effect(
             () =>
               configForms.whileServed([SETTINGS_NAMESPACE], () =>
-                slots.inject('plugins.row.config', () =>
+                slots.inject('plugins.bundle.config', () =>
                   slots.register(
                     {
-                      name: 'plugins.row.config',
-                      key: ROW_CONFIG_KEY,
+                      name: 'plugins.bundle.config',
+                      key: BUNDLE_CONFIG_KEY,
                       order: 40,
                       label: () => t('settingsTitle'),
                       inject: () => ({ configForm: configForms.get(SETTINGS_NAMESPACE) }),
