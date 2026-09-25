@@ -5,7 +5,9 @@
       <stop offset="1" stop-color="#324DE2"/>
     </linearGradient>
   </defs>
-  <rect x="4.5" y="7.5" width="27" height="21" rx="5.5" stroke="url(#flyout)" stroke-width="3"/>
-  <line x1="23" y1="7.5" x2="23" y2="28.5" stroke="url(#flyout)" stroke-width="3"/>
-  <path d="M10 22L17.5 14.5M13.5 14.5H17.5V18.5" stroke="url(#flyout)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <g transform="translate(18 18) scale(0.86) translate(-18 -18)">
+    <rect x="4.5" y="7.5" width="27" height="21" rx="5.5" stroke="url(#flyout)" stroke-width="3"/>
+    <line x1="23" y1="7.5" x2="23" y2="28.5" stroke="url(#flyout)" stroke-width="3"/>
+    <path d="M10 22L17.5 14.5M13.5 14.5H17.5V18.5" stroke="url(#flyout)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
 </svg>
