@@ -2,6 +2,7 @@
   "name": "dsh-flyout-sidebar",
   "version": "0.1.10",
   "description": "可弹出侧边栏 · A DeepSeek Harness sidebar that shows artifacts and pops out into a larger web tab.",
+  "icon": "./icon.svg",
   "license": "MIT",
   "type": "module",
   "keywords": [
@@ -30,6 +31,7 @@
   "files": [
     "dist",
     "cordis.patch.yml",
+    "icon.svg",
     "README.md",
     "README_EN.md",
     "LICENSE",
