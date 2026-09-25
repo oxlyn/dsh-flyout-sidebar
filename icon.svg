@@ -1,8 +1,8 @@
 <svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <linearGradient id="ecg" x1="18" y1="3" x2="18" y2="33" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#658EFF"/>
-      <stop offset="1" stop-color="#05909D"/>
+      <stop offset="0" stop-color="#324DE2"/>
+      <stop offset="1" stop-color="#45E7A4"/>
     </linearGradient>
   </defs>
   <polyline points="33 18 27 18 22.5 31.5 13.5 4.5 9 18 3 18" stroke="url(#ecg)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
