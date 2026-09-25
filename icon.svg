@@ -1,9 +1,11 @@
 <svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="ecg" x1="18" y1="3" x2="18" y2="33" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#324DE2"/>
-      <stop offset="1" stop-color="#45E7A4"/>
+    <linearGradient id="flyout" x1="18" y1="4" x2="18" y2="32" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#45E7A4"/>
+      <stop offset="1" stop-color="#324DE2"/>
     </linearGradient>
   </defs>
-  <polyline points="33 18 27 18 22.5 31.5 13.5 4.5 9 18 3 18" stroke="url(#ecg)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="4.5" y="7.5" width="27" height="21" rx="5.5" stroke="url(#flyout)" stroke-width="3"/>
+  <line x1="23" y1="7.5" x2="23" y2="28.5" stroke="url(#flyout)" stroke-width="3"/>
+  <path d="M10 22L17.5 14.5M13.5 14.5H17.5V18.5" stroke="url(#flyout)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>
